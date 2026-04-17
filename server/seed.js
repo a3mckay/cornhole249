@@ -297,7 +297,20 @@ function seedIfEmpty() {
   const db = getDb();
   try {
     const count = db.prepare(`SELECT COUNT(*) as c FROM users`).get().c;
-    if (count === 0) {
+    if (count > 0) return;
+
+    if (process.env.NODE_ENV === 'production') {
+      const adminName = process.env.BOOTSTRAP_ADMIN_NAME;
+      if (!adminName) {
+        console.log('[Seed] Production mode: set BOOTSTRAP_ADMIN_NAME to create the first admin user.');
+        return;
+      }
+      const nickname = process.env.BOOTSTRAP_ADMIN_NICKNAME || null;
+      const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(adminName)}`;
+      db.prepare(`INSERT INTO users (display_name, nickname, avatar_url, is_admin, elo_rating) VALUES (?, ?, ?, 1, 1000)`)
+        .run(adminName, nickname, avatarUrl);
+      console.log(`[Seed] Created admin user: ${adminName}`);
+    } else {
       console.log('[Seed] Database empty, seeding...');
       seed();
     }
