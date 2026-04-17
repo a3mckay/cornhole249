@@ -1,0 +1,36 @@
+{
+  "name": "cornhole249",
+  "version": "1.0.0",
+  "description": "Hamilton's Most Competitive Backyard Cornhole League",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\" --names \"server,client\" --prefix-colors \"green,cyan\"",
+    "server": "node server/index.js",
+    "client": "cd client && npm run dev",
+    "seed": "node server/seed.js",
+    "build": "cd client && npm run build",
+    "test": "npm run test:server && npm run test:client",
+    "test:server": "jest --testPathPattern=server/__tests__",
+    "test:client": "cd client && npm run test"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "compression": "^1.7.4",
+    "concurrently": "^8.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "express-session": "^1.18.0",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["<rootDir>/server/__tests__/**/*.test.js"],
+    "transform": {}
+  }
+}

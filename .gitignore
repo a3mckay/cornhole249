@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Build output
+client/dist/
+
+# Environment
+.env
+.env.local
+
+# Database (local dev only — production uses Railway Volume)
+*.db
+*.db-shm
+*.db-wal
+:memory:
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude
+.claude/

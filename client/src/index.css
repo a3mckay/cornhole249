@@ -1,0 +1,216 @@
+@import url('https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Nunito:wght@400;500;600;700;800&family=Permanent+Marker&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-bg: #F5EFE0;
+  --color-surface: #FDF8EE;
+  --color-primary: #3A6B35;
+  --color-secondary: #D48B2D;
+  --color-danger: #B94040;
+  --color-text-primary: #2C2416;
+  --color-text-secondary: #7A6652;
+  --color-border: #C8B89A;
+  --color-navbar: #4A3728;
+  --color-chalkboard: #2D4A28;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: 'Nunito', sans-serif;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Grain texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 150px;
+}
+
+/* Card styles */
+.card {
+  background: var(--color-surface);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0px var(--color-border);
+  border: 1px solid var(--color-border);
+  padding: 1.25rem;
+}
+
+.card-hover {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 6px 8px 0px var(--color-border);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1.25rem;
+  border-radius: 9999px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  text-decoration: none;
+}
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+.btn-secondary {
+  background: var(--color-secondary);
+  color: white;
+}
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 2px solid var(--color-border);
+}
+
+/* Chalkboard standings */
+.chalkboard {
+  background: var(--color-chalkboard);
+  color: #EEE8D5;
+  border-radius: 12px;
+  padding: 0.5rem;
+}
+.chalkboard th {
+  color: #B8D4A8;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+.chalkboard tr:nth-child(even) {
+  background: rgba(255,255,255,0.04);
+}
+.chalkboard tr:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+/* Streak badge pulse */
+@keyframes pulse-streak {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.streak-pulse {
+  animation: pulse-streak 1.4s ease-in-out infinite;
+}
+
+/* String lights twinkle */
+@keyframes twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Page fade in */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Achievement toast */
+@keyframes toast-slide {
+  from { transform: translateX(120%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-bounce {
+  0%, 100% { transform: translateX(0) scale(1); }
+  20% { transform: translateX(0) scale(1.05); }
+}
+.toast-enter {
+  animation: toast-slide 0.3s ease-out, toast-bounce 0.5s ease 0.3s;
+}
+
+/* Scrollable table fade */
+.table-scroll-wrapper {
+  overflow-x: auto;
+  position: relative;
+}
+.table-scroll-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 40px;
+  background: linear-gradient(to right, transparent, var(--color-chalkboard));
+  pointer-events: none;
+  border-radius: 0 12px 12px 0;
+}
+
+/* Weather badges */
+.weather-clear { background: #FEF3C7; color: #92400E; }
+.weather-cloudy { background: #F3F4F6; color: #4B5563; }
+.weather-rain { background: #DBEAFE; color: #1E40AF; }
+.weather-thunder { background: #EDE9FE; color: #5B21B6; }
+.weather-snow { background: #F0F9FF; color: #0369A1; }
+.weather-fog { background: #F9FAFB; color: #6B7280; }
+
+/* Achievement badge bottle-cap style */
+.achievement-badge {
+  border-radius: 50%;
+  border: 3px solid var(--color-border);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.5rem;
+  transition: transform 0.15s ease;
+}
+.achievement-badge:hover {
+  transform: scale(1.1);
+}
+.achievement-badge.locked {
+  filter: grayscale(1);
+  opacity: 0.35;
+}
+
+/* Trash talk card rotation */
+.trash-card:nth-child(odd) { transform: rotate(-0.5deg); }
+.trash-card:nth-child(even) { transform: rotate(0.5deg); }
+.trash-card:hover { transform: rotate(0) scale(1.01); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
