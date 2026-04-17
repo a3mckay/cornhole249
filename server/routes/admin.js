@@ -3,6 +3,31 @@ const router = express.Router();
 const { getDb } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 
+// POST /api/admin/wipe — TEMPORARY: wipe all data and re-bootstrap admin
+// Protected by WIPE_SECRET env var — remove this route after use
+router.post('/wipe', (req, res) => {
+  const secret = process.env.WIPE_SECRET;
+  if (!secret || req.headers['x-wipe-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const db = getDb();
+  db.exec(`
+    DELETE FROM achievements;
+    DELETE FROM comments;
+    DELETE FROM trash_talk;
+    DELETE FROM game_participants;
+    DELETE FROM games;
+    DELETE FROM tournament_matches;
+    DELETE FROM tournaments;
+    DELETE FROM join_codes;
+    DELETE FROM venues;
+    DELETE FROM users;
+  `);
+  const { seedIfEmpty } = require('../seed');
+  seedIfEmpty();
+  res.json({ ok: true, message: 'Database wiped and re-bootstrapped' });
+});
+
 // GET /api/admin/users
 router.get('/users', requireAdmin, (req, res) => {
   const db = getDb();
