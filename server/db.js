@@ -1,5 +1,6 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
 const DB_PATH = process.env.DATABASE_PATH || './cornhole249.db';
 
@@ -7,7 +8,9 @@ let db;
 
 function getDb() {
   if (!db) {
-    db = new Database(path.resolve(DB_PATH));
+    const resolved = path.resolve(DB_PATH);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    db = new Database(resolved);
     db.pragma('journal_mode = WAL');
     db.pragma('foreign_keys = ON');
   }
