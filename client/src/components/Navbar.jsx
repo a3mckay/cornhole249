@@ -28,7 +28,7 @@ export default function Navbar() {
   const [showSetPin, setShowSetPin] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [newPinConfirm, setNewPinConfirm] = useState('');
-  const [setPinError, setSetPinError] = useState('');
+  const [pinChangeError, setPinChangeError] = useState('');
   const [setPinSuccess, setSetPinSuccess] = useState(false);
 
   const handleLogin = async (u) => {
@@ -59,9 +59,9 @@ export default function Navbar() {
 
   const handleSetPin = async (e) => {
     e.preventDefault();
-    setSetPinError('');
-    if (!/^\d{4}$/.test(newPin)) { setSetPinError('PIN must be exactly 4 digits'); return; }
-    if (newPin !== newPinConfirm) { setSetPinError('PINs do not match'); return; }
+    setPinChangeError('');
+    if (!/^\d{4}$/.test(newPin)) { setPinChangeError('PIN must be exactly 4 digits'); return; }
+    if (newPin !== newPinConfirm) { setPinChangeError('PINs do not match'); return; }
     try {
       await authApi.setPin(newPin);
       await refreshUser();
@@ -69,7 +69,7 @@ export default function Navbar() {
       setNewPin(''); setNewPinConfirm('');
       setTimeout(() => { setShowSetPin(false); setSetPinSuccess(false); }, 1500);
     } catch (err) {
-      setSetPinError(err.response?.data?.error || 'Failed to set PIN');
+      setPinChangeError(err.response?.data?.error || 'Failed to set PIN');
     }
   };
 
@@ -194,7 +194,7 @@ export default function Navbar() {
                   {user && (
                     <>
                       <button
-                        onClick={() => { setShowSetPin(true); setDropdownOpen(false); setSetPinError(''); setSetPinSuccess(false); setNewPin(''); setNewPinConfirm(''); }}
+                        onClick={() => { setShowSetPin(true); setDropdownOpen(false); setPinChangeError(''); setSetPinSuccess(false); setNewPin(''); setNewPinConfirm(''); }}
                         className="w-full text-center text-sm font-ui font-semibold py-1.5 rounded-full transition-colors hover:bg-amber-50"
                         style={{ color: 'var(--color-text-secondary)' }}
                       >
@@ -349,7 +349,7 @@ export default function Navbar() {
                   className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
                   style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 />
-                {setPinError && <p className="text-xs font-ui text-center" style={{ color: 'var(--color-danger)' }}>{setPinError}</p>}
+                {pinChangeError && <p className="text-xs font-ui text-center" style={{ color: 'var(--color-danger)' }}>{pinChangeError}</p>}
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setShowSetPin(false)}
                     className="flex-1 py-2 rounded-xl font-ui text-sm border"
