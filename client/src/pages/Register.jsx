@@ -8,19 +8,29 @@ export default function Register() {
   const { refreshUser } = useAuth();
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!code.trim() || !displayName.trim()) {
-      setError('Both fields are required');
+      setError('All fields are required');
+      return;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      setError('PIN must be exactly 4 digits');
+      return;
+    }
+    if (pin !== pinConfirm) {
+      setError('PINs do not match');
       return;
     }
     setSubmitting(true);
     setError('');
     try {
-      await authApi.register(code.trim(), displayName.trim());
+      await authApi.register(code.trim(), displayName.trim(), pin);
       await refreshUser();
       navigate('/players');
     } catch (err) {
@@ -68,6 +78,38 @@ export default function Register() {
               placeholder="How you'll appear on the leaderboard"
               maxLength={40}
               className="w-full px-3 py-2 rounded-xl border font-ui text-sm"
+              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Choose a PIN
+            </label>
+            <input
+              type="password"
+              inputMode="numeric"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="4-digit PIN"
+              maxLength={4}
+              className="w-full px-3 py-2 rounded-xl border font-ui text-center text-xl tracking-widest"
+              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Confirm PIN
+            </label>
+            <input
+              type="password"
+              inputMode="numeric"
+              value={pinConfirm}
+              onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="Confirm PIN"
+              maxLength={4}
+              className="w-full px-3 py-2 rounded-xl border font-ui text-center text-xl tracking-widest"
               style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
             />
           </div>

@@ -8,11 +8,12 @@ const api = axios.create({
 // Auth
 export const authApi = {
   me: () => axios.get('/auth/me', { withCredentials: true }).then((r) => r.data),
-  login: (userId) =>
-    axios.post('/auth/login', { user_id: userId }, { withCredentials: true }).then((r) => r.data),
-  register: (code, display_name) =>
-    axios.post('/auth/register', { code, display_name }, { withCredentials: true }).then((r) => r.data),
+  login: (userId, pin) =>
+    axios.post('/auth/login', { user_id: userId, pin }, { withCredentials: true }).then((r) => r.data),
+  register: (code, display_name, pin) =>
+    axios.post('/auth/register', { code, display_name, pin }, { withCredentials: true }).then((r) => r.data),
   logout: () => axios.post('/auth/logout', {}, { withCredentials: true }).then((r) => r.data),
+  setPin: (pin) => axios.post('/auth/set-pin', { pin }, { withCredentials: true }).then((r) => r.data),
 };
 
 // Users

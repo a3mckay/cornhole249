@@ -116,6 +116,7 @@ function runMigrations() {
 
   // Additive migrations — safe to run on existing databases
   try { db.exec(`ALTER TABLE users ADD COLUMN handedness TEXT NOT NULL DEFAULT 'right'`); } catch (e) { /* column already exists */ }
+  try { db.exec(`ALTER TABLE users ADD COLUMN pin TEXT`); } catch (e) { /* column already exists */ }
   try { db.exec(`ALTER TABLE games ADD COLUMN tournament_match_id INTEGER REFERENCES tournament_matches(id)`); } catch (e) { /* already exists */ }
   try { db.exec(`ALTER TABLE tournament_matches ADD COLUMN game_id INTEGER REFERENCES games(id)`); } catch (e) { /* already exists */ }
   try { db.exec(`CREATE INDEX IF NOT EXISTS idx_games_tournament_match ON games(tournament_match_id)`); } catch (e) { /* already exists */ }

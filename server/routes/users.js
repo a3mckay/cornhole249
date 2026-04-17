@@ -7,7 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 router.get('/', (req, res) => {
   const db = getDb();
   const users = db.prepare(
-    `SELECT id, display_name, nickname, avatar_url, is_admin, elo_rating, handedness FROM users ORDER BY display_name`
+    `SELECT id, display_name, nickname, avatar_url, is_admin, elo_rating, handedness, (pin IS NOT NULL) as has_pin FROM users ORDER BY display_name`
   ).all();
   res.json(users);
 });

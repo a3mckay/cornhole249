@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { authApi } from '../api';
 
 const NAV_LINKS = [
   { to: '/standings', label: 'Standings' },
@@ -16,14 +17,60 @@ const NAV_LINKS = [
 ];
 
 export default function Navbar() {
-  const { user, allUsers, login, logout, loading } = useAuth();
+  const { user, allUsers, login, logout, refreshUser, loading } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [pinPrompt, setPinPrompt] = useState(null); // { userId, name }
+  const [pinValue, setPinValue] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+  const [showSetPin, setShowSetPin] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [newPinConfirm, setNewPinConfirm] = useState('');
+  const [setPinError, setSetPinError] = useState('');
+  const [setPinSuccess, setSetPinSuccess] = useState(false);
 
-  const handleLogin = async (userId) => {
-    await login(parseInt(userId));
-    setDropdownOpen(false);
+  const handleLogin = async (u) => {
+    if (u.has_pin) {
+      setPinPrompt({ userId: u.id, name: u.display_name });
+      setPinValue('');
+      setPinError('');
+      setDropdownOpen(false);
+    } else {
+      await login(u.id);
+      setDropdownOpen(false);
+    }
+  };
+
+  const handlePinSubmit = async (e) => {
+    e.preventDefault();
+    setPinLoading(true);
+    setPinError('');
+    try {
+      await login(pinPrompt.userId, pinValue);
+      setPinPrompt(null);
+    } catch (err) {
+      setPinError(err.response?.data?.error || 'Incorrect PIN');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  const handleSetPin = async (e) => {
+    e.preventDefault();
+    setSetPinError('');
+    if (!/^\d{4}$/.test(newPin)) { setSetPinError('PIN must be exactly 4 digits'); return; }
+    if (newPin !== newPinConfirm) { setSetPinError('PINs do not match'); return; }
+    try {
+      await authApi.setPin(newPin);
+      await refreshUser();
+      setSetPinSuccess(true);
+      setNewPin(''); setNewPinConfirm('');
+      setTimeout(() => { setShowSetPin(false); setSetPinSuccess(false); }, 1500);
+    } catch (err) {
+      setSetPinError(err.response?.data?.error || 'Failed to set PIN');
+    }
   };
 
   const handleRegister = () => {
@@ -112,7 +159,7 @@ export default function Navbar() {
                 {allUsers.map((u) => (
                   <button
                     key={u.id}
-                    onClick={() => handleLogin(u.id)}
+                    onClick={() => handleLogin(u)}
                     className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors text-left ${
                       user?.id === u.id ? 'bg-green-50 font-bold' : ''
                     }`}
@@ -129,6 +176,7 @@ export default function Navbar() {
                       <div>{u.display_name}</div>
                       <div className="text-xs opacity-60">"{u.nickname}"</div>
                     </div>
+                    {u.has_pin ? <span className="ml-auto text-xs opacity-40">🔒</span> : null}
                     {u.is_admin ? <span className="ml-auto text-yellow-500 text-xs">★ Admin</span> : null}
                     {user?.id === u.id ? <span className="ml-auto text-green-600 text-xs">✓</span> : null}
                   </button>
@@ -144,12 +192,21 @@ export default function Navbar() {
                     </button>
                   )}
                   {user && (
-                    <button
-                      onClick={() => { logout(); setDropdownOpen(false); }}
-                      className="w-full text-center text-sm font-ui font-semibold text-red-600 hover:bg-red-50 py-1.5 rounded-full transition-colors"
-                    >
-                      Sign out
-                    </button>
+                    <>
+                      <button
+                        onClick={() => { setShowSetPin(true); setDropdownOpen(false); setSetPinError(''); setSetPinSuccess(false); setNewPin(''); setNewPinConfirm(''); }}
+                        className="w-full text-center text-sm font-ui font-semibold py-1.5 rounded-full transition-colors hover:bg-amber-50"
+                        style={{ color: 'var(--color-text-secondary)' }}
+                      >
+                        🔒 {allUsers.find(u => u.id === user.id)?.has_pin ? 'Change PIN' : 'Set PIN'}
+                      </button>
+                      <button
+                        onClick={() => { logout(); setDropdownOpen(false); }}
+                        className="w-full text-center text-sm font-ui font-semibold text-red-600 hover:bg-red-50 py-1.5 rounded-full transition-colors"
+                      >
+                        Sign out
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -217,6 +274,98 @@ export default function Navbar() {
       {/* Close dropdown on outside click */}
       {dropdownOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+      )}
+
+      {/* PIN prompt modal */}
+      {pinPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-2xl shadow-xl p-6 w-72" style={{ background: 'var(--color-surface)' }}>
+            <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>Enter PIN</h2>
+            <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+              Signing in as <strong>{pinPrompt.name}</strong>
+            </p>
+            <form onSubmit={handlePinSubmit} className="flex flex-col gap-3">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={4}
+                value={pinValue}
+                onChange={(e) => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="4-digit PIN"
+                className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                autoFocus
+              />
+              {pinError && <p className="text-xs font-ui text-center" style={{ color: 'var(--color-danger)' }}>{pinError}</p>}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setPinPrompt(null)}
+                  className="flex-1 py-2 rounded-xl font-ui text-sm border"
+                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={pinValue.length !== 4 || pinLoading}
+                  className="flex-1 py-2 rounded-xl font-ui text-sm font-semibold text-white disabled:opacity-50"
+                  style={{ background: 'var(--color-primary)' }}>
+                  {pinLoading ? '...' : 'Sign in'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Set/Change PIN modal */}
+      {showSetPin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-2xl shadow-xl p-6 w-72" style={{ background: 'var(--color-surface)' }}>
+            <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+              {allUsers.find(u => u.id === user?.id)?.has_pin ? 'Change PIN' : 'Set PIN'}
+            </h2>
+            <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+              Choose a 4-digit PIN to secure your account.
+            </p>
+            {setPinSuccess ? (
+              <p className="text-center font-ui font-semibold py-2" style={{ color: 'var(--color-primary)' }}>✓ PIN saved!</p>
+            ) : (
+              <form onSubmit={handleSetPin} className="flex flex-col gap-3">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={newPin}
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="New PIN"
+                  className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
+                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                  autoFocus
+                />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={newPinConfirm}
+                  onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="Confirm PIN"
+                  className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
+                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                />
+                {setPinError && <p className="text-xs font-ui text-center" style={{ color: 'var(--color-danger)' }}>{setPinError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowSetPin(false)}
+                    className="flex-1 py-2 rounded-xl font-ui text-sm border"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={newPin.length !== 4 || newPinConfirm.length !== 4}
+                    className="flex-1 py-2 rounded-xl font-ui text-sm font-semibold text-white disabled:opacity-50"
+                    style={{ background: 'var(--color-primary)' }}>
+                    Save PIN
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
     </nav>
   );
