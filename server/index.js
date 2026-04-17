@@ -16,6 +16,7 @@ runMigrations();
 const SqliteStore = require('better-sqlite3-session-store')(session);
 const sessionDb = getDb();
 
+app.set('trust proxy', 1);
 app.use(compression());
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
