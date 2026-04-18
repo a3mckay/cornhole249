@@ -33,7 +33,8 @@ function mapWmoToCondition(code) {
   if (code === null || code === undefined) return 'Unknown';
   const c = parseInt(code);
   if (c <= 1) return 'Clear';
-  if (c <= 3) return 'Partly Cloudy';
+  if (c === 2) return 'Partly Cloudy';
+  if (c === 3) return 'Overcast';
   if (c === 45 || c === 48) return 'Fog';
   if (c >= 51 && c <= 55) return 'Drizzle';
   if (c >= 61 && c <= 63) return 'Rain';
@@ -54,22 +55,22 @@ async function fetchWeatherForGame(lat, lng, dateStr) {
 
   let url;
   if (isPast) {
-    url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${dateOnly}&end_date=${dateOnly}&daily=temperature_2m_max,precipitation_sum,windspeed_10m_max,weathercode&timezone=auto`;
+    url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${dateOnly}&end_date=${dateOnly}&daily=temperature_2m_mean,precipitation_sum,windspeed_10m_max,weathercode&timezone=auto`;
   } else {
-    url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&start_date=${dateOnly}&end_date=${dateOnly}&daily=temperature_2m_max,precipitation_sum,windspeed_10m_max,weathercode&timezone=auto`;
+    url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&start_date=${dateOnly}&end_date=${dateOnly}&daily=temperature_2m_mean,precipitation_sum,windspeed_10m_max,weathercode&timezone=auto`;
   }
 
   try {
     const resp = await fetch(url, { timeout: 8000 });
     if (!resp.ok) return null;
     const data = await resp.json();
-    if (!data.daily || !data.daily.weathercode || !data.daily.weathercode[0]) return null;
+    if (!data.daily || !data.daily.weathercode || data.daily.weathercode[0] === undefined) return null;
 
     const code = data.daily.weathercode[0];
     return {
       condition: mapWmoToCondition(code),
       weather_code: code,
-      temp_c: data.daily.temperature_2m_max[0],
+      temp_c: data.daily.temperature_2m_mean[0],
       wind_kph: data.daily.windspeed_10m_max[0],
       precipitation_mm: data.daily.precipitation_sum[0],
     };

@@ -37,12 +37,26 @@ runMigrations();
     const { fetchWeatherForGame } = require('./routes/weather');
     const db = getDb();
 
-    // Set coordinates for 249 Park if not already set
-    const venue249 = db.prepare(`SELECT * FROM venues WHERE name = '249 Park' AND (lat IS NULL OR lat = 0)`).get();
+    // Set coordinates for 249 Park — always ensure correct coords
+    const venue249 = db.prepare(`SELECT * FROM venues WHERE name = '249 Park'`).get();
     if (venue249) {
-      db.prepare(`UPDATE venues SET lat = ?, lng = ? WHERE id = ?`)
-        .run(43.26553781771368, -79.86855315885511, venue249.id);
-      console.log(`[Venue] Set coordinates for 249 Park (id=${venue249.id})`);
+      const correctLat = 43.26553781771368;
+      const correctLng = -79.86855315885511;
+      const coordsWrong = !venue249.lat || Math.abs(venue249.lat - correctLat) > 0.001;
+      if (coordsWrong) {
+        db.prepare(`UPDATE venues SET lat = ?, lng = ? WHERE id = ?`)
+          .run(correctLat, correctLng, venue249.id);
+        console.log(`[Venue] Set/corrected coordinates for 249 Park (id=${venue249.id})`);
+      }
+      // Force-clear weather for all 249 Park games so they re-fetch with correct coordinates
+      // (prior data may have been fetched with lat=0,lng=0 which points to Gulf of Guinea)
+      const cleared = db.prepare(`
+        UPDATE games SET weather_json = NULL
+        WHERE venue_id = ? AND weather_json IS NOT NULL
+      `).run(venue249.id);
+      if (cleared.changes > 0) {
+        console.log(`[Weather] Cleared stale weather data for ${cleared.changes} 249 Park games`);
+      }
     }
 
     // Backfill weather for games at venues with coordinates but no weather_json
