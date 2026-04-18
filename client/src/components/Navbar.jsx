@@ -11,9 +11,9 @@ const NAV_LINKS = [
   { to: '/stats', label: 'Stats' },
   { to: '/tournaments', label: 'Tournaments' },
   { to: '/odds', label: 'Odds' },
-  { to: '/hall-of-fame', label: 'Hall of Fame' },
+  { to: '/hall-of-fame', label: 'Hall of Fame', short: 'HoF' },
   { to: '/rules', label: 'Rules' },
-  { to: '/trash-talk', label: 'Trash Talk 🍺' },
+  { to: '/trash-talk', label: 'Trash Talk 🍺', short: 'Trash 🍺' },
 ];
 
 export default function Navbar() {
@@ -109,7 +109,12 @@ export default function Navbar() {
                 }`
               }
             >
-              {l.label}
+              {l.short ? (
+                <>
+                  <span className="hidden xl:inline">{l.label}</span>
+                  <span className="xl:hidden">{l.short}</span>
+                </>
+              ) : l.label}
             </NavLink>
           ))}
           {!!user?.is_admin && (
@@ -121,7 +126,8 @@ export default function Navbar() {
                 }`
               }
             >
-              ⚙️ Admin
+              <span className="hidden xl:inline">⚙️ Admin</span>
+              <span className="xl:hidden">⚙️</span>
             </NavLink>
           )}
         </div>
@@ -146,7 +152,7 @@ export default function Navbar() {
                   <span className="text-xs opacity-70">▾</span>
                 </>
               ) : (
-                <span>Sign in as... ▾</span>
+                <span>Accounts ▾</span>
               )}
             </button>
 
