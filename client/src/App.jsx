@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import Navbar from './components/Navbar';
-import QRShare from './components/QRShare';
+import BottomNav from './components/BottomNav';
 
 import Home from './pages/Home';
 import Standings from './pages/Standings';
@@ -39,7 +39,7 @@ export default function App() {
     <AuthProvider>
       <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 py-6">
+        <main className="max-w-7xl mx-auto px-4 py-6 pb-24 lg:pb-6">
           <Routes>
             <Route path="/" element={<PageWrapper><Home /></PageWrapper>} />
             <Route path="/standings" element={<PageWrapper><Standings /></PageWrapper>} />
@@ -61,11 +61,11 @@ export default function App() {
           </Routes>
         </main>
 
-        {/* QR Share floating button */}
-        <QRShare />
+        {/* Bottom nav — mobile only */}
+        <BottomNav />
 
-        {/* Achievement toasts */}
-        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
+        {/* Achievement toasts — above bottom nav on mobile */}
+        <div className="fixed bottom-20 lg:bottom-4 right-4 z-50 flex flex-col gap-2">
           {toasts.map((t) => (
             <div
               key={t.id}

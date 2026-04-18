@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { gamesApi, statsApi, tournamentsApi } from '../api';
 import GameCard from '../components/GameCard';
 import QRShare from '../components/QRShare';
+import TrashTalkBanner from '../components/TrashTalkBanner';
 
 function StringLights() {
   const bulbs = Array.from({ length: 18 });
@@ -35,8 +36,8 @@ export default function Home() {
   useEffect(() => {
     Promise.all([
       gamesApi.list({ limit: 5 }),
-      statsApi.performers({ season: 2025 }),
-      statsApi.recap({ season: 2025 }).catch(() => null),
+      statsApi.performers({ season: new Date().getFullYear() }),
+      statsApi.recap({ season: new Date().getFullYear() }).catch(() => null),
       tournamentsApi.list().catch(() => []),
     ]).then(([games, perf, recap, tournaments]) => {
       setRecentGames(games.games || []);
@@ -46,7 +47,7 @@ export default function Home() {
     }).finally(() => setLoading(false));
   }, []);
 
-  const currentYear = 2025;
+  const currentYear = new Date().getFullYear();
 
   return (
     <div>
@@ -79,6 +80,9 @@ export default function Home() {
           </div>
         </div>
       </div>
+
+      {/* Trash Talk Banner */}
+      <TrashTalkBanner />
 
       {/* Weekly Recap */}
       {recap && recap.games_played > 0 && (
