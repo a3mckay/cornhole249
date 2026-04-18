@@ -4,7 +4,8 @@ import { gamesApi, venuesApi, usersApi } from '../api';
 import GameCard from '../components/GameCard';
 import { useAuth } from '../hooks/useAuth';
 
-const SEASONS = [2024, 2025];
+const CURRENT_YEAR = new Date().getFullYear();
+const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 
 export default function Games() {
   const { user } = useAuth();

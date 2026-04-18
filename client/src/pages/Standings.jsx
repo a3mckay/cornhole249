@@ -5,7 +5,8 @@ import StandingsTable from '../components/StandingsTable';
 import { standingsApi } from '../api';
 import { useEffect } from 'react';
 
-const SEASONS = [2024, 2025];
+const CURRENT_YEAR = new Date().getFullYear();
+const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 const PLAYER_COLORS = ['#3A6B35','#D48B2D','#B94040','#6366F1','#EC4899','#14B8A6','#F59E0B','#8B5CF6','#06B6D4','#84CC16'];
 
 export default function Standings() {

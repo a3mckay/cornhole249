@@ -85,7 +85,8 @@ function AchievementModal({ leader, onClose }) {
   );
 }
 
-const SEASONS = [2025, 2024];
+const CURRENT_YEAR = new Date().getFullYear();
+const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 
 export default function HallOfFame() {
   const [champs, setChamps] = useState({});
