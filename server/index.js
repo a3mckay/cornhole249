@@ -12,6 +12,25 @@ const PORT = process.env.PORT || 3001;
 // Run migrations first
 runMigrations();
 
+// Recalculate all Elo ratings on startup to apply latest formula
+{
+  const { recalculateAllElos } = require('./lib/elo');
+  const db = getDb();
+  const games = db.prepare(`SELECT * FROM games ORDER BY played_at ASC`).all();
+  const participants = db.prepare(`SELECT * FROM game_participants`).all();
+  if (games.length > 0) {
+    const newElos = recalculateAllElos(games, participants);
+    const stmt = db.prepare(`UPDATE users SET elo_rating = ? WHERE id = ?`);
+    const updateAll = db.transaction((elos) => {
+      for (const [userId, elo] of Object.entries(elos)) {
+        stmt.run(elo, parseInt(userId));
+      }
+    });
+    updateAll(newElos);
+    console.log(`[Elo] Recalculated ratings for ${Object.keys(newElos).length} players`);
+  }
+}
+
 // Session store
 const SqliteStore = require('better-sqlite3-session-store')(session);
 const sessionDb = getDb();

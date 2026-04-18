@@ -16,17 +16,37 @@ function winProbability(eloA, eloB) {
 }
 
 /**
+ * Margin-of-victory multiplier.
+ * Scales K between 1.0× (1-point win) and 1.5× (shutout).
+ * Formula: 1 + (margin / 22) * 1.1  — capped at 1.5
+ * Examples:
+ *   11-0  → margin 11 → 1.50×
+ *   11-3  → margin  8 → 1.40×
+ *   11-6  → margin  5 → 1.25×
+ *   11-9  → margin  2 → 1.10×
+ */
+function marginMultiplier(winnerScore, loserScore) {
+  const margin = Math.max(0, (winnerScore || 0) - (loserScore || 0));
+  return Math.min(1.5, 1 + (margin / 22) * 1.1);
+}
+
+/**
  * Update Elo ratings after a game
  * Returns { newEloA, newEloB }
  * scoreA: 1 if A won, 0 if A lost
+ * winnerPoints / loserPoints: optional game scores for margin multiplier
  */
-function updateElo(eloA, eloB, scoreA) {
+function updateElo(eloA, eloB, scoreA, winnerPoints, loserPoints) {
   const exp = expectedScore(eloA, eloB);
   const scoreB = 1 - scoreA;
   const expB = 1 - exp;
+  const mult = (winnerPoints != null && loserPoints != null)
+    ? marginMultiplier(winnerPoints, loserPoints)
+    : 1;
+  const k = K * mult;
   return {
-    newEloA: Math.round(eloA + K * (scoreA - exp)),
-    newEloB: Math.round(eloB + K * (scoreB - expB)),
+    newEloA: Math.round(eloA + k * (scoreA - exp)),
+    newEloB: Math.round(eloB + k * (scoreB - expB)),
   };
 }
 
@@ -74,8 +94,14 @@ function recalculateAllElos(games, participants) {
     const exp1 = expectedScore(avgElo1, avgElo2);
     const exp2 = 1 - exp1;
 
-    const delta1 = K * (score1 - exp1);
-    const delta2 = K * (score2 - exp2);
+    // Margin multiplier using actual game scores
+    const winnerScore = team1Won ? team1[0].score : team2[0].score;
+    const loserScore  = team1Won ? team2[0].score : team1[0].score;
+    const mult = marginMultiplier(winnerScore, loserScore);
+    const k = K * mult;
+
+    const delta1 = k * (score1 - exp1);
+    const delta2 = k * (score2 - exp2);
 
     for (const p of team1) {
       elos[p.user_id] = Math.round((elos[p.user_id] || 1000) + delta1);
@@ -88,4 +114,4 @@ function recalculateAllElos(games, participants) {
   return elos;
 }
 
-module.exports = { expectedScore, winProbability, updateElo, recalculateAllElos };
+module.exports = { expectedScore, winProbability, updateElo, marginMultiplier, recalculateAllElos };
