@@ -31,6 +31,41 @@ runMigrations();
   }
 }
 
+// Backfill venue coordinates and weather for games missing it
+(async () => {
+  try {
+    const { fetchWeatherForGame } = require('./routes/weather');
+    const db = getDb();
+
+    // Set coordinates for 249 Park if not already set
+    const venue249 = db.prepare(`SELECT * FROM venues WHERE name = '249 Park' AND (lat IS NULL OR lat = 0)`).get();
+    if (venue249) {
+      db.prepare(`UPDATE venues SET lat = ?, lng = ? WHERE id = ?`)
+        .run(43.26553781771368, -79.86855315885511, venue249.id);
+      console.log(`[Venue] Set coordinates for 249 Park (id=${venue249.id})`);
+    }
+
+    // Backfill weather for games at venues with coordinates but no weather_json
+    const gamesNeedingWeather = db.prepare(`
+      SELECT g.id, g.played_at, v.lat, v.lng
+      FROM games g
+      JOIN venues v ON g.venue_id = v.id
+      WHERE g.weather_json IS NULL AND v.lat IS NOT NULL AND v.lat != 0
+    `).all();
+
+    for (const game of gamesNeedingWeather) {
+      const weather = await fetchWeatherForGame(game.lat, game.lng, game.played_at);
+      if (weather) {
+        db.prepare(`UPDATE games SET weather_json = ? WHERE id = ?`)
+          .run(JSON.stringify(weather), game.id);
+        console.log(`[Weather] Backfilled game #${game.id}: ${weather.condition} ${weather.temp_c}°C`);
+      }
+    }
+  } catch (e) {
+    console.warn('[Startup] Venue/weather backfill failed:', e.message);
+  }
+})();
+
 // Session store
 const SqliteStore = require('better-sqlite3-session-store')(session);
 const sessionDb = getDb();
