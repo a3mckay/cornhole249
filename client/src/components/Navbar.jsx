@@ -289,12 +289,13 @@ export default function Navbar() {
             </p>
             <form onSubmit={handlePinSubmit} className="flex flex-col gap-3">
               <input
-                type="password"
+                type="tel"
                 inputMode="numeric"
+                pattern="[0-9]*"
                 maxLength={4}
                 value={pinValue}
                 onChange={(e) => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                placeholder="4-digit PIN"
+                placeholder="••••"
                 className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
                 style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 autoFocus
@@ -332,8 +333,9 @@ export default function Navbar() {
             ) : (
               <form onSubmit={handleSetPin} className="flex flex-col gap-3">
                 <input
-                  type="password"
+                  type="tel"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   maxLength={4}
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
@@ -343,8 +345,9 @@ export default function Navbar() {
                   autoFocus
                 />
                 <input
-                  type="password"
+                  type="tel"
                   inputMode="numeric"
+                  pattern="[0-9]*"
                   maxLength={4}
                   value={newPinConfirm}
                   onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
