@@ -333,6 +333,7 @@ if (require.main === module) {
     DELETE FROM tournaments;
     DELETE FROM venues;
     DELETE FROM users;
+    DELETE FROM sqlite_sequence;
   `);
   seed();
 }

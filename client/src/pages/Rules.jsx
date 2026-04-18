@@ -1,51 +1,5 @@
 import React from 'react';
 
-function BoardDiagram() {
-  return (
-    <svg viewBox="0 0 320 200" className="w-full max-w-sm mx-auto" style={{ fontFamily: 'Nunito, sans-serif' }}>
-      {/* Board surface */}
-      <rect x="30" y="30" width="260" height="155" rx="10" fill="#8B4513" stroke="#5C2E00" strokeWidth="3" />
-      <rect x="40" y="40" width="240" height="135" rx="6" fill="#A0522D" stroke="#5C2E00" strokeWidth="1.5" />
-
-      {/* Board texture lines */}
-      {[60, 80, 100, 120, 140, 160].map((y) => (
-        <line key={y} x1="42" y1={y} x2="278" y2={y} stroke="rgba(0,0,0,0.08)" strokeWidth="1" />
-      ))}
-
-      {/* Hole */}
-      <circle cx="160" cy="107" r="25" fill="#2C1A0E" stroke="#1A0A00" strokeWidth="2" />
-      <circle cx="160" cy="107" r="25" fill="rgba(0,0,0,0.7)" />
-
-      {/* Hole shadow/depth */}
-      <circle cx="163" cy="110" r="23" fill="rgba(0,0,0,0.5)" />
-
-      {/* Scoring zone labels */}
-      {/* On board = 1pt */}
-      <rect x="50" y="155" width="70" height="24" rx="5" fill="rgba(58,107,53,0.15)" />
-      <text x="85" y="171" textAnchor="middle" fontSize="11" fontWeight="bold" fill="#3A6B35">On board: 1pt</text>
-
-      {/* Overhang = 2pt */}
-      <circle cx="160" cy="107" r="35" fill="none" stroke="#D48B2D" strokeWidth="1.5" strokeDasharray="4,3" />
-      <rect x="125" y="55" width="70" height="22" rx="5" fill="rgba(212,139,45,0.15)" />
-      <text x="160" y="70" textAnchor="middle" fontSize="11" fontWeight="bold" fill="#D48B2D">Overhang: 2pts</text>
-
-      {/* In hole = 3pt */}
-      <text x="160" y="107" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#EEE8D5" dy="4">3pts</text>
-
-      {/* Standing position arrows */}
-      <defs>
-        <marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L6,3 z" fill="#B94040" />
-        </marker>
-      </defs>
-      <line x1="10" y1="107" x2="26" y2="107" stroke="#B94040" strokeWidth="2" markerEnd="url(#arrow)" />
-      <text x="5" y="100" fontSize="8" fill="#B94040" fontWeight="bold">THROW</text>
-      <text x="5" y="110" fontSize="8" fill="#B94040" fontWeight="bold">FROM</text>
-      <text x="5" y="120" fontSize="8" fill="#B94040" fontWeight="bold">BEHIND</text>
-    </svg>
-  );
-}
-
 export default function Rules() {
   return (
     <div className="max-w-2xl mx-auto">
@@ -67,11 +21,6 @@ export default function Rules() {
           <p className="font-ui mt-2" style={{ color: 'var(--color-text-secondary)' }}>
             Official Cornhole249 — Hamilton Rules
           </p>
-        </div>
-
-        {/* Board diagram */}
-        <div className="mb-6">
-          <BoardDiagram />
         </div>
 
         {/* Scoring */}
@@ -129,6 +78,33 @@ export default function Rules() {
           <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-primary)' }}>Winning</h2>
           <p className="font-ui" style={{ color: 'var(--color-text-primary)' }}>
             First player/team to reach <strong>21 points wins</strong>. You must win by at least 2 points. If both players reach 21+ in the same round, the higher score wins (no extra rounds required).
+          </p>
+        </div>
+
+        {/* Game Start */}
+        <div className="mb-6">
+          <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-primary)' }}>Starting a Game</h2>
+          <p className="font-ui mb-3" style={{ color: 'var(--color-text-primary)' }}>
+            Play rock-paper-scissors to decide. The winner chooses one of:
+          </p>
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="p-3 rounded-xl font-ui" style={{ background: 'rgba(58,107,53,0.08)', borderLeft: '4px solid var(--color-primary)' }}>
+              <strong>Throw first</strong> — you open the round
+            </div>
+            <div className="p-3 rounded-xl font-ui" style={{ background: 'rgba(212,139,45,0.08)', borderLeft: '4px solid var(--color-secondary)' }}>
+              <strong>Bag colour</strong> — you pick which set of bags you use
+            </div>
+          </div>
+          <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            For Game 2, the loser of Game 1 throws first (no RPS needed). For Game 3, play RPS again — bag colour is not re-chosen.
+          </p>
+        </div>
+
+        {/* Dust is a Must */}
+        <div className="mb-6">
+          <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-primary)' }}>🌽 Dust is a Must</h2>
+          <p className="font-ui" style={{ color: 'var(--color-text-primary)' }}>
+            Real cornhole bags are filled with whole-kernel corn — not synthetic pellets or plastic fill. Over time, the corn breaks down and produces a fine dust that coats the board surface, letting bags glide smoothly and predictably. Synthetic bags don't do this. If you're playing with corn bags, embrace the dust. It's not a mess — it's seasoning.
           </p>
         </div>
 

@@ -7,10 +7,10 @@ function AchievementModal({ leader, onClose }) {
   const earned = leader.achievements.filter((a) => a.earned);
   const locked = leader.achievements.filter((a) => !a.earned);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.45)' }} />
       <div
-        className="relative w-full max-w-sm rounded-2xl shadow-xl p-5"
+        className="relative w-full max-w-sm rounded-2xl shadow-xl p-5 my-auto"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -119,21 +119,32 @@ export default function HallOfFame() {
 
       // GOAT 1v1
       const all1v1 = await standingsApi.oneVone({});
+      const topTied = (arr, key) => {
+        if (!arr.length) return [];
+        const best = arr[0][key];
+        return arr.filter((r) => r[key] === best);
+      };
       if (all1v1.length) {
+        const byWins = [...all1v1].sort((a, b) => b.wins - a.wins);
+        const byPct = [...all1v1].filter((r) => r.gp >= 3).sort((a, b) => b.win_pct - a.win_pct);
+        const byGp = [...all1v1].sort((a, b) => b.gp - a.gp);
         setGoats1v1({
-          wins: [...all1v1].sort((a, b) => b.wins - a.wins)[0],
-          winPct: [...all1v1].filter((r) => r.gp >= 10).sort((a, b) => b.win_pct - a.win_pct)[0] || null,
-          gp: [...all1v1].sort((a, b) => b.gp - a.gp)[0],
+          wins: topTied(byWins, 'wins'),
+          winPct: byPct.length ? topTied(byPct, 'win_pct') : [],
+          gp: topTied(byGp, 'gp'),
         });
       }
 
       // GOAT 2v2
       const all2v2 = await standingsApi.twoVtwo({});
       if (all2v2.length) {
+        const byWins = [...all2v2].sort((a, b) => b.wins - a.wins);
+        const byPct = [...all2v2].filter((r) => r.gp >= 3).sort((a, b) => b.win_pct - a.win_pct);
+        const byGp = [...all2v2].sort((a, b) => b.gp - a.gp);
         setGoats2v2({
-          wins: [...all2v2].sort((a, b) => b.wins - a.wins)[0],
-          winPct: [...all2v2].filter((r) => r.gp >= 5).sort((a, b) => b.win_pct - a.win_pct)[0] || null,
-          gp: [...all2v2].sort((a, b) => b.gp - a.gp)[0],
+          wins: topTied(byWins, 'wins'),
+          winPct: byPct.length ? topTied(byPct, 'win_pct') : [],
+          gp: topTied(byGp, 'gp'),
         });
       }
 
@@ -178,42 +189,47 @@ export default function HallOfFame() {
     );
   };
 
-  const GoatCard = ({ label, icon, data, stat, format, note, is2v2 }) => (
-    <div className="p-4 rounded-2xl text-center" style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid var(--color-border)' }}>
-      <div className="text-3xl mb-1">{icon}</div>
-      <div className="font-ui font-bold text-sm mb-2 uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
-        {label}
-        {note && <div className="normal-case text-xs opacity-60">{note}</div>}
-      </div>
-      {data ? (
-        is2v2 ? (
-          <Link to={`/teams/${[...data.players].sort((a, b) => a.user_id - b.user_id).map((p) => p.user_id).join('/')}`} className="hover:opacity-80 block">
-            <div className="flex justify-center -space-x-2 mb-2">
-              {data.players.map((p) => (
-                <img key={p.user_id} src={p.avatar_url} alt={p.display_name} className="w-10 h-10 rounded-full border-2"
+  const GoatCard = ({ label, icon, data, stat, format, note, is2v2 }) => {
+    const entries = Array.isArray(data) ? data : (data ? [data] : []);
+    return (
+      <div className="p-4 rounded-2xl text-center" style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid var(--color-border)' }}>
+        <div className="text-3xl mb-1">{icon}</div>
+        <div className="font-ui font-bold text-sm mb-2 uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
+          {label}
+          {note && <div className="normal-case text-xs opacity-60">{note}</div>}
+        </div>
+        {entries.length > 0 ? (
+          <div className={`flex flex-col gap-2 ${entries.length > 1 ? 'items-center' : ''}`}>
+            {entries.map((d, i) => is2v2 ? (
+              <Link key={i} to={`/teams/${[...d.players].sort((a, b) => a.user_id - b.user_id).map((p) => p.user_id).join('/')}`} className="hover:opacity-80 block">
+                <div className="flex justify-center -space-x-2 mb-1">
+                  {d.players.map((p) => (
+                    <img key={p.user_id} src={p.avatar_url} alt={p.display_name} className="w-8 h-8 rounded-full border-2"
+                      style={{ borderColor: 'var(--color-secondary)' }}
+                      onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
+                  ))}
+                </div>
+                <div className="font-display text-sm leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+                  {d.players.map((p) => p.display_name).join(' & ')}
+                </div>
+                {i === 0 && <div className="font-display text-2xl mt-1" style={{ color: 'var(--color-secondary)' }}>{format(d[stat])}</div>}
+              </Link>
+            ) : (
+              <Link key={i} to={`/players/${d.user_id}`} className="hover:opacity-80 block">
+                <img src={d.avatar_url} alt={d.display_name} className="w-12 h-12 rounded-full border-2 mx-auto mb-1"
                   style={{ borderColor: 'var(--color-secondary)' }}
-                  onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
-              ))}
-            </div>
-            <div className="font-display text-base leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-              {data.players.map((p) => p.display_name).join(' & ')}
-            </div>
-            <div className="font-display text-2xl mt-1" style={{ color: 'var(--color-secondary)' }}>{format(data[stat])}</div>
-          </Link>
+                  onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.display_name}`; }} />
+                <div className="font-display text-lg" style={{ color: 'var(--color-text-primary)' }}>{d.display_name}</div>
+                {i === 0 && <div className="font-display text-2xl mt-1" style={{ color: 'var(--color-secondary)' }}>{format(d[stat])}</div>}
+              </Link>
+            ))}
+          </div>
         ) : (
-          <Link to={`/players/${data.user_id}`} className="hover:opacity-80 block">
-            <img src={data.avatar_url} alt={data.display_name} className="w-14 h-14 rounded-full border-2 mx-auto mb-2"
-              style={{ borderColor: 'var(--color-secondary)' }}
-              onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.display_name}`; }} />
-            <div className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>{data.display_name}</div>
-            <div className="font-display text-2xl mt-1" style={{ color: 'var(--color-secondary)' }}>{format(data[stat])}</div>
-          </Link>
-        )
-      ) : (
-        <div className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>N/A</div>
-      )}
-    </div>
-  );
+          <div className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>N/A</div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>

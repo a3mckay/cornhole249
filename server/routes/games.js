@@ -121,8 +121,8 @@ router.post('/', requireAuth, async (req, res) => {
   if (team1.some((p) => (p.score || 0) < 0) || team2.some((p) => (p.score || 0) < 0)) {
     return res.status(400).json({ error: 'Scores must be non-negative' });
   }
-  if (team1.some((p) => (p.score || 0) > 10) || team2.some((p) => (p.score || 0) > 10)) {
-    return res.status(400).json({ error: 'Maximum score is 10 (Hamilton rules)' });
+  if (team1.some((p) => (p.score || 0) > 99) || team2.some((p) => (p.score || 0) > 99)) {
+    return res.status(400).json({ error: 'Score seems too high' });
   }
   if (t1Score === t2Score) {
     return res.status(400).json({ error: 'Games cannot end in a tie' });

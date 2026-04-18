@@ -59,7 +59,7 @@ router.get('/performers', (req, res) => {
      JOIN games g ON gp.game_id = g.id ${seasonFilter}
      JOIN users u ON gp.user_id = u.id
      GROUP BY gp.user_id
-     HAVING gp >= 5
+     HAVING gp >= 1
      ORDER BY wins * 1.0 / COUNT(*) DESC`
   ).all(...params);
 
@@ -144,8 +144,8 @@ router.get('/venue', (req, res) => {
     SELECT
       v.id as venue_id,
       v.name as venue_name,
-      COUNT(*) as gp,
-      SUM(gp.is_winner) as wins
+      COUNT(DISTINCT g.id) as gp,
+      SUM(CASE WHEN gp.is_winner = 1 THEN 1 ELSE 0 END) as wins
     FROM game_participants gp
     JOIN games g ON gp.game_id = g.id
     JOIN venues v ON g.venue_id = v.id`;

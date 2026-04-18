@@ -85,7 +85,7 @@ export default function GameNew({ onAchievement }) {
     const s1 = parseInt(t1score);
     const s2 = parseInt(t2score);
     if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) errs.push('Scores must be non-negative integers');
-    if (s1 > 10 || s2 > 10) errs.push('Maximum score is 10 (Hamilton rules)');
+    if (s1 > 99 || s2 > 99) errs.push('Score seems too high');
     if (s1 === s2) errs.push('Games cannot end in a tie');
     return errs;
   };
@@ -228,10 +228,10 @@ export default function GameNew({ onAchievement }) {
               <input
                 type="number"
                 min="0"
-                max="10"
+                max="99"
                 value={t1score}
                 onChange={(e) => setT1score(e.target.value)}
-                placeholder="0–10"
+                placeholder="Score"
                 className="mt-2 w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl font-bold"
                 style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-primary)' }}
               />
@@ -255,10 +255,10 @@ export default function GameNew({ onAchievement }) {
               <input
                 type="number"
                 min="0"
-                max="10"
+                max="99"
                 value={t2score}
                 onChange={(e) => setT2score(e.target.value)}
-                placeholder="0–10"
+                placeholder="Score"
                 className="mt-2 w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl font-bold"
                 style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-secondary)' }}
               />
