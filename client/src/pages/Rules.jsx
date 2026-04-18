@@ -11,7 +11,13 @@ const RULESETS = {
     positionRule: 'Players must stand behind the board when throwing — not beside it. Both feet must be behind the rear edge of the board surface.',
     positionNote: 'ACA rules allow players to stand beside the board. We don\'t. It\'s more fun this way.',
     positionHighlight: 'Hamilton Rule:',
-    diffFaq: 'Hamilton: stand BEHIND the board. ACA: stand beside. Hamilton is harder, more physical, and honestly more impressive. Embrace it.',
+    diffFaq: 'Scoring: Hamilton awards 3pts (hole), 2pts (overhang), 1pt (board). ACA only has 3pts (hole) and 1pt (board) — no overhang bonus. Positioning: Hamilton requires standing BEHIND the board; ACA allows standing beside it in the pitcher\'s box. Win condition: Hamilton first to 10, ACA first to 21.',
+    scoring: [
+      { pts: 3, label: 'Bag in the Hole',  icon: '🕳️', desc: 'Bag goes cleanly through the hole (or ricochets in)' },
+      { pts: 2, label: 'Bag Overhanging',  icon: '🎯', desc: 'Bag is on the board AND hanging over the hole, even slightly' },
+      { pts: 1, label: 'Bag on the Board', icon: '📦', desc: 'Bag lands and stays flat on the board surface' },
+      { pts: 0, label: 'Off the Board',    icon: '❌', desc: 'Bag misses the board or slides off before scoring is called' },
+    ],
   },
   aca: {
     label: '📜 ACA Rules',
@@ -23,7 +29,12 @@ const RULESETS = {
     positionRule: 'Players throw from the pitcher\'s box alongside the board. You may stand beside the board, with both feet inside the pitcher\'s box (a 4\'×3\' area to the side of the board).',
     positionNote: 'The Cornhole249 Hamilton Rule requires players to stand BEHIND the board instead — a harder and more impressive throw.',
     positionHighlight: 'ACA Official:',
-    diffFaq: 'ACA: stand beside the board in the pitcher\'s box. Hamilton: stand BEHIND the board. Same scoring, same cancellation — just a different throwing stance.',
+    diffFaq: 'Scoring: ACA only awards 3pts (hole) and 1pt (board) — there is no overhang bonus. Hamilton adds a 2pt overhang score. Positioning: ACA allows standing beside the board in the pitcher\'s box; Hamilton requires standing BEHIND it. Win condition: ACA first to 21, Hamilton first to 10.',
+    scoring: [
+      { pts: 3, label: 'Bag in the Hole',  icon: '🕳️', desc: 'Bag goes cleanly through the hole (or ricochets in)' },
+      { pts: 1, label: 'Bag on the Board', icon: '📦', desc: 'Bag lands and stays on the board surface (anywhere — flat or near the hole)' },
+      { pts: 0, label: 'Off the Board',    icon: '❌', desc: 'Bag misses the board or slides off before scoring is called' },
+    ],
   },
 };
 
@@ -73,16 +84,11 @@ export default function Rules() {
           </p>
         </div>
 
-        {/* Scoring — same for both */}
+        {/* Scoring */}
         <div className="mb-6">
           <h2 className="font-display text-3xl mb-4" style={{ color: 'var(--color-primary)' }}>Scoring</h2>
           <div className="flex flex-col gap-3">
-            {[
-              { pts: 3, label: 'Bag in the Hole',    icon: '🕳️', desc: 'Bag goes cleanly through the hole (or ricochets in)' },
-              { pts: 2, label: 'Bag Overhanging',    icon: '🎯', desc: 'Bag is on the board AND hanging over the hole, even slightly' },
-              { pts: 1, label: 'Bag on the Board',   icon: '📦', desc: 'Bag lands and stays flat on the board surface' },
-              { pts: 0, label: 'Off the Board',      icon: '❌', desc: 'Bag misses the board or slides off before scoring is called' },
-            ].map((s) => (
+            {r.scoring.map((s) => (
               <div key={s.pts} className="flex items-start gap-4 p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.04)' }}>
                 <div className="text-2xl">{s.icon}</div>
                 <div className="flex-1">
@@ -166,7 +172,7 @@ export default function Rules() {
           <h2 className="font-display text-3xl mb-4" style={{ color: 'var(--color-primary)' }}>FAQ</h2>
           <div className="flex flex-col gap-3">
             {[
-              {
+              ruleset === 'hamilton' && {
                 q: 'What counts as "overhanging"?',
                 a: 'Any portion of the bag extends over the hole opening. It does not need to be touching the hole — just over the void. If you can see board through the hole with the bag blocking some of it, it counts.',
               },
@@ -186,7 +192,7 @@ export default function Rules() {
                 q: 'Hamilton Rules vs ACA: key differences?',
                 a: r.diffFaq,
               },
-            ].map((faq) => (
+            ].filter(Boolean).map((faq) => (
               <div key={faq.q} className="border-b pb-3" style={{ borderColor: 'var(--color-border)' }}>
                 <div className="font-ui font-bold mb-1" style={{ color: 'var(--color-text-primary)' }}>Q: {faq.q}</div>
                 <div className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>A: {faq.a}</div>
