@@ -32,6 +32,8 @@ export default function Navbar() {
   const [setPinSuccess, setSetPinSuccess] = useState(false);
 
   const handleLogin = async (u) => {
+    // Already logged in as this user — do nothing
+    if (user?.id === u.id) { setDropdownOpen(false); return; }
     if (u.has_pin) {
       setPinPrompt({ userId: u.id, name: u.display_name });
       setPinValue('');
@@ -51,7 +53,8 @@ export default function Navbar() {
       await login(pinPrompt.userId, pinValue);
       setPinPrompt(null);
     } catch (err) {
-      setPinError(err.response?.data?.error || 'Incorrect PIN');
+      const errCode = err.response?.data?.error;
+      setPinError(errCode === 'pin_required' ? 'PIN required' : errCode || 'Incorrect PIN');
     } finally {
       setPinLoading(false);
     }
