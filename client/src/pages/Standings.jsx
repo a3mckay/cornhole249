@@ -105,17 +105,17 @@ export default function Standings() {
           <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             Win% Over Time
           </h2>
-          <div className="h-64">
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={historyData}>
-                <XAxis dataKey="game" label={{ value: 'Game #', position: 'insideBottom', offset: -3 }} tick={{ fontFamily: 'Nunito', fontSize: 11 }} />
+              <LineChart data={historyData} margin={{ top: 5, right: 20, bottom: 30, left: 0 }}>
+                <XAxis dataKey="game" label={{ value: 'Game #', position: 'insideBottom', offset: -12 }} tick={{ fontFamily: 'Nunito', fontSize: 11 }} />
                 <YAxis
                   domain={[0, 100]}
                   tickFormatter={(v) => `${v}%`}
                   tick={{ fontFamily: 'Nunito', fontSize: 11 }}
                 />
                 <Tooltip formatter={(v) => `${v}%`} contentStyle={{ fontFamily: 'Nunito', borderRadius: 12, border: '1px solid var(--color-border)' }} />
-                <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12 }} />
+                <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12, paddingTop: '12px' }} />
                 {data.slice(0, 8).map((player, i) => (
                   <Line
                     key={player.user_id}
