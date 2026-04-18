@@ -86,6 +86,23 @@ const sessionDb = getDb();
 
 app.set('trust proxy', 1);
 app.use(compression());
+
+// In production: redirect bare domain → www, and HTTP → HTTPS
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    const host = req.headers.host || '';
+    // cornhole249.com (no www) → www
+    if (host === 'cornhole249.com') {
+      return res.redirect(301, 'https://www.cornhole249.com' + req.url);
+    }
+    // HTTP → HTTPS
+    if (req.headers['x-forwarded-proto'] && req.headers['x-forwarded-proto'] !== 'https') {
+      return res.redirect(301, 'https://' + host + req.url);
+    }
+    next();
+  });
+}
+
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   credentials: true,
