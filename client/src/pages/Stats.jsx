@@ -42,15 +42,22 @@ export default function Stats() {
 
   useEffect(() => {
     setLoading(true);
+    // Reset state so stale data from a previous season doesn't linger
+    setPerformers(null);
+    setStreaks([]);
+    setPointDiff([]);
+    setClutch([]);
+    setVenueKings([]);
+    setRivals([]);
     Promise.all([
-      statsApi.performers(seasonParam),
-      statsApi.streaks(seasonParam),
-      statsApi.pointDiff(seasonParam),
-      statsApi.clutch(seasonParam),
-      statsApi.venueKings(seasonParam),
-      statsApi.eloLeaders(),
-      statsApi.weatherPerformers(),
-      statsApi.rivals(),
+      statsApi.performers(seasonParam).catch(() => null),
+      statsApi.streaks(seasonParam).catch(() => []),
+      statsApi.pointDiff(seasonParam).catch(() => []),
+      statsApi.clutch(seasonParam).catch(() => []),
+      statsApi.venueKings(seasonParam).catch(() => []),
+      statsApi.eloLeaders().catch(() => []),
+      statsApi.weatherPerformers().catch(() => []),
+      statsApi.rivals().catch(() => []),
     ]).then(([p, st, pd, c, vk, elo, wp, r]) => {
       setPerformers(p);
       setStreaks(st);

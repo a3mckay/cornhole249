@@ -367,22 +367,21 @@ router.get('/streaks', (req, res) => {
 router.get('/venue-kings', (req, res) => {
   const db = getDb();
   const { season } = req.query;
-  const params = [];
-  let sf = '';
-  if (season) { sf = 'WHERE g.season = ?'; params.push(parseInt(season)); }
+  const seasonInt = season ? parseInt(season) : null;
+  const seasonJoin = seasonInt ? 'AND g.season = ?' : '';
 
   const rows = db.prepare(`
     SELECT v.id as venue_id, v.name as venue_name,
-      (SELECT COUNT(DISTINCT id) FROM games WHERE venue_id = v.id ${season ? 'AND season = ?' : ''}) as total_games,
+      (SELECT COUNT(DISTINCT id) FROM games WHERE venue_id = v.id ${seasonInt ? 'AND season = ?' : ''}) as total_games,
       gp.user_id, u.display_name, u.avatar_url,
       SUM(gp.is_winner) as wins
     FROM venues v
-    JOIN games g ON g.venue_id = v.id ${sf}
+    JOIN games g ON g.venue_id = v.id ${seasonJoin}
     JOIN game_participants gp ON gp.game_id = g.id
     JOIN users u ON u.id = gp.user_id
     GROUP BY v.id, gp.user_id
     ORDER BY v.id, wins DESC
-  `).all(...(season ? [parseInt(season), parseInt(season)] : []));
+  `).all(...(seasonInt ? [seasonInt, seasonInt] : []));
 
   const venues = {};
   for (const row of rows) {
