@@ -24,4 +24,14 @@ router.post('/', requireAuth, (req, res) => {
   res.status(201).json(venue);
 });
 
+// PATCH /api/venues/:id — update lat/lng
+router.patch('/:id', requireAuth, (req, res) => {
+  const db = getDb();
+  const { lat, lng } = req.body;
+  if (lat == null || lng == null) return res.status(400).json({ error: 'lat and lng required' });
+  db.prepare(`UPDATE venues SET lat = ?, lng = ? WHERE id = ?`).run(lat, lng, parseInt(req.params.id));
+  const venue = db.prepare(`SELECT * FROM venues WHERE id = ?`).get(parseInt(req.params.id));
+  res.json(venue);
+});
+
 module.exports = router;

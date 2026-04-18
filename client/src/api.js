@@ -68,6 +68,7 @@ export const oddsApi = {
 export const venuesApi = {
   list: () => api.get('/venues').then((r) => r.data),
   create: (data) => api.post('/venues', data).then((r) => r.data),
+  updateLocation: (id, lat, lng) => api.patch(`/venues/${id}`, { lat, lng }).then((r) => r.data),
 };
 
 // Tournaments

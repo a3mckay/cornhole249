@@ -45,6 +45,9 @@ export default function GameNew({ onAchievement }) {
   const [geoLoading, setGeoLoading] = useState(false);
   const [newVenueLat, setNewVenueLat] = useState(null);
   const [newVenueLng, setNewVenueLng] = useState(null);
+  const [existingVenueLat, setExistingVenueLat] = useState(null);
+  const [existingVenueLng, setExistingVenueLng] = useState(null);
+  const [updatingVenueLocation, setUpdatingVenueLocation] = useState(false);
 
   useEffect(() => {
     Promise.all([venuesApi.list(), usersApi.list()]).then(([v, u]) => {
@@ -62,21 +65,51 @@ export default function GameNew({ onAchievement }) {
   const selectedIds = [t1p1, t1p2, t2p1, t2p2].filter(Boolean);
   const hasDuplicates = new Set(selectedIds).size !== selectedIds.length;
 
-  const getLocation = () => {
+  const getLocationForNew = () => {
     setGeoLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setNewVenueLat(pos.coords.latitude);
-        setNewVenueLng(pos.coords.longitude);
-        setNewVenueName(`My Location (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`);
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setNewVenueLat(lat);
+        setNewVenueLng(lng);
+        setNewVenueName((n) => n || `My Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
         setGeoLoading(false);
       },
       () => {
-        alert('Geolocation unavailable. Enter venue name manually.');
+        alert('Could not get your location. Please allow location access and try again.');
         setGeoLoading(false);
       }
     );
   };
+
+  const getLocationForExisting = () => {
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        setGeoLoading(false);
+        setUpdatingVenueLocation(true);
+        try {
+          await venuesApi.updateLocation(parseInt(venueId), lat, lng);
+          setExistingVenueLat(lat);
+          setExistingVenueLng(lng);
+          setVenues((vs) => vs.map((v) => v.id === parseInt(venueId) ? { ...v, lat, lng } : v));
+        } catch (e) {
+          alert('Failed to update venue location');
+        } finally {
+          setUpdatingVenueLocation(false);
+        }
+      },
+      () => {
+        alert('Could not get your location. Please allow location access and try again.');
+        setGeoLoading(false);
+      }
+    );
+  };
+
+  const selectedVenue = venues.find((v) => v.id === parseInt(venueId));
+  const venueNeedsLocation = venueId && venueId !== 'new' && selectedVenue && !selectedVenue.lat;
+  const newVenueNeedsLocation = venueId === 'new' && (!newVenueLat || !newVenueLng);
 
   const validate = () => {
     const errs = [];
@@ -87,6 +120,7 @@ export default function GameNew({ onAchievement }) {
     if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) errs.push('Scores must be non-negative integers');
     if (s1 > 99 || s2 > 99) errs.push('Score seems too high');
     if (s1 === s2) errs.push('Games cannot end in a tie');
+    if (newVenueNeedsLocation) errs.push('Location is required to track weather for this game');
     return errs;
   };
 
@@ -307,15 +341,16 @@ export default function GameNew({ onAchievement }) {
                 <label className="block text-sm font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>Venue</label>
                 <select
                   value={venueId}
-                  onChange={(e) => { setVenueId(e.target.value); setErrors([]); }}
+                  onChange={(e) => { setVenueId(e.target.value); setExistingVenueLat(null); setExistingVenueLng(null); setErrors([]); }}
                   className="w-full px-3 py-2 rounded-xl border font-ui text-sm mb-2"
                   style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                 >
                   <option value="">Select a venue...</option>
-                  {venues.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  {venues.map((v) => <option key={v.id} value={v.id}>{v.name}{!v.lat ? ' 📍?' : ''}</option>)}
                   <option value="new">+ Create new venue</option>
                 </select>
 
+                {/* New venue: name + required location */}
                 {venueId === 'new' && (
                   <div className="flex flex-col gap-2">
                     <input
@@ -326,14 +361,48 @@ export default function GameNew({ onAchievement }) {
                       className="px-3 py-2 rounded-xl border font-ui text-sm"
                       style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                     />
-                    <button
-                      type="button"
-                      onClick={getLocation}
-                      disabled={geoLoading}
-                      className="btn btn-ghost text-sm"
-                    >
-                      {geoLoading ? 'Getting location...' : '📍 Use My Location'}
-                    </button>
+                    <div className="p-3 rounded-xl text-sm font-ui" style={{ background: 'rgba(58,107,53,0.08)', border: '1px solid rgba(58,107,53,0.25)', color: 'var(--color-text-secondary)' }}>
+                      📍 <strong>Location required</strong> — used to fetch weather data for this game.
+                    </div>
+                    {newVenueLat ? (
+                      <div className="flex items-center gap-2 p-2 rounded-xl text-sm font-ui" style={{ background: '#D1FAE5', color: '#065F46' }}>
+                        <span>✓ Location set ({newVenueLat.toFixed(4)}, {newVenueLng.toFixed(4)})</span>
+                        <button type="button" onClick={getLocationForNew} className="ml-auto text-xs underline">Update</button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={getLocationForNew}
+                        disabled={geoLoading}
+                        className="btn btn-primary text-sm"
+                      >
+                        {geoLoading ? 'Getting location...' : '📍 Set My Location'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Existing venue missing location */}
+                {venueNeedsLocation && (
+                  <div className="flex flex-col gap-2 mt-1">
+                    <div className="p-3 rounded-xl text-sm font-ui" style={{ background: 'rgba(212,139,45,0.1)', border: '1px solid rgba(212,139,45,0.4)', color: 'var(--color-text-secondary)' }}>
+                      📍 <strong>No location saved for this venue.</strong> Pin it now so weather can be tracked for future games.
+                    </div>
+                    {existingVenueLat ? (
+                      <div className="flex items-center gap-2 p-2 rounded-xl text-sm font-ui" style={{ background: '#D1FAE5', color: '#065F46' }}>
+                        ✓ Location saved ({existingVenueLat.toFixed(4)}, {existingVenueLng.toFixed(4)})
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={getLocationForExisting}
+                        disabled={geoLoading || updatingVenueLocation}
+                        className="btn btn-ghost text-sm"
+                        style={{ borderColor: 'var(--color-secondary)', color: 'var(--color-secondary)' }}
+                      >
+                        {(geoLoading || updatingVenueLocation) ? 'Saving...' : '📍 Pin This Venue'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
