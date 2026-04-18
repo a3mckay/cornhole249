@@ -2,18 +2,20 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 function Last5Dots({ last5 }) {
+  const recent = [...last5].slice(0, 5).reverse(); // oldest → left, most recent → right
+  const empty = Math.max(0, 5 - recent.length);
   return (
     <div className="flex gap-1" data-testid="last5-dots">
-      {last5.slice(0, 5).map((result, i) => (
+      {Array.from({ length: empty }).map((_, i) => (
+        <div key={`empty-${i}`} className="w-3 h-3 rounded-full bg-white/20" />
+      ))}
+      {recent.map((result, i) => (
         <div
           key={i}
           className="w-3 h-3 rounded-full"
           style={{ background: result === 'W' ? '#16a34a' : '#dc2626' }}
           title={result}
         />
-      ))}
-      {Array.from({ length: Math.max(0, 5 - last5.length) }).map((_, i) => (
-        <div key={`empty-${i}`} className="w-3 h-3 rounded-full bg-white/20" />
       ))}
     </div>
   );
