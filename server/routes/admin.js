@@ -4,11 +4,7 @@ const { getDb } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 
 // POST /api/admin/fix-games — TEMPORARY: fix game IDs and scores
-router.post('/fix-games', (req, res) => {
-  const secret = process.env.WIPE_SECRET;
-  if (!secret || req.headers['x-wipe-secret'] !== secret) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+router.post('/fix-games', requireAdmin, (req, res) => {
   const db = getDb();
 
   // Remap game IDs 111->1, 112->2 and fix scores

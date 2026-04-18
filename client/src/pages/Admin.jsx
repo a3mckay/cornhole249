@@ -27,6 +27,16 @@ export default function Admin() {
       .finally(() => setLoading(false));
   }, [user]);
 
+  const handleFixGames = async () => {
+    if (!confirm('Fix game IDs and scores? This is a one-time operation.')) return;
+    try {
+      const result = await adminApi.fixGames();
+      alert(result.message);
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed');
+    }
+  };
+
   const handleGenerateCode = async () => {
     setGeneratingCode(true);
     setNewCode(null);
@@ -100,6 +110,15 @@ export default function Admin() {
           <h1 className="font-display text-3xl" style={{ color: 'var(--color-text-primary)' }}>Admin Panel</h1>
           <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>You have admin access, {user.display_name}.</p>
         </div>
+      </div>
+
+      {/* One-time fix */}
+      <div className="card mb-6" style={{ border: '1px solid var(--color-danger)' }}>
+        <h2 className="font-display text-2xl mb-2" style={{ color: 'var(--color-danger)' }}>🔧 One-Time Fix</h2>
+        <p className="text-sm font-ui mb-3" style={{ color: 'var(--color-text-secondary)' }}>Fix game IDs (→ 1, 2) and scores (11-3, 11-0). Run once then this section goes away.</p>
+        <button onClick={handleFixGames} className="btn btn-primary" style={{ background: 'var(--color-danger)' }}>
+          Fix Game IDs & Scores
+        </button>
       </div>
 
       {/* User Management */}
