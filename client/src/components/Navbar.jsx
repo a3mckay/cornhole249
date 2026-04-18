@@ -115,8 +115,8 @@ export default function Navbar() {
           Cornhole249
         </Link>
 
-        {/* Share button — next to logo */}
-        <div className="relative flex-shrink-0">
+        {/* Share button — next to logo, mobile only */}
+        <div className="relative flex-shrink-0 lg:hidden">
           <button
             onClick={() => { setShareOpen((o) => !o); setCopied(false); }}
             className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-ui font-semibold transition-colors"

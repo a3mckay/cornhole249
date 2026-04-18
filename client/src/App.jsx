@@ -3,6 +3,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './hooks/useAuth';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
+import QRShare from './components/QRShare';
 
 import Home from './pages/Home';
 import Standings from './pages/Standings';
@@ -63,6 +64,11 @@ export default function App() {
 
         {/* Bottom nav — mobile only */}
         <BottomNav />
+
+        {/* QR Share floating button — desktop only */}
+        <div className="hidden lg:block">
+          <QRShare />
+        </div>
 
         {/* Achievement toasts — above bottom nav on mobile */}
         <div className="fixed bottom-20 lg:bottom-4 right-4 z-50 flex flex-col gap-2">
