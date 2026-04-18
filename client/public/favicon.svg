@@ -2,12 +2,11 @@
   <!-- Green background -->
   <rect width="32" height="32" rx="7" fill="#3A6B35"/>
   <!-- Cornhole board (wood/tan color) -->
-  <rect x="4" y="7" width="24" height="18" rx="3" fill="#C8A255"/>
+  <rect x="4" y="6" width="24" height="20" rx="3" fill="#C8A255"/>
   <!-- Wood grain lines -->
-  <line x1="4" y1="12.5" x2="28" y2="12.5" stroke="#B8903F" stroke-width="0.8"/>
-  <line x1="4" y1="18" x2="28" y2="18" stroke="#B8903F" stroke-width="0.8"/>
-  <!-- The hole -->
-  <circle cx="16" cy="15.5" r="5.5" fill="#1C2B1C"/>
-  <!-- Subtle inner shadow on hole -->
-  <circle cx="16" cy="15.5" r="5.5" fill="none" stroke="#000" stroke-width="0.5" opacity="0.4"/>
+  <line x1="4" y1="13" x2="28" y2="13" stroke="#B8903F" stroke-width="0.8"/>
+  <line x1="4" y1="19" x2="28" y2="19" stroke="#B8903F" stroke-width="0.8"/>
+  <!-- The hole — upper third of the board -->
+  <circle cx="16" cy="12" r="4.5" fill="#1C2B1C"/>
+  <circle cx="16" cy="12" r="4.5" fill="none" stroke="#000" stroke-width="0.5" opacity="0.4"/>
 </svg>
