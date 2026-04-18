@@ -169,7 +169,7 @@ body::before {
 .marquee-track {
   display: flex;
   white-space: nowrap;
-  animation: marquee 18s linear infinite;
+  animation: marquee 14s linear infinite;
 }
 .marquee-track:hover {
   animation-play-state: paused;

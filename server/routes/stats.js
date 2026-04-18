@@ -69,9 +69,10 @@ router.get('/performers', (req, res) => {
     losses: r.gp - r.wins,
   }));
 
+  const mid = Math.ceil(withPct.length / 2);
   res.json({
-    top: withPct.slice(0, 3),
-    bottom: withPct.slice(-3).reverse(),
+    top: withPct.slice(0, Math.min(3, mid)),
+    bottom: withPct.slice(Math.max(withPct.length - 3, mid)).reverse(),
   });
 });
 
@@ -184,7 +185,7 @@ router.get('/point-differential', (req, res) => {
        SELECT game_id, team, SUM(score) as opp_score FROM game_participants GROUP BY game_id, team
      ) opp_team ON opp_team.game_id = gp.game_id AND opp_team.team != gp.team
      GROUP BY gp.user_id
-     HAVING gp >= 3
+     HAVING gp >= 1
      ORDER BY avg_diff DESC`
   ).all(...params);
 
@@ -320,5 +321,120 @@ function getWeekRange(year, week) {
   end.setDate(start.getDate() + 7);
   return { start, end };
 }
+
+// GET /api/stats/streaks
+router.get('/streaks', (req, res) => {
+  const db = getDb();
+  const { season } = req.query;
+  const params = [];
+  let sf = '';
+  if (season) { sf = 'AND g.season = ?'; params.push(parseInt(season)); }
+
+  const rows = db.prepare(`
+    SELECT gp.user_id, u.display_name, u.avatar_url, gp.is_winner, g.played_at
+    FROM game_participants gp
+    JOIN games g ON gp.game_id = g.id ${sf}
+    JOIN users u ON gp.user_id = u.id
+    ORDER BY gp.user_id, g.played_at ASC
+  `).all(...params);
+
+  const byUser = {};
+  for (const row of rows) {
+    if (!byUser[row.user_id]) byUser[row.user_id] = { user_id: row.user_id, display_name: row.display_name, avatar_url: row.avatar_url, results: [] };
+    byUser[row.user_id].results.push(row.is_winner === 1 ? 'W' : 'L');
+  }
+
+  const result = Object.values(byUser).map(({ user_id, display_name, avatar_url, results }) => {
+    let maxWin = 0, maxLoss = 0, tempW = 0, tempL = 0;
+    for (const r of results) {
+      if (r === 'W') { tempW++; tempL = 0; maxWin = Math.max(maxWin, tempW); }
+      else { tempL++; tempW = 0; maxLoss = Math.max(maxLoss, tempL); }
+    }
+    let curStreak = 0;
+    if (results.length > 0) {
+      const last = results[results.length - 1];
+      let s = 0;
+      for (let i = results.length - 1; i >= 0; i--) { if (results[i] === last) s++; else break; }
+      curStreak = last === 'W' ? s : -s;
+    }
+    return { user_id, display_name, avatar_url, max_win_streak: maxWin, max_loss_streak: maxLoss, current_streak: curStreak, gp: results.length };
+  });
+
+  res.json(result);
+});
+
+// GET /api/stats/venue-kings
+router.get('/venue-kings', (req, res) => {
+  const db = getDb();
+  const { season } = req.query;
+  const params = [];
+  let sf = '';
+  if (season) { sf = 'WHERE g.season = ?'; params.push(parseInt(season)); }
+
+  const rows = db.prepare(`
+    SELECT v.id as venue_id, v.name as venue_name,
+      (SELECT COUNT(DISTINCT id) FROM games WHERE venue_id = v.id ${season ? 'AND season = ?' : ''}) as total_games,
+      gp.user_id, u.display_name, u.avatar_url,
+      SUM(gp.is_winner) as wins
+    FROM venues v
+    JOIN games g ON g.venue_id = v.id ${sf}
+    JOIN game_participants gp ON gp.game_id = g.id
+    JOIN users u ON u.id = gp.user_id
+    GROUP BY v.id, gp.user_id
+    ORDER BY v.id, wins DESC
+  `).all(...(season ? [parseInt(season), parseInt(season)] : []));
+
+  const venues = {};
+  for (const row of rows) {
+    if (!venues[row.venue_id]) {
+      venues[row.venue_id] = {
+        venue_id: row.venue_id,
+        venue_name: row.venue_name,
+        total_games: row.total_games,
+        king: { user_id: row.user_id, display_name: row.display_name, avatar_url: row.avatar_url, wins: row.wins },
+        all_players: [],
+      };
+    }
+    venues[row.venue_id].all_players.push({ user_id: row.user_id, display_name: row.display_name, wins: row.wins });
+  }
+  res.json(Object.values(venues));
+});
+
+// GET /api/stats/elo-leaders
+router.get('/elo-leaders', (req, res) => {
+  const db = getDb();
+  const users = db.prepare(`
+    SELECT u.id, u.display_name, u.avatar_url, u.elo_rating,
+      (SELECT COUNT(*) FROM game_participants WHERE user_id = u.id) as gp
+    FROM users u
+    WHERE (SELECT COUNT(*) FROM game_participants WHERE user_id = u.id) > 0
+    ORDER BY u.elo_rating DESC
+  `).all();
+  res.json(users);
+});
+
+// GET /api/stats/weather-performers
+router.get('/weather-performers', (req, res) => {
+  const db = getDb();
+  const conditions = db.prepare(`
+    SELECT DISTINCT json_extract(g.weather_json, '$.condition') as condition
+    FROM games g WHERE g.weather_json IS NOT NULL
+  `).all().map(r => r.condition).filter(Boolean);
+
+  const result = conditions.map(condition => {
+    const players = db.prepare(`
+      SELECT gp.user_id, u.display_name, u.avatar_url,
+        COUNT(*) as gp, SUM(gp.is_winner) as wins
+      FROM game_participants gp
+      JOIN games g ON gp.game_id = g.id
+      JOIN users u ON u.id = gp.user_id
+      WHERE json_extract(g.weather_json, '$.condition') = ?
+      GROUP BY gp.user_id HAVING gp >= 1
+      ORDER BY wins * 1.0 / COUNT(*) DESC LIMIT 3
+    `).all(condition);
+    return { condition, players: players.map(p => ({ ...p, win_pct: Math.round((p.wins / p.gp) * 1000) / 10 })) };
+  });
+  res.json(result.filter(r => r.players.length > 0));
+});
 
 module.exports = router;

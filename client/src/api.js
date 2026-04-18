@@ -57,6 +57,10 @@ export const statsApi = {
   pointDiff: (params) => api.get('/stats/point-differential', { params }).then((r) => r.data),
   clutch: (params) => api.get('/stats/clutch', { params }).then((r) => r.data),
   recap: (params) => api.get('/stats/recap', { params }).then((r) => r.data),
+  streaks: (params) => api.get('/stats/streaks', { params }).then((r) => r.data),
+  venueKings: (params) => api.get('/stats/venue-kings', { params }).then((r) => r.data),
+  eloLeaders: () => api.get('/stats/elo-leaders').then((r) => r.data),
+  weatherPerformers: () => api.get('/stats/weather-performers').then((r) => r.data),
 };
 
 // Odds
