@@ -97,7 +97,6 @@ export const adminApi = {
   setAdmin: (userId, isAdmin) =>
     api.patch(`/admin/users/${userId}/admin`, { is_admin: isAdmin }).then((r) => r.data),
   bulkDeleteGames: (from, to) => api.delete('/admin/games', { data: { from, to } }).then((r) => r.data),
-  fixGames: () => api.post('/admin/fix-games').then((r) => r.data),
   joinCodes: () => api.get('/admin/join-codes').then((r) => r.data),
   generateCode: () => api.post('/admin/join-codes').then((r) => r.data),
   revokeCode: (code) => api.delete(`/admin/join-codes/${code}`).then((r) => r.data),

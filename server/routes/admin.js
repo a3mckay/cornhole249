@@ -3,49 +3,6 @@ const router = express.Router();
 const { getDb } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 
-// POST /api/admin/fix-games — TEMPORARY: fix game IDs and scores
-router.post('/fix-games', requireAdmin, (req, res) => {
-  const db = getDb();
-
-  // Remap game IDs 111->1, 112->2 and fix scores
-  // Game 111: Cat won 11-3, Game 112: Andrew won 11-0
-  // First update game_participants scores, then remap IDs
-
-  // Get current games to find player IDs
-  const games = db.prepare(`SELECT * FROM games ORDER BY id`).all();
-  const participants = db.prepare(`SELECT * FROM game_participants ORDER BY game_id, team`).all();
-
-  // Update scores for game IDs 111 and 112
-  // We need to know which team won each game
-  // Game 111: winner score=11, loser score=3
-  // Game 112: winner score=11, loser score=0
-  const scoreMap = {
-    [games[0]?.id]: { winnerScore: 11, loserScore: 3 },
-    [games[1]?.id]: { winnerScore: 11, loserScore: 0 },
-  };
-
-  for (const [gameId, scores] of Object.entries(scoreMap)) {
-    if (!gameId || gameId === 'undefined') continue;
-    db.prepare(`UPDATE game_participants SET score = ? WHERE game_id = ? AND is_winner = 1`).run(scores.winnerScore, parseInt(gameId));
-    db.prepare(`UPDATE game_participants SET score = ? WHERE game_id = ? AND is_winner = 0`).run(scores.loserScore, parseInt(gameId));
-  }
-
-  // Reset sqlite_sequence and remap IDs
-  // Temporarily disable foreign keys to remap
-  db.pragma('foreign_keys = OFF');
-  games.forEach((g, i) => {
-    const newId = i + 1;
-    if (g.id !== newId) {
-      db.prepare(`UPDATE game_participants SET game_id = ? WHERE game_id = ?`).run(newId, g.id);
-      db.prepare(`UPDATE games SET id = ? WHERE id = ?`).run(newId, g.id);
-    }
-  });
-  db.prepare(`UPDATE sqlite_sequence SET seq = ? WHERE name = 'games'`).run(games.length);
-  db.pragma('foreign_keys = ON');
-
-  res.json({ ok: true, message: `Fixed ${games.length} games` });
-});
-
 // GET /api/admin/users
 router.get('/users', requireAdmin, (req, res) => {
   const db = getDb();
