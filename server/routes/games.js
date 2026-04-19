@@ -9,7 +9,7 @@ const { fetchWeatherForGame } = require('./weather');
 // GET /api/games
 router.get('/', (req, res) => {
   const db = getDb();
-  const { type, season, venue_id, user_id, page = 1, limit = 20 } = req.query;
+  const { type, season, venue_id, user_id, date, page = 1, limit = 20 } = req.query;
 
   let where = [];
   let params = [];
@@ -21,6 +21,8 @@ router.get('/', (req, res) => {
     where.push(`g.id IN (SELECT game_id FROM game_participants WHERE user_id = ?)`);
     params.push(parseInt(user_id));
   }
+  // date = 'YYYY-MM-DD' local date; match on the UTC date prefix of played_at
+  if (date) { where.push(`substr(g.played_at, 1, 10) = ?`); params.push(date); }
 
   const whereStr = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const offset = (parseInt(page) - 1) * parseInt(limit);

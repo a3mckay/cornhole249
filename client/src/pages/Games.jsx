@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { gamesApi, venuesApi, usersApi } from '../api';
 import GameCard from '../components/GameCard';
+import DateStrip from '../components/DateStrip';
 import { useAuth } from '../hooks/useAuth';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -17,6 +18,7 @@ export default function Games() {
   const [players, setPlayers] = useState([]);
 
   const [filters, setFilters] = useState({ type: '', season: '', venue_id: '', user_id: '' });
+  const [selectedDate, setSelectedDate] = useState(null);
 
   useEffect(() => {
     Promise.all([venuesApi.list(), usersApi.list()])
@@ -25,14 +27,24 @@ export default function Games() {
 
   useEffect(() => {
     setLoading(true);
-    const params = { page, limit: 12, ...Object.fromEntries(Object.entries(filters).filter(([,v]) => v)) };
+    const params = {
+      page,
+      limit: 12,
+      ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
+      ...(selectedDate ? { date: selectedDate } : {}),
+    };
     gamesApi.list(params)
       .then((d) => { setGames(d.games); setTotal(d.total); })
       .finally(() => setLoading(false));
-  }, [page, filters]);
+  }, [page, filters, selectedDate]);
 
   const handleFilter = (key, val) => {
     setFilters((f) => ({ ...f, [key]: val }));
+    setPage(1);
+  };
+
+  const handleDateSelect = (date) => {
+    setSelectedDate(date);
     setPage(1);
   };
 
@@ -50,6 +62,9 @@ export default function Games() {
           </Link>
         )}
       </div>
+
+      {/* Date strip */}
+      <DateStrip selectedDate={selectedDate} onSelect={handleDateSelect} />
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap mb-5">
@@ -86,6 +101,14 @@ export default function Games() {
           >
             ✕ Clear
           </button>
+        )}
+        {selectedDate && (
+          <div
+            className="px-3 py-1.5 rounded-full border text-sm font-ui font-semibold"
+            style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)', background: 'rgba(58,107,53,0.07)' }}
+          >
+            📅 {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </div>
         )}
       </div>
 
