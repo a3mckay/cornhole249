@@ -180,8 +180,11 @@ app.use('/api/admin', require('./routes/admin'));
 // Serve built client in production
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../client/dist');
-  app.use(express.static(clientDist));
+  // Hashed assets (JS/CSS) — safe to cache long-term since content hash changes on every build
+  app.use(express.static(clientDist, { maxAge: '1y', index: false }));
+  // index.html — never cache so browsers always get the latest asset hashes after a deploy
   app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }

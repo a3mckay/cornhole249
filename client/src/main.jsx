@@ -11,3 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Remove the pre-load overlay once React has rendered
+const preLoad = document.getElementById('pre-load');
+if (preLoad) preLoad.remove();
