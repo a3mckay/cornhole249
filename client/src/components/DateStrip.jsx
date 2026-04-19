@@ -1,59 +1,71 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const VISIBLE = 7;
 
-function toLocalDateStr(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function parseLocalDate(dateStr) {
+  // Use noon to avoid any midnight / DST edge cases
+  return new Date(dateStr + 'T12:00:00');
 }
 
-function addDays(date, n) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
-function startOfToday() {
+const todayStr = (() => {
   const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+})();
 
-const todayStr = toLocalDateStr(new Date());
+// gameDates: string[] of YYYY-MM-DD, ascending (oldest → newest)
+export default function DateStrip({ gameDates = [], selectedDate, onSelect }) {
+  // Start showing the most recent dates (end of array)
+  const [windowStart, setWindowStart] = useState(() => Math.max(0, gameDates.length - VISIBLE));
 
-export default function DateStrip({ selectedDate, onSelect }) {
-  // Keep the 7-day window centered on today initially; shift by 7 on arrow click
-  const [windowStart, setWindowStart] = useState(() => addDays(startOfToday(), -3));
+  // When dates load, jump to the most recent window
+  useEffect(() => {
+    setWindowStart(Math.max(0, gameDates.length - VISIBLE));
+  }, [gameDates.length]);
 
-  const days = Array.from({ length: 7 }, (_, i) => addDays(windowStart, i));
+  const visible = gameDates.slice(windowStart, windowStart + VISIBLE);
+  const canPrev = windowStart > 0;
+  const canNext = windowStart + VISIBLE < gameDates.length;
 
-  const prev = useCallback(() => setWindowStart((d) => addDays(d, -7)), []);
-  const next = useCallback(() => setWindowStart((d) => addDays(d, 7)), []);
-
-  const handleAll = () => {
-    onSelect(null);
-    setWindowStart(addDays(startOfToday(), -3)); // snap back to today
-  };
+  if (gameDates.length === 0) {
+    return (
+      <div
+        className="w-fit flex items-center gap-2 px-4 py-2 rounded-2xl font-ui text-sm mb-4"
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+      >
+        <button
+          onClick={() => onSelect(null)}
+          className="px-3 py-1 rounded-xl font-extrabold text-xs uppercase"
+          style={{ background: 'var(--color-primary)', color: 'white' }}
+        >
+          All
+        </button>
+        <span>No games logged yet</span>
+      </div>
+    );
+  }
 
   return (
     <div
-      className="flex items-stretch gap-0.5 p-1 rounded-2xl overflow-x-auto"
+      className="w-fit max-w-full flex items-stretch gap-0.5 p-1 rounded-2xl overflow-x-auto mb-4"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
-      {/* ‹ prev week */}
+      {/* ‹ older */}
       <button
-        onClick={prev}
-        aria-label="Previous week"
-        className="flex-shrink-0 flex items-center justify-center w-8 rounded-xl text-2xl font-bold transition-opacity hover:opacity-40"
-        style={{ color: 'var(--color-text-secondary)' }}
+        onClick={() => setWindowStart((i) => Math.max(0, i - VISIBLE))}
+        disabled={!canPrev}
+        aria-label="Older dates"
+        className="flex-shrink-0 flex items-center justify-center w-7 rounded-xl text-xl font-bold transition-opacity"
+        style={{ color: 'var(--color-text-secondary)', opacity: canPrev ? 1 : 0.25, cursor: canPrev ? 'pointer' : 'default' }}
       >
         ‹
       </button>
 
-      {/* All pill */}
+      {/* All */}
       <button
-        onClick={handleAll}
-        className="flex-shrink-0 flex items-center justify-center px-3 rounded-xl min-w-[40px] font-ui font-extrabold text-xs uppercase tracking-wide transition-colors"
+        onClick={() => onSelect(null)}
+        className="flex-shrink-0 flex items-center justify-center px-3 rounded-xl min-w-[36px] font-ui font-extrabold text-xs uppercase tracking-wide transition-colors"
         style={
           !selectedDate
             ? { background: 'var(--color-primary)', color: 'white' }
@@ -65,13 +77,13 @@ export default function DateStrip({ selectedDate, onSelect }) {
 
       {/* divider */}
       <div
-        className="flex-shrink-0 w-px self-stretch mx-0.5 rounded-full"
+        className="flex-shrink-0 w-px self-stretch mx-0.5"
         style={{ background: 'var(--color-border)' }}
       />
 
-      {/* Day buttons */}
-      {days.map((day) => {
-        const dateStr = toLocalDateStr(day);
+      {/* Game date buttons */}
+      {visible.map((dateStr) => {
+        const day = parseLocalDate(dateStr);
         const isToday = dateStr === todayStr;
         const isSelected = dateStr === selectedDate;
 
@@ -84,7 +96,7 @@ export default function DateStrip({ selectedDate, onSelect }) {
           <button
             key={dateStr}
             onClick={() => onSelect(isSelected ? null : dateStr)}
-            className="flex-shrink-0 flex flex-col items-center justify-center px-2 py-1.5 rounded-xl min-w-[52px] transition-colors hover:opacity-80"
+            className="flex-shrink-0 flex flex-col items-center justify-center px-2.5 py-1.5 rounded-xl min-w-[52px] transition-colors hover:opacity-80"
             style={{ background: bg, color }}
           >
             <span className="text-[10px] font-ui font-bold uppercase leading-none mb-0.5 tracking-wide">
@@ -97,12 +109,13 @@ export default function DateStrip({ selectedDate, onSelect }) {
         );
       })}
 
-      {/* › next week */}
+      {/* › newer */}
       <button
-        onClick={next}
-        aria-label="Next week"
-        className="flex-shrink-0 flex items-center justify-center w-8 rounded-xl text-2xl font-bold transition-opacity hover:opacity-40"
-        style={{ color: 'var(--color-text-secondary)' }}
+        onClick={() => setWindowStart((i) => Math.min(i + VISIBLE, Math.max(0, gameDates.length - VISIBLE)))}
+        disabled={!canNext}
+        aria-label="Newer dates"
+        className="flex-shrink-0 flex items-center justify-center w-7 rounded-xl text-xl font-bold transition-opacity"
+        style={{ color: 'var(--color-text-secondary)', opacity: canNext ? 1 : 0.25, cursor: canNext ? 'pointer' : 'default' }}
       >
         ›
       </button>

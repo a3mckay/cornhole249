@@ -19,10 +19,11 @@ export default function Games() {
 
   const [filters, setFilters] = useState({ type: '', season: '', venue_id: '', user_id: '' });
   const [selectedDate, setSelectedDate] = useState(null);
+  const [gameDates, setGameDates] = useState([]);
 
   useEffect(() => {
-    Promise.all([venuesApi.list(), usersApi.list()])
-      .then(([v, u]) => { setVenues(v); setPlayers(u); });
+    Promise.all([venuesApi.list(), usersApi.list(), gamesApi.dates()])
+      .then(([v, u, dates]) => { setVenues(v); setPlayers(u); setGameDates(dates); });
   }, []);
 
   useEffect(() => {
@@ -64,7 +65,9 @@ export default function Games() {
       </div>
 
       {/* Date strip */}
-      <DateStrip selectedDate={selectedDate} onSelect={handleDateSelect} />
+      <div className="mb-5">
+        <DateStrip gameDates={gameDates} selectedDate={selectedDate} onSelect={handleDateSelect} />
+      </div>
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap mb-5">

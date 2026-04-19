@@ -60,6 +60,15 @@ router.get('/', (req, res) => {
   res.json({ games, total, page: parseInt(page), limit: parseInt(limit) });
 });
 
+// GET /api/games/dates — distinct YYYY-MM-DD dates that have at least one game
+router.get('/dates', (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT DISTINCT substr(played_at, 1, 10) AS date FROM games ORDER BY date ASC`
+  ).all();
+  res.json(rows.map((r) => r.date));
+});
+
 // GET /api/games/:id
 router.get('/:id', (req, res) => {
   const db = getDb();

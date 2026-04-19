@@ -27,6 +27,7 @@ export const usersApi = {
 // Games
 export const gamesApi = {
   list: (params) => api.get('/games', { params }).then((r) => r.data),
+  dates: (params) => api.get('/games/dates', { params }).then((r) => r.data),
   get: (id) => api.get(`/games/${id}`).then((r) => r.data),
   create: (data) => api.post('/games', data).then((r) => r.data),
   update: (id, data) => api.patch(`/games/${id}`, data).then((r) => r.data),
