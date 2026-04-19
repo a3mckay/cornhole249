@@ -315,7 +315,7 @@ router.get('/team/:p1/:p2', (req, res) => {
 // GET /api/standings/history/:user_id
 router.get('/history/:user_id', (req, res) => {
   const db = getDb();
-  const { season } = req.query;
+  const { season, type } = req.query;
 
   let query = `
     SELECT g.id as game_id, g.played_at, g.season, gp.is_winner
@@ -323,6 +323,7 @@ router.get('/history/:user_id', (req, res) => {
     JOIN games g ON gp.game_id = g.id
     WHERE gp.user_id = ?`;
   const params = [req.params.user_id];
+  if (type) { query += ` AND g.game_type = ?`; params.push(type); }
   if (season) { query += ` AND g.season = ?`; params.push(parseInt(season)); }
   query += ` ORDER BY g.played_at ASC`;
 

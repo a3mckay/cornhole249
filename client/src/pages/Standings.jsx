@@ -37,7 +37,7 @@ export default function Standings() {
     if (type === '1v1') {
       const userIds = data.slice(0, 8).map((r) => r.user_id);
       Promise.all(
-        userIds.map((id) => standingsApi.history(id, { season }).then((h) => ({ id, history: h })))
+        userIds.map((id) => standingsApi.history(id, { season, type: '1v1' }).then((h) => ({ id, history: h })))
       ).then((results) => {
         const maxGames = Math.max(...results.map((r) => r.history.length), 0);
         const chartData = [];
