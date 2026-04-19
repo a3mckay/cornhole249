@@ -11,8 +11,11 @@ const PLAYER_COLORS = ['#3A6B35','#D48B2D','#B94040','#6366F1','#EC4899','#14B8A
 
 export default function Standings() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const type = searchParams.get('type') || '1v1';
-  const setType = (t) => setSearchParams((prev) => { prev.set('type', t); return prev; });
+  const [type, setTypeState] = useState(searchParams.get('type') || '1v1');
+  const setType = (t) => {
+    setTypeState(t);
+    setSearchParams({ type: t });
+  };
   const [season, setSeason] = useState(Math.max(...SEASONS));
   const { data, loading, error } = useStandings(type, season);
   const [historyData, setHistoryData] = useState([]);
