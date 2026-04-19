@@ -111,18 +111,20 @@ export default function StandingsTable({ data, type = '1v1' }) {
                     </Link>
                   ) : (
                     <div className="flex items-center gap-1">
-                      {row.players?.map((p) => (
-                        <Link key={p.user_id} to={`/players/${p.user_id}`} className="flex items-center gap-1 hover:opacity-80">
-                          <img
-                            src={p.avatar_url}
-                            alt={p.display_name}
-                            className="w-6 h-6 rounded-full border border-white/30"
-                            onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }}
-                          />
-                          <span className="text-sm font-semibold">{p.display_name}</span>
-                        </Link>
+                      {row.players?.map((p, pi) => (
+                        <React.Fragment key={p.user_id}>
+                          {pi > 0 && <span className="opacity-50 text-xs mx-0.5">&</span>}
+                          <Link to={`/players/${p.user_id}`} className="flex items-center gap-1 hover:opacity-80">
+                            <img
+                              src={p.avatar_url}
+                              alt={p.display_name}
+                              className="w-6 h-6 rounded-full border border-white/30"
+                              onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }}
+                            />
+                            <span className="text-sm font-semibold">{p.display_name}</span>
+                          </Link>
+                        </React.Fragment>
                       ))}
-                      {row.players?.length > 1 && <span className="opacity-50 text-xs mx-1">&</span>}
                     </div>
                   )}
                 </td>

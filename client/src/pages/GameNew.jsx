@@ -35,7 +35,11 @@ export default function GameNew({ onAchievement }) {
   const [t2p2, setT2p2] = useState('');
   const [t1score, setT1score] = useState('');
   const [t2score, setT2score] = useState('');
-  const [playedAt, setPlayedAt] = useState(new Date().toISOString().slice(0,16));
+  const [playedAt, setPlayedAt] = useState(() => {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  });
   const [venueId, setVenueId] = useState('');
   const [newVenueName, setNewVenueName] = useState('');
   const [venues, setVenues] = useState([]);

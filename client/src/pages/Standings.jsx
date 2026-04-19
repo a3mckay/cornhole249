@@ -16,10 +16,17 @@ export default function Standings() {
   const [historyData, setHistoryData] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
 
+  // Clear chart data when leaving 1v1
+  useEffect(() => {
+    if (type !== '1v1') setHistoryData([]);
+  }, [type]);
+
   // Load win% history for chart
   useEffect(() => {
     if (type !== '1v1') return;
     if (!data.length) return;
+    // Guard: 2v2 rows use `players` not `user_id` — skip until 1v1 data is loaded
+    if (!data[0].user_id) return;
     setHistLoading(true);
 
     const userIds = data.slice(0, 8).map((r) => r.user_id);

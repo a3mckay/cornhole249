@@ -2,6 +2,43 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db');
 
+function computePairStreak(ids, db, season) {
+  let query = `
+    SELECT gp1.is_winner, g.played_at
+    FROM games g
+    JOIN game_participants gp1 ON gp1.game_id = g.id AND gp1.user_id = ?
+    JOIN game_participants gp2 ON gp2.game_id = g.id AND gp2.user_id = ? AND gp2.team = gp1.team
+    WHERE g.game_type = '2v2'`;
+  const params = [ids[0], ids[1]];
+  if (season) { query += ` AND g.season = ?`; params.push(season); }
+  query += ` ORDER BY g.played_at DESC LIMIT 20`;
+
+  const rows = db.prepare(query).all(...params);
+  if (!rows.length) return '';
+  const first = rows[0].is_winner;
+  let count = 0;
+  for (const r of rows) {
+    if (r.is_winner === first) count++;
+    else break;
+  }
+  return (first ? 'W' : 'L') + count;
+}
+
+function computePairLast5(ids, db, season) {
+  let query = `
+    SELECT gp1.is_winner
+    FROM games g
+    JOIN game_participants gp1 ON gp1.game_id = g.id AND gp1.user_id = ?
+    JOIN game_participants gp2 ON gp2.game_id = g.id AND gp2.user_id = ? AND gp2.team = gp1.team
+    WHERE g.game_type = '2v2'`;
+  const params = [ids[0], ids[1]];
+  if (season) { query += ` AND g.season = ?`; params.push(season); }
+  query += ` ORDER BY g.played_at DESC LIMIT 5`;
+
+  const rows = db.prepare(query).all(...params);
+  return rows.map((r) => (r.is_winner ? 'W' : 'L'));
+}
+
 function computeStreak(userId, db, season) {
   let query = `
     SELECT gp.is_winner
@@ -142,14 +179,16 @@ router.get('/2v2', (req, res) => {
       pairStats[key].gp++;
       if (won) pairStats[key].wins++;
       else pairStats[key].losses++;
-      pairStats[key].total_scored += team.reduce((s, p) => s + p.score, 0);
-      pairStats[key].total_against += opponent.reduce((s, p) => s + p.score, 0);
+      // Each player is recorded with the full team score, so use team[0].score (not sum)
+      pairStats[key].total_scored += team[0].score || 0;
+      pairStats[key].total_against += opponent[0].score || 0;
     };
 
     processTeam(team1, team2);
     processTeam(team2, team1);
   }
 
+  const seasonInt = season ? parseInt(season) : null;
   const result = Object.values(pairStats)
     .sort((a, b) => (b.wins * 2) - (a.wins * 2) || (b.wins / b.gp) - (a.wins / a.gp))
     .map((pair, i) => ({
@@ -158,6 +197,8 @@ router.get('/2v2', (req, res) => {
       pts: pair.wins * 2,
       win_pct: pair.gp > 0 ? Math.round((pair.wins / pair.gp) * 1000) / 10 : 0,
       plus_minus: pair.total_scored - pair.total_against,
+      streak: computePairStreak(pair.user_ids, db, seasonInt),
+      last5: computePairLast5(pair.user_ids, db, seasonInt),
     }));
 
   res.json(result);
