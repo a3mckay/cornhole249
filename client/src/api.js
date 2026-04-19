@@ -44,7 +44,7 @@ export const standingsApi = {
   oneVone: (params) => api.get('/standings/1v1', { params }).then((r) => r.data),
   twoVtwo: (params) => api.get('/standings/2v2', { params }).then((r) => r.data),
   history: (userId, params) => api.get(`/standings/history/${userId}`, { params }).then((r) => r.data),
-  team: (p1, p2) => api.get(`/standings/team/${p1}/${p2}`).then((r) => r.data),
+  team: (p1, p2, params) => api.get(`/standings/team/${p1}/${p2}`, { params }).then((r) => r.data),
 };
 
 // Stats

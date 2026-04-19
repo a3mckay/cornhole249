@@ -217,6 +217,9 @@ router.get('/team/:p1/:p2', (req, res) => {
   const u2 = db.prepare(`SELECT id, display_name, nickname, avatar_url, elo_rating FROM users WHERE id = ?`).get(p2);
   if (!u1 || !u2) return res.status(404).json({ error: 'Player not found' });
 
+  const { season } = req.query;
+  const seasonFilter = season ? `AND g.season = ${parseInt(season)}` : '';
+
   // All games where p1 and p2 were on the same team
   const teamGames = db.prepare(`
     SELECT g.id as game_id, g.played_at, g.season, g.venue_id, g.weather_json,
@@ -224,7 +227,7 @@ router.get('/team/:p1/:p2', (req, res) => {
     FROM games g
     JOIN game_participants gp1 ON gp1.game_id = g.id AND gp1.user_id = ?
     JOIN game_participants gp2 ON gp2.game_id = g.id AND gp2.user_id = ? AND gp2.team = gp1.team
-    WHERE g.game_type = '2v2'
+    WHERE g.game_type = '2v2' ${seasonFilter}
     ORDER BY g.played_at ASC
   `).all(p1, p2);
 

@@ -16,39 +16,65 @@ export default function Standings() {
   const [historyData, setHistoryData] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
 
-  // Clear chart data when leaving 1v1
+  // Clear chart data when type changes
   useEffect(() => {
-    if (type !== '1v1') setHistoryData([]);
+    setHistoryData([]);
   }, [type]);
 
-  // Load win% history for chart
+  // Load win% history for chart (both 1v1 and 2v2)
   useEffect(() => {
-    if (type !== '1v1') return;
     if (!data.length) return;
-    // Guard: 2v2 rows use `players` not `user_id` — skip until 1v1 data is loaded
-    if (!data[0].user_id) return;
+    // Guard: wait for data matching the current type
+    if (type === '1v1' && !data[0].user_id) return;
+    if (type === '2v2' && !data[0].players) return;
     setHistLoading(true);
 
-    const userIds = data.slice(0, 8).map((r) => r.user_id);
-    Promise.all(
-      userIds.map((id) => standingsApi.history(id, { season }).then((h) => ({ id, history: h })))
-    ).then((results) => {
-      // Merge into chart data: [{ game_number, [display_name]: win_pct, ... }]
-      const maxGames = Math.max(...results.map((r) => r.history.length), 0);
-      const chartData = [];
-      for (let i = 0; i < maxGames; i++) {
-        const point = { game: i + 1 };
-        for (const { id, history } of results) {
-          const row = history[i];
-          if (row) {
-            const player = data.find((d) => d.user_id === id);
-            if (player) point[player.display_name] = row.cumulative_win_pct;
+    if (type === '1v1') {
+      const userIds = data.slice(0, 8).map((r) => r.user_id);
+      Promise.all(
+        userIds.map((id) => standingsApi.history(id, { season }).then((h) => ({ id, history: h })))
+      ).then((results) => {
+        const maxGames = Math.max(...results.map((r) => r.history.length), 0);
+        const chartData = [];
+        for (let i = 0; i < maxGames; i++) {
+          const point = { game: i + 1 };
+          for (const { id, history } of results) {
+            const row = history[i];
+            if (row) {
+              const player = data.find((d) => d.user_id === id);
+              if (player) point[player.display_name] = row.cumulative_win_pct;
+            }
           }
+          chartData.push(point);
         }
-        chartData.push(point);
-      }
-      setHistoryData(chartData);
-    }).finally(() => setHistLoading(false));
+        setHistoryData(chartData);
+      }).finally(() => setHistLoading(false));
+    } else {
+      // 2v2: fetch history per pair
+      const pairs = data.slice(0, 8);
+      Promise.all(
+        pairs.map((pair) =>
+          standingsApi.team(pair.user_ids[0], pair.user_ids[1], { season })
+            .then((t) => ({ pair, history: t.history }))
+            .catch(() => ({ pair, history: [] }))
+        )
+      ).then((results) => {
+        const maxGames = Math.max(...results.map((r) => r.history.length), 0);
+        const chartData = [];
+        for (let i = 0; i < maxGames; i++) {
+          const point = { game: i + 1 };
+          for (const { pair, history } of results) {
+            const row = history[i];
+            if (row) {
+              const label = pair.players.map((p) => p.display_name).join(' & ');
+              point[label] = row.cumulative_win_pct;
+            }
+          }
+          chartData.push(point);
+        }
+        setHistoryData(chartData);
+      }).finally(() => setHistLoading(false));
+    }
   }, [data, type, season]);
 
   return (
@@ -107,7 +133,7 @@ export default function Standings() {
       )}
 
       {/* Win% Over Time Chart */}
-      {type === '1v1' && historyData.length > 1 && (
+      {historyData.length > 1 && (
         <div className="card mt-8">
           <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             Win% Over Time
@@ -123,17 +149,30 @@ export default function Standings() {
                 />
                 <Tooltip formatter={(v) => `${v}%`} contentStyle={{ fontFamily: 'Nunito', borderRadius: 12, border: '1px solid var(--color-border)' }} />
                 <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12, paddingTop: '12px' }} />
-                {data.slice(0, 8).map((player, i) => (
-                  <Line
-                    key={player.user_id}
-                    type="monotone"
-                    dataKey={player.display_name}
-                    stroke={PLAYER_COLORS[i % PLAYER_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                ))}
+                {type === '1v1'
+                  ? data.slice(0, 8).map((player, i) => (
+                      <Line
+                        key={player.user_id}
+                        type="monotone"
+                        dataKey={player.display_name}
+                        stroke={PLAYER_COLORS[i % PLAYER_COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                      />
+                    ))
+                  : data.slice(0, 8).map((pair, i) => (
+                      <Line
+                        key={pair.key}
+                        type="monotone"
+                        dataKey={pair.players.map((p) => p.display_name).join(' & ')}
+                        stroke={PLAYER_COLORS[i % PLAYER_COLORS.length]}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                      />
+                    ))
+                }
               </LineChart>
             </ResponsiveContainer>
           </div>
