@@ -38,6 +38,13 @@ export default function StandingsTable({ data, type = '1v1' }) {
   const [sortKey, setSortKey] = useState('pts');
   const [sortDir, setSortDir] = useState('desc');
 
+  // Reset sort when switching between 1v1 and 2v2 so stale state doesn't
+  // cause a crash during the brief render with mismatched data type.
+  React.useEffect(() => {
+    setSortKey('pts');
+    setSortDir('desc');
+  }, [type]);
+
   const handleSort = (key) => {
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('desc'); }
@@ -45,8 +52,9 @@ export default function StandingsTable({ data, type = '1v1' }) {
 
   const sorted = [...data].sort((a, b) => {
     if (sortKey === 'name') {
-      const aName = type === '2v2' ? (a.players?.map((p) => p.display_name).join(' & ')) : a.display_name;
-      const bName = type === '2v2' ? (b.players?.map((p) => p.display_name).join(' & ')) : b.display_name;
+      // Guard against mismatched data/type during the brief transitional render
+      const aName = (type === '2v2' ? (a.players?.map((p) => p.display_name).join(' & ')) : a.display_name) ?? '';
+      const bName = (type === '2v2' ? (b.players?.map((p) => p.display_name).join(' & ')) : b.display_name) ?? '';
       return sortDir === 'asc' ? aName.localeCompare(bName) : bName.localeCompare(aName);
     }
     if (sortKey === 'streak') {
