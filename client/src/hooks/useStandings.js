@@ -7,7 +7,9 @@ export function useStandings(type = '1v1', season = null) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    setData([]);   // clear stale data immediately on type/season change
     setLoading(true);
+    setError(null);
     const params = season ? { season } : {};
     const fetchFn = type === '1v1' ? standingsApi.oneVone : standingsApi.twoVtwo;
     fetchFn(params)

@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useStandings } from '../hooks/useStandings';
 import StandingsTable from '../components/StandingsTable';
 import { standingsApi } from '../api';
-import { useEffect } from 'react';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 const PLAYER_COLORS = ['#3A6B35','#D48B2D','#B94040','#6366F1','#EC4899','#14B8A6','#F59E0B','#8B5CF6','#06B6D4','#84CC16'];
 
 export default function Standings() {
-  const [type, setType] = useState('1v1');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const type = searchParams.get('type') || '1v1';
+  const setType = (t) => setSearchParams((prev) => { prev.set('type', t); return prev; });
   const [season, setSeason] = useState(Math.max(...SEASONS));
   const { data, loading, error } = useStandings(type, season);
   const [historyData, setHistoryData] = useState([]);
@@ -133,7 +135,7 @@ export default function Standings() {
       )}
 
       {/* Win% Over Time Chart */}
-      {historyData.length > 1 && (
+      {historyData.length >= 1 && (
         <div className="card mt-8">
           <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             Win% Over Time

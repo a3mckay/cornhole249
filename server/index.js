@@ -37,6 +37,36 @@ runMigrations();
     const { fetchWeatherForGame } = require('./routes/weather');
     const db = getDb();
 
+    // One-time fix: game timestamps were stored with UTC offset instead of local time.
+    // The datetime-local input was initialised with toISOString() (UTC), so games entered
+    // in Eastern time (EDT = UTC-4) were stored 4 hours ahead of the actual local time.
+    // Correct by subtracting 4 hours for all 249 Park games in 2026.
+    // Uses a kv_store table as a migration guard so this only runs once.
+    {
+      db.prepare(`CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)`).run();
+      const alreadyFixed = db.prepare(`SELECT value FROM kv_store WHERE key = 'fix_249park_tz_2026'`).get();
+      if (!alreadyFixed) {
+        const venue249Fix = db.prepare(`SELECT id FROM venues WHERE name = '249 Park'`).get();
+        if (venue249Fix) {
+          const affected = db.prepare(`
+            SELECT id, played_at FROM games WHERE venue_id = ? AND season = 2026
+          `).all(venue249Fix.id);
+
+          let fixedCount = 0;
+          for (const game of affected) {
+            const d = new Date(game.played_at);
+            if (isNaN(d.getTime())) continue;
+            const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000);
+            db.prepare(`UPDATE games SET played_at = ? WHERE id = ?`)
+              .run(corrected.toISOString(), game.id);
+            fixedCount++;
+          }
+          console.log(`[DateFix] Corrected ${fixedCount} 249 Park 2026 game timestamps (EDT -4h)`);
+        }
+        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('fix_249park_tz_2026', '1')`).run();
+      }
+    }
+
     // Set coordinates for 249 Park — always ensure correct coords
     const venue249 = db.prepare(`SELECT * FROM venues WHERE name = '249 Park'`).get();
     if (venue249) {
