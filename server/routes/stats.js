@@ -2,40 +2,79 @@ const express = require('express');
 const router = express.Router();
 const { getDb } = require('../db');
 
-// GET /api/stats/rivals
+// GET /api/stats/rivals?type=1v1|2v2
 router.get('/rivals', (req, res) => {
   const db = getDb();
+  const { type = '1v1' } = req.query;
 
-  // Find pairs with most games
-  const pairs = db.prepare(
-    `SELECT
-       a.user_id as p1, b.user_id as p2,
-       COUNT(DISTINCT a.game_id) as games_played,
-       SUM(CASE WHEN a.is_winner = 1 THEN 1 ELSE 0 END) as p1_wins,
-       SUM(CASE WHEN b.is_winner = 1 THEN 1 ELSE 0 END) as p2_wins
-     FROM game_participants a
-     JOIN game_participants b ON a.game_id = b.game_id AND a.user_id < b.user_id
-       AND a.team != b.team
-     GROUP BY a.user_id, b.user_id
-     HAVING games_played >= 2
-     ORDER BY games_played DESC
-     LIMIT 10`
-  ).all();
+  if (type === '1v1') {
+    // Player vs player – strictly 1v1 games only
+    const pairs = db.prepare(
+      `SELECT
+         a.user_id as p1, b.user_id as p2,
+         COUNT(DISTINCT a.game_id) as games_played,
+         SUM(CASE WHEN a.is_winner = 1 THEN 1 ELSE 0 END) as p1_wins,
+         SUM(CASE WHEN b.is_winner = 1 THEN 1 ELSE 0 END) as p2_wins
+       FROM game_participants a
+       JOIN game_participants b ON a.game_id = b.game_id AND a.user_id < b.user_id
+         AND a.team != b.team
+       JOIN games g ON g.id = a.game_id AND g.game_type = '1v1'
+       GROUP BY a.user_id, b.user_id
+       HAVING games_played >= 1
+       ORDER BY games_played DESC
+       LIMIT 10`
+    ).all();
 
-  const result = pairs.map((pair) => {
-    const p1 = db.prepare(`SELECT id, display_name, nickname, avatar_url FROM users WHERE id = ?`).get(pair.p1);
-    const p2 = db.prepare(`SELECT id, display_name, nickname, avatar_url FROM users WHERE id = ?`).get(pair.p2);
-    return {
-      player1: p1,
-      player2: p2,
-      games_played: pair.games_played,
-      p1_wins: pair.p1_wins,
-      p2_wins: pair.p2_wins,
-      win_delta: Math.abs(pair.p1_wins - pair.p2_wins),
-    };
-  });
+    const result = pairs.map((pair) => {
+      const p1 = db.prepare(`SELECT id, display_name, nickname, avatar_url FROM users WHERE id = ?`).get(pair.p1);
+      const p2 = db.prepare(`SELECT id, display_name, nickname, avatar_url FROM users WHERE id = ?`).get(pair.p2);
+      return { player1: p1, player2: p2, games_played: pair.games_played, p1_wins: pair.p1_wins, p2_wins: pair.p2_wins };
+    });
+    return res.json(result);
+  }
 
-  res.json(result);
+  // 2v2: pair-vs-pair rivalries
+  const games2v2 = db.prepare(`SELECT id FROM games WHERE game_type = '2v2'`).all();
+  const matchups = {};
+
+  for (const { id: gameId } of games2v2) {
+    const parts = db.prepare(
+      `SELECT gp.user_id, gp.team, gp.is_winner, u.display_name, u.avatar_url
+       FROM game_participants gp JOIN users u ON u.id = gp.user_id
+       WHERE gp.game_id = ?`
+    ).all(gameId);
+
+    const t1 = parts.filter((p) => p.team === 1).sort((a, b) => a.user_id - b.user_id);
+    const t2 = parts.filter((p) => p.team === 2).sort((a, b) => a.user_id - b.user_id);
+    if (t1.length !== 2 || t2.length !== 2) continue;
+
+    const t1Key = t1.map((p) => p.user_id).join('-');
+    const t2Key = t2.map((p) => p.user_id).join('-');
+    // Canonical order so the same matchup always maps to one key
+    const [sideA, sideB] = t1Key < t2Key ? [t1, t2] : [t2, t1];
+    const mKey = `${sideA.map((p) => p.user_id).join('-')}_vs_${sideB.map((p) => p.user_id).join('-')}`;
+
+    if (!matchups[mKey]) {
+      matchups[mKey] = {
+        team1: sideA.map((p) => ({ user_id: p.user_id, display_name: p.display_name, avatar_url: p.avatar_url })),
+        team2: sideB.map((p) => ({ user_id: p.user_id, display_name: p.display_name, avatar_url: p.avatar_url })),
+        games_played: 0, team1_wins: 0, team2_wins: 0,
+      };
+    }
+
+    const m = matchups[mKey];
+    m.games_played++;
+    // sideA corresponds to team1; check if sideA[0] won
+    const sideAUserId = sideA[0].user_id;
+    const sideAWon = parts.find((p) => p.user_id === sideAUserId)?.is_winner === 1;
+    if (sideAWon) m.team1_wins++; else m.team2_wins++;
+  }
+
+  res.json(
+    Object.values(matchups)
+      .sort((a, b) => b.games_played - a.games_played)
+      .slice(0, 10)
+  );
 });
 
 // GET /api/stats/performers
@@ -182,7 +221,7 @@ router.get('/point-differential', (req, res) => {
      JOIN games g ON gp.game_id = g.id ${seasonFilter}
      JOIN users u ON gp.user_id = u.id
      JOIN (
-       SELECT game_id, team, SUM(score) as opp_score FROM game_participants GROUP BY game_id, team
+       SELECT game_id, team, MAX(score) as opp_score FROM game_participants GROUP BY game_id, team
      ) opp_team ON opp_team.game_id = gp.game_id AND opp_team.team != gp.team
      GROUP BY gp.user_id
      HAVING gp >= 1

@@ -50,7 +50,7 @@ export const standingsApi = {
 
 // Stats
 export const statsApi = {
-  rivals: () => api.get('/stats/rivals').then((r) => r.data),
+  rivals: (params) => api.get('/stats/rivals', { params }).then((r) => r.data),
   performers: (params) => api.get('/stats/performers', { params }).then((r) => r.data),
   h2h: (params) => api.get('/stats/head-to-head', { params }).then((r) => r.data),
   weather: (params) => api.get('/stats/weather', { params }).then((r) => r.data),

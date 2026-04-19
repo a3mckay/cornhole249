@@ -35,6 +35,7 @@ export default function Stats() {
   const [eloLeaders, setEloLeaders] = useState([]);
   const [weatherPerformers, setWeatherPerformers] = useState([]);
   const [rivals, setRivals] = useState([]);
+  const [rivalsType, setRivalsType] = useState('1v1');
   const [loading, setLoading] = useState(true);
 
   const season = seasonMode === 'current' ? CURRENT_YEAR : undefined;
@@ -48,7 +49,6 @@ export default function Stats() {
     setPointDiff([]);
     setClutch([]);
     setVenueKings([]);
-    setRivals([]);
     Promise.all([
       statsApi.performers(seasonParam).catch(() => null),
       statsApi.streaks(seasonParam).catch(() => []),
@@ -57,8 +57,7 @@ export default function Stats() {
       statsApi.venueKings(seasonParam).catch(() => []),
       statsApi.eloLeaders().catch(() => []),
       statsApi.weatherPerformers().catch(() => []),
-      statsApi.rivals().catch(() => []),
-    ]).then(([p, st, pd, c, vk, elo, wp, r]) => {
+    ]).then(([p, st, pd, c, vk, elo, wp]) => {
       setPerformers(p);
       setStreaks(st);
       setPointDiff(pd);
@@ -66,9 +65,14 @@ export default function Stats() {
       setVenueKings(vk);
       setEloLeaders(elo);
       setWeatherPerformers(wp);
-      setRivals(r);
     }).finally(() => setLoading(false));
   }, [seasonMode]);
+
+  // Rivals fetched independently — not season-filtered, but re-fetches on type change
+  useEffect(() => {
+    setRivals([]);
+    statsApi.rivals({ type: rivalsType }).catch(() => []).then(setRivals);
+  }, [rivalsType]);
 
   // Sorted performers for ranking card
   const allPerformers = performers
@@ -385,45 +389,101 @@ export default function Stats() {
 
           {/* 8. Top Rivalries */}
           <div className="card">
-            <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
-              ⚔️ Top Rivalries
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-2xl" style={{ color: 'var(--color-text-primary)' }}>
+                ⚔️ Top Rivalries
+              </h2>
+              <div className="flex rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+                {['1v1', '2v2'].map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setRivalsType(t)}
+                    className="px-3 py-1 font-ui font-semibold text-xs transition-colors"
+                    style={{
+                      background: rivalsType === t ? 'var(--color-primary)' : 'var(--color-surface)',
+                      color: rivalsType === t ? '#fff' : 'var(--color-text-secondary)',
+                    }}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex flex-col gap-4">
               {rivals.slice(0, 5).map((r, i) => (
                 <div key={i}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <img
-                      src={r.player1.avatar_url}
-                      alt={r.player1.display_name}
-                      className="w-7 h-7 rounded-full border"
-                      style={{ borderColor: 'var(--color-border)' }}
-                      onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.player1.display_name}`; }}
-                    />
-                    <Link to={`/players/${r.player1.id}`} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
-                      {r.player1.display_name}
-                    </Link>
-                    <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>vs</span>
-                    <img
-                      src={r.player2.avatar_url}
-                      alt={r.player2.display_name}
-                      className="w-7 h-7 rounded-full border"
-                      style={{ borderColor: 'var(--color-border)' }}
-                      onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.player2.display_name}`; }}
-                    />
-                    <Link to={`/players/${r.player2.id}`} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
-                      {r.player2.display_name}
-                    </Link>
-                    <span className="ml-auto text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>{r.games_played} games</span>
-                  </div>
-                  <div className="flex h-4 rounded-full overflow-hidden">
-                    <div style={{ width: `${Math.round((r.p1_wins / r.games_played) * 100)}%`, background: 'var(--color-primary)' }} />
-                    <div style={{ flex: 1, background: 'var(--color-secondary)' }} />
-                  </div>
-                  <div className="flex justify-between text-xs font-ui mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                    <span>{r.p1_wins}W</span>
-                    <Link to="/stats" className="underline" style={{ color: 'var(--color-primary)' }}>H2H →</Link>
-                    <span>{r.p2_wins}W</span>
-                  </div>
+                  {rivalsType === '1v1' ? (
+                    <>
+                      <div className="flex items-center gap-2 mb-1">
+                        <img
+                          src={r.player1.avatar_url}
+                          alt={r.player1.display_name}
+                          className="w-7 h-7 rounded-full border"
+                          style={{ borderColor: 'var(--color-border)' }}
+                          onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.player1.display_name}`; }}
+                        />
+                        <Link to={`/players/${r.player1.id}`} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
+                          {r.player1.display_name}
+                        </Link>
+                        <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>vs</span>
+                        <img
+                          src={r.player2.avatar_url}
+                          alt={r.player2.display_name}
+                          className="w-7 h-7 rounded-full border"
+                          style={{ borderColor: 'var(--color-border)' }}
+                          onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.player2.display_name}`; }}
+                        />
+                        <Link to={`/players/${r.player2.id}`} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
+                          {r.player2.display_name}
+                        </Link>
+                        <span className="ml-auto text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>{r.games_played} games</span>
+                      </div>
+                      <div className="flex h-4 rounded-full overflow-hidden">
+                        <div style={{ width: `${Math.round((r.p1_wins / r.games_played) * 100)}%`, background: 'var(--color-primary)' }} />
+                        <div style={{ flex: 1, background: 'var(--color-secondary)' }} />
+                      </div>
+                      <div className="flex justify-between text-xs font-ui mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                        <span>{r.p1_wins}W</span>
+                        <Link to="/stats" className="underline" style={{ color: 'var(--color-primary)' }}>H2H →</Link>
+                        <span>{r.p2_wins}W</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <div className="flex items-center gap-1">
+                          {r.team1.map((p) => (
+                            <img key={p.user_id} src={p.avatar_url} alt={p.display_name}
+                              className="w-6 h-6 rounded-full border" style={{ borderColor: 'var(--color-border)' }}
+                              onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
+                          ))}
+                          <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                            {r.team1.map((p) => p.display_name).join(' & ')}
+                          </span>
+                        </div>
+                        <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>vs</span>
+                        <div className="flex items-center gap-1">
+                          {r.team2.map((p) => (
+                            <img key={p.user_id} src={p.avatar_url} alt={p.display_name}
+                              className="w-6 h-6 rounded-full border" style={{ borderColor: 'var(--color-border)' }}
+                              onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
+                          ))}
+                          <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                            {r.team2.map((p) => p.display_name).join(' & ')}
+                          </span>
+                        </div>
+                        <span className="ml-auto text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>{r.games_played} games</span>
+                      </div>
+                      <div className="flex h-4 rounded-full overflow-hidden">
+                        <div style={{ width: `${Math.round((r.team1_wins / r.games_played) * 100)}%`, background: 'var(--color-primary)' }} />
+                        <div style={{ flex: 1, background: 'var(--color-secondary)' }} />
+                      </div>
+                      <div className="flex justify-between text-xs font-ui mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                        <span>{r.team1_wins}W</span>
+                        <span>{r.team2_wins}W</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
               {rivals.length === 0 && (
