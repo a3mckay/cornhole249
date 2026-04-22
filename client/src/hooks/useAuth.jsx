@@ -9,13 +9,13 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([authApi.me(), usersApi.list()])
-      .then(([me, users]) => {
-        setUser(me);
-        setAllUsers(users);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      authApi.me().catch(() => null),
+      usersApi.list().catch(() => []),
+    ]).then(([me, users]) => {
+      setUser(me);
+      setAllUsers(users);
+    }).finally(() => setLoading(false));
   }, []);
 
   const login = async (userId, pin) => {
@@ -30,7 +30,10 @@ export function AuthProvider({ children }) {
   };
 
   const refreshUser = async () => {
-    const [me, users] = await Promise.all([authApi.me(), usersApi.list()]);
+    const [me, users] = await Promise.all([
+      authApi.me().catch(() => null),
+      usersApi.list().catch(() => []),
+    ]);
     setUser(me);
     setAllUsers(users);
     return me;
