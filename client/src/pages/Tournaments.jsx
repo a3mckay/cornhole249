@@ -104,10 +104,10 @@ export default function Tournaments() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="font-display text-4xl" style={{ color: 'var(--color-text-primary)' }}>Tournaments</h1>
         {!!user?.is_admin && (
-          <button onClick={() => setShowCreate((s) => !s)} className="btn btn-primary">
+          <button onClick={() => setShowCreate((s) => !s)} className="btn btn-primary self-start sm:self-auto">
             + Create Tournament
           </button>
         )}

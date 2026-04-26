@@ -23,17 +23,17 @@ const RULESETS = {
     label: '📜 ACA Rules',
     subtitle: 'American Cornhole Association — Official Rules',
     winScore: 21,
-    winRule: 'First player/team to reach 21 points wins. If both players reach 21+ in the same round, the higher score wins. There is no "win by 2" requirement in standard ACA play — first to 21 (or highest if tied round) wins.',
-    winFaq: 'You need to reach 21 to start. In the same round, if both reach 21, the higher score wins. You don\'t need to hit exactly 21 — any score ≥21 that\'s higher wins.',
-    winFaqQ: 'Do you have to win by exactly 21?',
-    positionRule: 'Players throw from the pitcher\'s box alongside the board. You may stand beside the board, with both feet inside the pitcher\'s box (a 4\'×3\' area to the side of the board).',
-    positionNote: 'The Cornhole249 Hamilton Rule requires players to stand BEHIND the board instead — a harder and more impressive throw.',
+    winRule: "First team/player to reach or exceed 21 points at the end of a frame wins. There is no bust rule — going over 21 is fine. If both sides reach 21+ in the same frame, the team with the higher score wins. There is no 'win by 2' requirement.",
+    winFaq: "No. The ACA rule is reach or exceed 21 at the end of a frame — you don't need to land exactly on 21. There's no bust rule either, so going over is fine. If both teams hit 21+ in the same frame, the higher total wins.",
+    winFaqQ: 'Do you have to hit exactly 21, or can you go over?',
+    positionRule: "Players throw from the pitcher's box — a 4'×3' area running alongside the board. At least one foot must remain completely within the pitcher's box at the moment of release. Players may not step across the foul line (an imaginary line extending from the front edge of the board) before their bag contacts the opposite board.",
+    positionNote: 'The Cornhole249 Hamilton Rule requires players to stand BEHIND the board — a harder and more impressive throw.',
     positionHighlight: 'ACA Official:',
-    diffFaq: 'Scoring: ACA only awards 3pts (hole) and 1pt (board) — there is no overhang bonus. Hamilton adds a 2pt overhang score. Positioning: ACA allows standing beside the board in the pitcher\'s box; Hamilton requires standing BEHIND it. Win condition: ACA first to 21, Hamilton first to 10.',
+    diffFaq: "Scoring: ACA uses 3pts (Cornhole) and 1pt (Woody) — no overhang bonus. Hamilton adds a 2pt overhang score. Positioning: ACA allows standing beside the board in the pitcher's box; Hamilton requires standing BEHIND it. Win condition: ACA first to reach/exceed 21, Hamilton first to 10. Dead bags: ACA has an explicit dead bag rule; Hamilton relies on common sense.",
     scoring: [
-      { pts: 3, label: 'Bag in the Hole',  icon: '🕳️', desc: 'Bag goes cleanly through the hole (or ricochets in)' },
-      { pts: 1, label: 'Bag on the Board', icon: '📦', desc: 'Bag lands and stays on the board surface (anywhere — flat or near the hole)' },
-      { pts: 0, label: 'Off the Board',    icon: '❌', desc: 'Bag misses the board or slides off before scoring is called' },
+      { pts: 3, label: 'Cornhole',  icon: '🕳️', desc: 'Bag passes cleanly through the hole — or bounces off the board surface and into the hole' },
+      { pts: 1, label: 'Woody',     icon: '📦', desc: 'Bag lands and comes to rest on the board surface. Any part of the board counts — edge, corner, or centre' },
+      { pts: 0, label: 'Miss / Dead Bag', icon: '❌', desc: 'Bag misses the board, slides off, or touches the ground before reaching the board (dead bag — must be removed)' },
     ],
   },
 };
@@ -113,6 +113,65 @@ export default function Rules() {
             {r.positionNote}
           </div>
         </div>
+
+        {/* ACA-specific: Throw Mechanics */}
+        {ruleset === 'aca' && (
+          <div className="mb-6">
+            <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-primary)' }}>Throw Mechanics</h2>
+            <div className="p-3 rounded-xl font-ui mb-3" style={{ background: 'rgba(58,107,53,0.08)', borderLeft: '4px solid var(--color-primary)' }}>
+              <strong>Underhand only.</strong> All bags must be released with an underhand motion. Overhand, sidearm, and hook throws are illegal and result in the bag being declared dead.
+            </div>
+            <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              Players alternate throws one bag at a time until all four bags per side have been thrown. The player who threw last in the previous frame throws first in the next frame only if their team scored; otherwise the opposing team throws first.
+            </p>
+          </div>
+        )}
+
+        {/* ACA-specific: Dead Bag Rule */}
+        {ruleset === 'aca' && (
+          <div className="mb-6">
+            <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-primary)' }}>☠️ Dead Bag Rule</h2>
+            <p className="font-ui mb-3" style={{ color: 'var(--color-text-primary)' }}>
+              A bag is declared <strong>dead</strong> if it touches the ground before landing on the board. Dead bags must be removed before the next throw.
+            </p>
+            <div className="flex flex-col gap-2 text-sm font-ui">
+              <div className="p-3 rounded-xl" style={{ background: 'rgba(220,38,38,0.07)', borderLeft: '4px solid #dc2626' }}>
+                <strong>Dead bag on the board</strong> — if a dead bag settles on the board, it must be removed immediately. It scores 0.
+              </div>
+              <div className="p-3 rounded-xl" style={{ background: 'rgba(220,38,38,0.07)', borderLeft: '4px solid #dc2626' }}>
+                <strong>Dead bag knocks in a live bag</strong> — any bag knocked into the hole by a dead bag is returned to its previous position (on the board or off). The dead bag scores 0.
+              </div>
+              <div className="p-3 rounded-xl" style={{ background: 'rgba(220,38,38,0.07)', borderLeft: '4px solid #dc2626' }}>
+                <strong>Dead bag knocks off a live bag</strong> — any bag knocked off the board by a dead bag is returned to the board. The dead bag scores 0.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ACA-specific: Court & Equipment */}
+        {ruleset === 'aca' && (
+          <div className="mb-6">
+            <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-primary)' }}>📐 Court & Equipment</h2>
+            <div className="grid sm:grid-cols-2 gap-3 text-sm font-ui">
+              {[
+                { icon: '📏', label: 'Court length', value: "27 feet from front edge to front edge" },
+                { icon: '🟫', label: 'Board surface', value: '48" × 24" playing surface' },
+                { icon: '⭕', label: 'Hole', value: '6" diameter, centred 9" from the top' },
+                { icon: '🎒', label: 'Bags', value: '6"×6", approx. 15–16 oz, corn or resin fill' },
+                { icon: '📦', label: 'Bags per team', value: '4 bags per team per frame' },
+                { icon: '📐', label: "Pitcher's box", value: "4'×3' alongside each board" },
+              ].map((item) => (
+                <div key={item.label} className="flex items-start gap-2 p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.04)' }}>
+                  <span className="text-xl">{item.icon}</span>
+                  <div>
+                    <div className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{item.label}</div>
+                    <div style={{ color: 'var(--color-text-secondary)' }}>{item.value}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Cancellation scoring — same for both */}
         <div className="mb-6">
