@@ -154,30 +154,31 @@ export default function Standings() {
                 />
                 <Tooltip formatter={(v) => `${v}%`} contentStyle={{ fontFamily: 'Nunito', borderRadius: 12, border: '1px solid var(--color-border)' }} />
                 <Legend wrapperStyle={{ fontFamily: 'Nunito', fontSize: 12, paddingTop: '12px' }} />
-                {type === '1v1'
-                  ? data.slice(0, 8).map((player, i) => (
-                      <Line
-                        key={player.user_id}
-                        type="monotone"
-                        dataKey={player.display_name}
-                        stroke={PLAYER_COLORS[i % PLAYER_COLORS.length]}
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls
-                      />
-                    ))
-                  : data.slice(0, 8).map((pair, i) => (
-                      <Line
-                        key={pair.key}
-                        type="monotone"
-                        dataKey={pair.players.map((p) => p.display_name).join(' & ')}
-                        stroke={PLAYER_COLORS[i % PLAYER_COLORS.length]}
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls
-                      />
-                    ))
-                }
+                {/*
+                  Render Lines based on the actual shape of each row, not on the `type` prop.
+                  When the user toggles 1v1 ↔ 2v2, there's a brief render where `type` has
+                  updated but `data` is still the previous shape. Reading `pair.players.map()`
+                  on a 1v1 row (no `players` field) would throw and blank the page.
+                */}
+                {data.slice(0, 8).map((row, i) => {
+                  const isPair = Array.isArray(row.players);
+                  const dataKey = isPair
+                    ? row.players.map((p) => p.display_name).join(' & ')
+                    : row.display_name;
+                  const key = isPair ? row.key : row.user_id;
+                  if (!dataKey || key === undefined) return null;
+                  return (
+                    <Line
+                      key={key}
+                      type="monotone"
+                      dataKey={dataKey}
+                      stroke={PLAYER_COLORS[i % PLAYER_COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                  );
+                })}
               </LineChart>
             </ResponsiveContainer>
           </div>
