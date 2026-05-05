@@ -78,14 +78,22 @@ runMigrations();
           .run(correctLat, correctLng, venue249.id);
         console.log(`[Venue] Set/corrected coordinates for 249 Park (id=${venue249.id})`);
       }
-      // Force-clear weather for all 249 Park games so they re-fetch with correct coordinates
-      // (prior data may have been fetched with lat=0,lng=0 which points to Gulf of Guinea)
-      const cleared = db.prepare(`
-        UPDATE games SET weather_json = NULL
-        WHERE venue_id = ? AND weather_json IS NOT NULL
-      `).run(venue249.id);
-      if (cleared.changes > 0) {
-        console.log(`[Weather] Cleared stale weather data for ${cleared.changes} 249 Park games`);
+      // The global hourly-data clear below already covers this case; the
+      // 249-Park-coords-fix clear is now redundant on every restart.
+    }
+
+    // One-shot: clear all weather_json after switching from daily aggregates
+    // to hourly weather lookup at game time. Daily aggregates produced
+    // misleading conditions (e.g. "14°C with Rain" for a 22°C clear-evening
+    // game where it had only rained earlier in the morning). The clear runs
+    // once per deploy version (kv_store guard) and the backfill loop below
+    // refetches each game with the new hourly logic.
+    {
+      const alreadyDone = db.prepare(`SELECT value FROM kv_store WHERE key = 'weather_hourly_v2'`).get();
+      if (!alreadyDone) {
+        const result = db.prepare(`UPDATE games SET weather_json = NULL WHERE weather_json IS NOT NULL`).run();
+        console.log(`[Weather] Cleared ${result.changes} weather entries — refetching with hourly data`);
+        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('weather_hourly_v2', '1')`).run();
       }
     }
 
