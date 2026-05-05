@@ -89,11 +89,11 @@ runMigrations();
     // once per deploy version (kv_store guard) and the backfill loop below
     // refetches each game with the new hourly logic.
     {
-      const alreadyDone = db.prepare(`SELECT value FROM kv_store WHERE key = 'weather_hourly_v2'`).get();
+      const alreadyDone = db.prepare(`SELECT value FROM kv_store WHERE key = 'weather_hourly_v3'`).get();
       if (!alreadyDone) {
         const result = db.prepare(`UPDATE games SET weather_json = NULL WHERE weather_json IS NOT NULL`).run();
         console.log(`[Weather] Cleared ${result.changes} weather entries — refetching with hourly data`);
-        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('weather_hourly_v2', '1')`).run();
+        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('weather_hourly_v3', '1')`).run();
       }
     }
 

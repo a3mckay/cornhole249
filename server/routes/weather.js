@@ -61,13 +61,23 @@ async function fetchWeatherForGame(lat, lng, dateStr) {
   const startDate = new Date(date.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const endDate = new Date(date.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  // Try forecast API first (covers past 92 days and future, fast), then fall
-  // back to archive API (uses ERA5 reanalysis, covers all historical dates
-  // but lags ~5 days behind real-time).
-  const candidateUrls = [
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&start_date=${startDate}&end_date=${endDate}&hourly=${variables}&timezone=GMT&past_days=92`,
-    `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${startDate}&end_date=${endDate}&hourly=${variables}&timezone=GMT`,
-  ];
+  // Pick the right API for the game date:
+  //  - Archive API: covers all historical dates including today and yesterday.
+  //    Mutually exclusive with `past_days`, so we use start_date/end_date.
+  //  - Forecast API: covers today and future (up to ~16 days). Use only for
+  //    games on or after today.
+  // Open-Meteo rejects `past_days` together with `start_date`/`end_date` (400),
+  // so DO NOT add past_days when also specifying a date range.
+  const dateOnly = date.toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  const isFuture = dateOnly > today;
+  const archiveUrl = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${startDate}&end_date=${endDate}&hourly=${variables}&timezone=GMT`;
+  const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&start_date=${startDate}&end_date=${endDate}&hourly=${variables}&timezone=GMT`;
+  // For future games: forecast first, archive as fallback (covers today).
+  // For past/today games: archive first, forecast as fallback (covers today).
+  const candidateUrls = isFuture
+    ? [forecastUrl, archiveUrl]
+    : [archiveUrl, forecastUrl];
 
   for (const url of candidateUrls) {
     try {
