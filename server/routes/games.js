@@ -6,6 +6,19 @@ const { evaluateAchievements } = require('../lib/achievements');
 const { recalculateAllElos } = require('../lib/elo');
 const { fetchWeatherForGame } = require('./weather');
 
+// played_at is stored as a UTC ISO string. The league plays in Hamilton, ON,
+// so to answer "what local date was this game played?" we have to convert
+// the UTC instant to America/Toronto local time. Naively truncating the ISO
+// string puts an 8pm EDT game (stored as next-day 00:00 UTC) on the wrong
+// calendar day in the date strip and date-filter.
+const LEAGUE_TZ = 'America/Toronto';
+function utcToLocalDate(isoStr) {
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return null;
+  // 'en-CA' locale formats as YYYY-MM-DD. Intl handles DST automatically.
+  return d.toLocaleDateString('en-CA', { timeZone: LEAGUE_TZ });
+}
+
 // GET /api/games
 router.get('/', (req, res) => {
   const db = getDb();
@@ -21,21 +34,48 @@ router.get('/', (req, res) => {
     where.push(`g.id IN (SELECT game_id FROM game_participants WHERE user_id = ?)`);
     params.push(parseInt(user_id));
   }
-  // date = 'YYYY-MM-DD' local date; match on the UTC date prefix of played_at
-  if (date) { where.push(`substr(g.played_at, 1, 10) = ?`); params.push(date); }
+  // date = 'YYYY-MM-DD' in league local time (America/Toronto). Narrow with a
+  // 48-hour UTC window in SQL, then post-filter by local date in JS so DST
+  // and the EDT/EST offset are handled correctly.
+  let dateFilter = null;
+  if (date) {
+    dateFilter = date;
+    const [y, m, d] = date.split('-').map(Number);
+    const startUtc = new Date(Date.UTC(y, m - 1, d - 1, 12)).toISOString();
+    const endUtc = new Date(Date.UTC(y, m - 1, d + 1, 12)).toISOString();
+    where.push(`g.played_at >= ? AND g.played_at < ?`);
+    params.push(startUtc, endUtc);
+  }
 
   const whereStr = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const offset = (parseInt(page) - 1) * parseInt(limit);
 
-  const total = db.prepare(`SELECT COUNT(*) as c FROM games g ${whereStr}`).get(...params).c;
-  const games = db.prepare(
-    `SELECT g.*, v.name as venue_name
-     FROM games g
-     LEFT JOIN venues v ON g.venue_id = v.id
-     ${whereStr}
-     ORDER BY g.played_at DESC
-     LIMIT ? OFFSET ?`
-  ).all(...params, parseInt(limit), offset);
+  let games, total;
+  if (dateFilter) {
+    // Pull candidates in the UTC window, then filter by league-local date and paginate in JS.
+    // The window is at most ~48 hours so this is bounded.
+    let rows = db.prepare(
+      `SELECT g.*, v.name as venue_name
+       FROM games g
+       LEFT JOIN venues v ON g.venue_id = v.id
+       ${whereStr}
+       ORDER BY g.played_at DESC`
+    ).all(...params);
+    rows = rows.filter((r) => utcToLocalDate(r.played_at) === dateFilter);
+    total = rows.length;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    games = rows.slice(offset, offset + parseInt(limit));
+  } else {
+    total = db.prepare(`SELECT COUNT(*) as c FROM games g ${whereStr}`).get(...params).c;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    games = db.prepare(
+      `SELECT g.*, v.name as venue_name
+       FROM games g
+       LEFT JOIN venues v ON g.venue_id = v.id
+       ${whereStr}
+       ORDER BY g.played_at DESC
+       LIMIT ? OFFSET ?`
+    ).all(...params, parseInt(limit), offset);
+  }
 
   // Attach participants
   for (const game of games) {
@@ -60,13 +100,18 @@ router.get('/', (req, res) => {
   res.json({ games, total, page: parseInt(page), limit: parseInt(limit) });
 });
 
-// GET /api/games/dates — distinct YYYY-MM-DD dates that have at least one game
+// GET /api/games/dates — distinct YYYY-MM-DD dates (league local time) that have at least one game
 router.get('/dates', (req, res) => {
   const db = getDb();
-  const rows = db.prepare(
-    `SELECT DISTINCT substr(played_at, 1, 10) AS date FROM games ORDER BY date ASC`
-  ).all();
-  res.json(rows.map((r) => r.date));
+  // Need full played_at to convert to league-local date — substring of UTC ISO is wrong
+  // (a game at 8pm EDT is stored as next-day 00:00 UTC and would land on the wrong day).
+  const rows = db.prepare(`SELECT played_at FROM games`).all();
+  const dates = new Set();
+  for (const row of rows) {
+    const local = utcToLocalDate(row.played_at);
+    if (local) dates.add(local);
+  }
+  res.json([...dates].sort());
 });
 
 // GET /api/games/:id
