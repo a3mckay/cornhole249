@@ -286,6 +286,33 @@ router.patch('/:id', requireAdmin, (req, res) => {
   }
 
   const updated = db.prepare(`SELECT * FROM games WHERE id = ?`).get(req.params.id);
+
+  // Refetch weather if the venue or played_at changed — either could shift
+  // which weather observation applies. If the venue was removed, clear the
+  // stale weather entirely (no coords → can't look it up).
+  const venueChanged = venue_id !== undefined && (venue_id || null) !== (game.venue_id || null);
+  const dateChanged = played_at !== undefined && played_at !== game.played_at;
+  if (venueChanged || dateChanged) {
+    if (updated.venue_id) {
+      const venue = db.prepare(`SELECT lat, lng FROM venues WHERE id = ?`).get(updated.venue_id);
+      if (venue && venue.lat && venue.lng) {
+        // Clear immediately so a stale value doesn't render while we refetch
+        db.prepare(`UPDATE games SET weather_json = NULL WHERE id = ?`).run(req.params.id);
+        fetchWeatherForGame(venue.lat, venue.lng, updated.played_at)
+          .then((weather) => {
+            if (weather) {
+              db.prepare(`UPDATE games SET weather_json = ? WHERE id = ?`)
+                .run(JSON.stringify(weather), req.params.id);
+            }
+          })
+          .catch(() => {});
+      }
+    } else {
+      // Venue removed → no way to look up weather
+      db.prepare(`UPDATE games SET weather_json = NULL WHERE id = ?`).run(req.params.id);
+    }
+  }
+
   res.json(updated);
 });
 

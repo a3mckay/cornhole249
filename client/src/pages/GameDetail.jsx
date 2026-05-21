@@ -39,11 +39,24 @@ export default function GameDetail() {
     navigate('/games');
   };
 
+  // Convert a UTC ISO string ("2026-05-21T00:00:00.000Z") into a datetime-local
+  // input value in the BROWSER's local timezone. Slicing the ISO string was
+  // wrong: it stripped the Z and the input then interpreted the value as
+  // local time, silently shifting played_at forward by the local TZ offset
+  // on every save (EDT: +4 hours per edit).
+  const isoToLocalInput = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const openEdit = () => {
     const t1 = game.participants.filter((p) => p.team === 1);
     const t2 = game.participants.filter((p) => p.team === 2);
     setEditFields({
-      played_at: game.played_at ? game.played_at.slice(0, 16) : '',
+      played_at: isoToLocalInput(game.played_at),
       venue_id: game.venue_id || '',
       t1_score: t1[0]?.score ?? '',
       t2_score: t2[0]?.score ?? '',

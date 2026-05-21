@@ -97,6 +97,28 @@ runMigrations();
       }
     }
 
+    // One-shot: correct game #25's played_at, which was shifted +4 hours by
+    // the edit-form datetime-local bug when a venue was added after the fact.
+    // The bug populated the input from a UTC ISO substring, which the input
+    // then read back as local time, baking the local TZ offset (EDT = +4h)
+    // into played_at on save. Subtract 4h to restore the correct UTC time
+    // and clear weather so it refetches against the corrected timestamp.
+    {
+      const alreadyDone = db.prepare(`SELECT value FROM kv_store WHERE key = 'fix_game25_tz_shift'`).get();
+      if (!alreadyDone) {
+        const g25 = db.prepare(`SELECT id, played_at FROM games WHERE id = 25`).get();
+        if (g25 && g25.played_at) {
+          const d = new Date(g25.played_at);
+          if (!isNaN(d.getTime())) {
+            const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000).toISOString();
+            db.prepare(`UPDATE games SET played_at = ?, weather_json = NULL WHERE id = 25`).run(corrected);
+            console.log(`[Fix] Game #25 played_at ${g25.played_at} → ${corrected}; weather cleared for refetch`);
+          }
+        }
+        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('fix_game25_tz_shift', '1')`).run();
+      }
+    }
+
     // Backfill weather for games at venues with coordinates but no weather_json
     const gamesNeedingWeather = db.prepare(`
       SELECT g.id, g.played_at, v.lat, v.lng
