@@ -410,9 +410,17 @@ export default function Stats() {
               </div>
             </div>
             <div className="flex flex-col gap-4">
-              {rivals.slice(0, 5).map((r, i) => (
+              {rivals.slice(0, 5).map((r, i) => {
+                // Render by data shape, not the toggle. When the toggle flips,
+                // rivalsType updates a render before the refetch replaces
+                // `rivals`, so the array can briefly hold the other type's
+                // shape. Keying off the row itself avoids reading undefined.
+                const is1v1 = !!(r.player1 && r.player2);
+                const is2v2 = Array.isArray(r.team1) && Array.isArray(r.team2);
+                if (!is1v1 && !is2v2) return null;
+                return (
                 <div key={i}>
-                  {rivalsType === '1v1' ? (
+                  {is1v1 ? (
                     <>
                       <div className="flex items-center gap-2 mb-1">
                         <img
@@ -485,7 +493,8 @@ export default function Stats() {
                     </>
                   )}
                 </div>
-              ))}
+                );
+              })}
               {rivals.length === 0 && (
                 <div className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>Not enough games yet</div>
               )}
