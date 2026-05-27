@@ -236,11 +236,12 @@ router.get('/team/:p1/:p2', (req, res) => {
   const wins = teamGames.filter((g) => g.is_winner === 1).length;
   const losses = gp - wins;
 
-  // Plus/minus
+  // Plus/minus. In 2v2 both teammates store the FULL team score so SUM doubles
+  // the opponent's value — use MAX to get the actual team score in both formats.
   let totalFor = 0, totalAgainst = 0;
   for (const g of teamGames) {
     const oppScore = db.prepare(
-      `SELECT SUM(score) as s FROM game_participants WHERE game_id = ? AND team != ?`
+      `SELECT MAX(score) as s FROM game_participants WHERE game_id = ? AND team != ?`
     ).get(g.game_id, g.team);
     totalFor += g.score || 0;
     totalAgainst += oppScore?.s || 0;

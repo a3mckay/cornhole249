@@ -30,12 +30,16 @@ router.get('/:id', (req, res) => {
   ).get(req.params.id);
 
   // Point differential
+  // In 2v2 games, both players on a team store the FULL team score (denormalised),
+  // so SUM(score) over an opponent team doubles the value. MAX(score) returns the
+  // correct team score for both formats: identical to the single value in 1v1
+  // and to either teammate's (identical) score in 2v2.
   const diff = db.prepare(
     `SELECT
        SUM(gp.score - opp.total_score) as plus_minus
      FROM game_participants gp
      JOIN (
-       SELECT game_id, team, SUM(score) as total_score
+       SELECT game_id, team, MAX(score) as total_score
        FROM game_participants GROUP BY game_id, team
      ) opp ON opp.game_id = gp.game_id AND opp.team != gp.team
      WHERE gp.user_id = ?`
