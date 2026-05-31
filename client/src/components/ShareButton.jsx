@@ -64,9 +64,10 @@ export default function ShareButton({
         data-testid="share-button"
       >
         {triggerLabel || (
+          /* Upload-arrow share icon — clear at small sizes */
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m9.032 4.026a9 9 0 010-5.368m0 0a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684zM7.684 12.658L16.316 17.342m0-10.684L7.684 11.342" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v13M7 8l5-5 5 5" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 16v3a2 2 0 002 2h10a2 2 0 002-2v-3" />
           </svg>
         )}
       </button>
