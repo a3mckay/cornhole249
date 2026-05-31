@@ -8,6 +8,7 @@ import {
 } from 'recharts';
 import AchievementBadge from '../components/AchievementBadge';
 import GameCard from '../components/GameCard';
+import ShareButton from '../components/ShareButton';
 
 const CONDITION_COLORS = { 'Clear': '#F59E0B', 'Partly Cloudy': '#6B7280', 'Rain': '#3B82F6', 'Overcast': '#9CA3AF', 'Drizzle': '#60A5FA', 'Heavy Rain': '#1D4ED8', 'Thunderstorm': '#7C3AED' };
 
@@ -182,7 +183,13 @@ export default function PlayerProfile() {
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 flex-shrink-0 items-center">
+            <ShareButton
+              imageUrl={`/og/player/${player.id}.png`}
+              shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/players/${player.id}` : ''}
+              title={`${player.display_name} — Cornhole249`}
+              text={`${career.wins}–${career.losses} all-time`}
+            />
             {canEdit && (
               <button onClick={openEdit} className="btn btn-ghost text-sm">✏️ Edit</button>
             )}

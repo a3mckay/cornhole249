@@ -30,6 +30,7 @@ npm-debug.log*
 
 # OG image preview outputs (regenerable via `node server/og/preview.js`)
 og-samples/
+og-samples-live/
 
 # OG image PNG cache (production renderer writes here at runtime)
 server/og/cache/

@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import WeatherBadge from '../components/WeatherBadge';
 import CommentSection from '../components/CommentSection';
 import OddsBar from '../components/OddsBar';
+import ShareButton from '../components/ShareButton';
 
 export default function GameDetail() {
   const { id } = useParams();
@@ -136,14 +137,22 @@ export default function GameDetail() {
             </span>
           </div>
         </div>
-        {!!user?.is_admin && (
-          <div className="flex gap-2">
-            <button onClick={openEdit} className="btn btn-ghost text-sm">✏️ Edit</button>
-            <button onClick={handleDelete} disabled={deleting} className="btn btn-danger text-sm">
-              {deleting ? 'Deleting...' : '🗑️ Delete'}
-            </button>
-          </div>
-        )}
+        <div className="flex gap-2 items-center">
+          <ShareButton
+            imageUrl={`/og/game/${game.id}.png`}
+            shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/games/${game.id}` : ''}
+            title={`Game #${game.id} — Cornhole249`}
+            text={`${teamLabel(team1)} ${t1Score}–${t2Score} ${teamLabel(team2)}`}
+          />
+          {!!user?.is_admin && (
+            <>
+              <button onClick={openEdit} className="btn btn-ghost text-sm">✏️ Edit</button>
+              <button onClick={handleDelete} disabled={deleting} className="btn btn-danger text-sm">
+                {deleting ? 'Deleting...' : '🗑️ Delete'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Scoreboard */}

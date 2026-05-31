@@ -14,6 +14,13 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      // OG image routes — proxied so the ShareButton modal preview works in
+      // dev. In production, both /og and the React app are served by Express
+      // so no proxy is needed.
+      '/og': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
   test: {

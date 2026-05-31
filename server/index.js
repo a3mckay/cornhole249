@@ -207,11 +207,20 @@ app.use('/api/trash-talk', require('./routes/trashtalk'));
 // Admin routes
 app.use('/api/admin', require('./routes/admin'));
 
+// OG image routes — must come BEFORE the static-client catch-all so /og/*.png
+// is served by Express rather than handed off to index.html.
+app.use('/og', require('./og/routes'));
+
 // Serve built client in production
 if (process.env.NODE_ENV === 'production') {
   const clientDist = path.join(__dirname, '../client/dist');
   // Hashed assets (JS/CSS) — safe to cache long-term since content hash changes on every build
   app.use(express.static(clientDist, { maxAge: '1y', index: false }));
+  // Crawler-friendly OG meta tag injection for matching routes (/games/:id,
+  // /players/:id, etc.). Non-matching routes pass through to the catch-all
+  // below, which serves the raw index.html.
+  const { ogMetaMiddleware } = require('./middleware/og-meta');
+  app.use(ogMetaMiddleware(clientDist));
   // index.html — never cache so browsers always get the latest asset hashes after a deploy
   app.get('*', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

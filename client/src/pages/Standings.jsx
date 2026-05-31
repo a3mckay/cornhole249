@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useStandings } from '../hooks/useStandings';
 import StandingsTable from '../components/StandingsTable';
+import ShareButton from '../components/ShareButton';
 import { standingsApi } from '../api';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -84,9 +85,18 @@ export default function Standings() {
 
   return (
     <div>
-      <h1 className="font-display text-4xl mb-6" style={{ color: 'var(--color-text-primary)' }}>
-        Standings
-      </h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="font-display text-4xl" style={{ color: 'var(--color-text-primary)' }}>
+          Standings
+        </h1>
+        <ShareButton
+          imageUrl={`/og/standings.png?type=${type}&season=${season}`}
+          shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/standings?type=${type}` : ''}
+          title={`Cornhole249 Standings — ${type.toUpperCase()} ${season}`}
+          text={`Live ${type.toUpperCase()} standings`}
+          variant="primary"
+        />
+      </div>
 
       {/* Controls */}
       <div className="flex gap-3 flex-wrap mb-5 items-center">

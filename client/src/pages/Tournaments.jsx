@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { tournamentsApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import BracketView from '../components/BracketView';
+import ShareButton from '../components/ShareButton';
 
 const STATUS_COLORS = {
   pending: { bg: '#FEF3C7', text: '#92400E', label: 'Pending' },
@@ -260,14 +261,22 @@ export default function Tournaments() {
                 {selected.game_type} · {selected.format === 'single_elim' ? 'Single Elimination' : 'Double Elimination'} · Season {selected.season}
               </div>
             </div>
-            {(() => {
-              const sc = STATUS_COLORS[selected.status] || STATUS_COLORS.pending;
-              return (
-                <span className="px-3 py-1 rounded-full text-sm font-ui font-bold" style={{ background: sc.bg, color: sc.text }}>
-                  {sc.label}
-                </span>
-              );
-            })()}
+            <div className="flex items-center gap-3">
+              {(() => {
+                const sc = STATUS_COLORS[selected.status] || STATUS_COLORS.pending;
+                return (
+                  <span className="px-3 py-1 rounded-full text-sm font-ui font-bold" style={{ background: sc.bg, color: sc.text }}>
+                    {sc.label}
+                  </span>
+                );
+              })()}
+              <ShareButton
+                imageUrl={`/og/tournament/${selected.id}.png`}
+                shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/tournaments?id=${selected.id}` : ''}
+                title={`${selected.name} — Cornhole249`}
+                text={`${selected.game_type} tournament`}
+              />
+            </div>
           </div>
           <div className="card">
             <BracketView tournament={selected} onRefresh={() => loadTournament(selected.id)} />
