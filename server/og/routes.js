@@ -122,8 +122,10 @@ router.get('/game/:id.png', async (req, res) => {
     t1Score: team1[0].score,
     t2Score: team2[0].score,
     venue: game.venue_name || null,
+    // Note: weather_json stores condition but no emoji field — the template
+    // derives the emoji from condition via its WEATHER_EMOJI lookup.
     weather: weather
-      ? { emoji: weather.emoji, temp_c: weather.temp_c, condition: weather.condition }
+      ? { condition: weather.condition, temp_c: weather.temp_c }
       : null,
   };
 

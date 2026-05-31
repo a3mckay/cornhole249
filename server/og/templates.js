@@ -16,6 +16,20 @@ const C = {
   gold: '#D4B017',
 };
 
+// Mirrors WeatherBadge.jsx — maps condition string → emoji.
+const WEATHER_EMOJI = {
+  'Clear':         '☀️',
+  'Partly Cloudy': '⛅',
+  'Overcast':      '☁️',
+  'Fog':           '🌫️',
+  'Drizzle':       '🌦️',
+  'Rain':          '🌧️',
+  'Heavy Rain':    '⛈️',
+  'Snow':          '❄️',
+  'Thunderstorm':  '⛈️',
+  'Unknown':       '🌡️',
+};
+
 const PALETTES = [
   '#3A6B35', '#D48B2D', '#B94040', '#6366F1', '#EC4899',
   '#14B8A6', '#F59E0B', '#8B5CF6', '#06B6D4', '#84CC16',
@@ -439,9 +453,31 @@ function gameCard(game) {
         game.weather &&
           h(
             'div',
-            { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-            h('span', null, game.weather.emoji),
-            h('span', null, `${game.weather.temp_c}°C · ${game.weather.condition}`)
+            {
+              style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                background: 'rgba(255,255,255,0.55)',
+                border: `1px solid ${C.border}`,
+                borderRadius: 999,
+                padding: '6px 16px 6px 10px',
+              },
+            },
+            // Large weather emoji rendered via Twemoji
+            h('span', { style: { fontSize: 32, display: 'flex', lineHeight: 1 } },
+              game.weather.emoji || WEATHER_EMOJI[game.weather.condition] || '🌡️'
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', flexDirection: 'column', gap: 1 } },
+              h('span', { style: { fontWeight: 700, fontSize: 18, color: C.textPrimary, lineHeight: 1.2 } },
+                game.weather.condition
+              ),
+              h('span', { style: { fontSize: 15, color: C.textSecondary, lineHeight: 1.2 } },
+                `${game.weather.temp_c}°C`
+              )
+            )
           )
       )
     )
