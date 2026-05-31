@@ -24,6 +24,7 @@ async function save(name, node) {
   console.log(`  ${name}.png  (${(png.length / 1024).toFixed(0)} KB)  →  ${file}`);
 }
 
+// team1/team2 are now arrays of {name, avatarUrl} — avatarUrl null uses initials.
 (async () => {
   console.log(`Rendering OG samples to: ${outDir}\n`);
 
@@ -34,8 +35,8 @@ async function save(name, node) {
       game_type: '1v1',
       league_name: 'Cornhole249',
       played_at: '2026-05-04T22:30:00Z',
-      team1: ['Andrew McKay'],
-      team2: ['Wiggz'],
+      team1: [{ name: 'Andrew McKay', avatarUrl: null }],
+      team2: [{ name: 'Wiggz', avatarUrl: null }],
       t1Score: 10,
       t2Score: 7,
       venue: '249 Park',
@@ -50,8 +51,8 @@ async function save(name, node) {
       game_type: '2v2',
       league_name: 'Steve\'s Last Stand',
       played_at: '2026-05-04T22:30:00Z',
-      team1: ['Andrew', 'Dave'],
-      team2: ['Wiggz', 'Alex'],
+      team1: [{ name: 'Andrew', avatarUrl: null }, { name: 'Dave', avatarUrl: null }],
+      team2: [{ name: 'Wiggz', avatarUrl: null }, { name: 'Alex', avatarUrl: null }],
       t1Score: 9,
       t2Score: 10,
       venue: '249 Park',
@@ -65,6 +66,7 @@ async function save(name, node) {
     playerCard({
       display_name: 'Andrew McKay',
       nickname: 'The Inevitable',
+      avatar_url: null,
       gp: 41,
       wins: 28,
       losses: 13,
@@ -82,6 +84,7 @@ async function save(name, node) {
     playerCard({
       display_name: 'Dave',
       nickname: 'The Underdog',
+      avatar_url: null,
       gp: 12,
       wins: 3,
       losses: 9,
@@ -100,11 +103,11 @@ async function save(name, node) {
       league_name: 'Cornhole249',
       period_label: 'Standings · Season 2026',
       rows: [
-        { display_name: 'Andrew McKay', gp: 41, wins: 28, losses: 13, pts: 56, win_pct: 68.3, plus_minus: 85, streak: 'W5' },
-        { display_name: 'Wiggz',        gp: 36, wins: 22, losses: 14, pts: 44, win_pct: 61.1, plus_minus: 42, streak: 'L1' },
-        { display_name: 'Dave',         gp: 37, wins: 18, losses: 19, pts: 36, win_pct: 48.6, plus_minus: -8, streak: 'W2' },
-        { display_name: 'Alex',         gp: 32, wins: 14, losses: 18, pts: 28, win_pct: 43.8, plus_minus: -22, streak: 'L3' },
-        { display_name: 'Matt',         gp: 32, wins: 10, losses: 22, pts: 20, win_pct: 31.3, plus_minus: -64, streak: 'L4' },
+        { display_name: 'Andrew McKay', avatar_url: null, gp: 41, wins: 28, losses: 13, pts: 56, win_pct: 68.3, plus_minus: 85, streak: 'W5' },
+        { display_name: 'Wiggz',        avatar_url: null, gp: 36, wins: 22, losses: 14, pts: 44, win_pct: 61.1, plus_minus: 42, streak: 'L1' },
+        { display_name: 'Dave',         avatar_url: null, gp: 37, wins: 18, losses: 19, pts: 36, win_pct: 48.6, plus_minus: -8, streak: 'W2' },
+        { display_name: 'Alex',         avatar_url: null, gp: 32, wins: 14, losses: 18, pts: 28, win_pct: 43.8, plus_minus: -22, streak: 'L3' },
+        { display_name: 'Matt',         avatar_url: null, gp: 32, wins: 10, losses: 22, pts: 20, win_pct: 31.3, plus_minus: -64, streak: 'L4' },
       ],
     })
   );
@@ -119,19 +122,16 @@ async function save(name, node) {
       status: 'in_progress',
       teams_count: 8,
       rounds: [
-        // Quarterfinals — all 4 complete
         [
           { team1: { name: 'Andrew', score: 10, won: true },  team2: { name: 'Steve',  score: 6 } },
           { team1: { name: 'Wiggz',  score: 7 },               team2: { name: 'Cat',    score: 10, won: true } },
           { team1: { name: 'Dave',   score: 10, won: true },  team2: { name: 'Joe',    score: 8 } },
           { team1: { name: 'Alex',   score: 9 },               team2: { name: 'Matt',   score: 10, won: true } },
         ],
-        // Semifinals — top one complete, bottom one in progress
         [
           { team1: { name: 'Andrew', score: 10, won: true },  team2: { name: 'Cat',    score: 7 } },
-          null, // TBD — bottom semi hasn't been played yet
+          null,
         ],
-        // Final — not played yet
         [null],
       ],
     })
@@ -165,8 +165,8 @@ async function save(name, node) {
       tournament_name: "Steve's Last Stand",
       round_label: 'Semifinal',
       game_type: '1v1',
-      team1: ['Andrew'],
-      team2: ['Cat'],
+      team1: [{ name: 'Andrew', avatarUrl: null }],
+      team2: [{ name: 'Cat', avatarUrl: null }],
       t1Score: 10,
       t2Score: 7,
     })

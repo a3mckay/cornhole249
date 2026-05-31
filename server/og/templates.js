@@ -27,7 +27,35 @@ function avatarColor(seed) {
   return PALETTES[Math.abs(hash) % PALETTES.length];
 }
 
-function Avatar(name, size = 80) {
+// Avatar renders a circular player photo when avatarUrl is supplied, and
+// falls back to an initials circle when it isn't (or on load error).
+// avatarUrl must be a data URL or an absolute HTTPS URL — satori can't
+// resolve relative paths.  DiceBear URLs should already be /png format
+// (not /svg) before being passed here.
+function Avatar(name, size = 80, avatarUrl = null) {
+  const ringStyle = {
+    width: size,
+    height: size,
+    borderRadius: '50%',
+    border: '3px solid rgba(255,255,255,0.85)',
+    boxShadow: '0 4px 12px rgba(44,36,22,0.18)',
+    overflow: 'hidden',
+    display: 'flex',
+    flexShrink: 0,
+  };
+
+  if (avatarUrl) {
+    return h(
+      'div',
+      { style: ringStyle },
+      h('img', {
+        src: avatarUrl,
+        style: { width: '100%', height: '100%', objectFit: 'cover' },
+      })
+    );
+  }
+
+  // Initials fallback
   const initials = (name || '?')
     .split(/\s+/)
     .map((w) => w[0] || '')
@@ -38,19 +66,14 @@ function Avatar(name, size = 80) {
     'div',
     {
       style: {
-        width: size,
-        height: size,
-        borderRadius: '50%',
+        ...ringStyle,
         background: avatarColor(name || ''),
         color: 'white',
-        display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         fontFamily: 'Nunito',
         fontSize: Math.round(size * 0.4),
         fontWeight: 900,
-        border: '3px solid rgba(255,255,255,0.85)',
-        boxShadow: '0 4px 12px rgba(44,36,22,0.18)',
       },
     },
     initials
@@ -247,6 +270,7 @@ function gameCard(game) {
     day: 'numeric',
   });
 
+  // team is now an array of {name, avatarUrl} objects
   const TeamCol = (team, score, won) =>
     h(
       'div',
@@ -272,7 +296,7 @@ function gameCard(game) {
           h(
             'div',
             { style: { marginLeft: i > 0 ? -16 : 0, display: 'flex' } },
-            Avatar(p, 76)
+            Avatar(p.name, 76, p.avatarUrl)
           )
         )
       ),
@@ -288,7 +312,7 @@ function gameCard(game) {
             marginBottom: 6,
           },
         },
-        team.join(' & ')
+        team.map((p) => p.name).join(' & ')
       ),
       h(
         'div',
@@ -523,7 +547,7 @@ function playerCard(player) {
       h(
         'div',
         { style: { display: 'flex', flexShrink: 0 } },
-        Avatar(player.display_name, 260)
+        Avatar(player.display_name, 260, player.avatar_url || null)
       ),
       // Stats column
       h(
@@ -713,7 +737,7 @@ function standingsCard({ league_name, period_label, rows }) {
       },
       Cell(50, rankContent),
       FlexCell([
-        Avatar(r.display_name, 44),
+        Avatar(r.display_name, 44, r.avatar_url || null),
         h(
           'span',
           {
@@ -1121,6 +1145,7 @@ function tournamentOverviewCard(t) {
 function tournamentMatchCard(m) {
   const team1Won = m.t1Score > m.t2Score;
 
+  // team is an array of {name, avatarUrl} objects
   const TeamCol = (team, score, won) =>
     h(
       'div',
@@ -1146,7 +1171,7 @@ function tournamentMatchCard(m) {
           h(
             'div',
             { style: { marginLeft: i > 0 ? -16 : 0, display: 'flex' } },
-            Avatar(p, 72)
+            Avatar(p.name, 72, p.avatarUrl)
           )
         )
       ),
@@ -1162,7 +1187,7 @@ function tournamentMatchCard(m) {
             marginBottom: 6,
           },
         },
-        team.join(' & ')
+        team.map((p) => p.name).join(' & ')
       ),
       h(
         'div',

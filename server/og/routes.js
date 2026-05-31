@@ -21,6 +21,16 @@ const {
 
 const router = express.Router();
 
+// DiceBear serves SVG by default; satori renders SVGs poorly as <img> sources.
+// Swap the format segment so satori gets a PNG it can decode.
+function normalizeAvatarUrl(url) {
+  if (!url) return null;
+  // data URLs (uploaded photos) — pass through as-is
+  if (url.startsWith('data:')) return url;
+  // DiceBear SVG → PNG
+  return url.replace('/svg?', '/png?');
+}
+
 // Disk cache. In production this lives on the Railway Volume so PNGs survive
 // restarts. Files are written as `{type}-{id}-{contentHash}.png`; a data
 // change produces a new hash and the old file becomes orphaned (a sweeper
@@ -82,7 +92,7 @@ router.get('/game/:id.png', async (req, res) => {
 
   const participants = db
     .prepare(
-      `SELECT gp.*, u.display_name
+      `SELECT gp.*, u.display_name, u.avatar_url
        FROM game_participants gp
        JOIN users u ON gp.user_id = u.id
        WHERE gp.game_id = ?
@@ -107,8 +117,8 @@ router.get('/game/:id.png', async (req, res) => {
     game_type: game.game_type,
     league_name: 'Cornhole249',
     played_at: game.played_at,
-    team1: team1.map((p) => p.display_name),
-    team2: team2.map((p) => p.display_name),
+    team1: team1.map((p) => ({ name: p.display_name, avatarUrl: normalizeAvatarUrl(p.avatar_url) })),
+    team2: team2.map((p) => ({ name: p.display_name, avatarUrl: normalizeAvatarUrl(p.avatar_url) })),
     t1Score: team1[0].score,
     t2Score: team2[0].score,
     venue: game.venue_name || null,
@@ -128,7 +138,7 @@ router.get('/player/:id.png', async (req, res) => {
 
   const user = db
     .prepare(
-      `SELECT id, display_name, nickname FROM users WHERE id = ?`
+      `SELECT id, display_name, nickname, avatar_url FROM users WHERE id = ?`
     )
     .get(id);
   if (!user) return serveFallback(res);
@@ -186,6 +196,7 @@ router.get('/player/:id.png', async (req, res) => {
   const data = {
     display_name: user.display_name,
     nickname: user.nickname || null,
+    avatar_url: normalizeAvatarUrl(user.avatar_url),
     gp,
     wins,
     losses,
@@ -280,9 +291,9 @@ router.get('/tournament/:id/match/:matchId.png', async (req, res) => {
 
   const t1Ids = JSON.parse(match.team1_player_ids || '[]');
   const t2Ids = JSON.parse(match.team2_player_ids || '[]');
-  const t1Names = t1Ids.map((uid) => playerName(db, uid)).filter(Boolean);
-  const t2Names = t2Ids.map((uid) => playerName(db, uid)).filter(Boolean);
-  if (!t1Names.length || !t2Names.length) return serveFallback(res);
+  const t1Players = t1Ids.map((uid) => playerObj(db, uid)).filter(Boolean);
+  const t2Players = t2Ids.map((uid) => playerObj(db, uid)).filter(Boolean);
+  if (!t1Players.length || !t2Players.length) return serveFallback(res);
 
   const totalRounds = db
     .prepare(`SELECT MAX(round) as r FROM tournament_matches WHERE tournament_id = ?`)
@@ -292,8 +303,8 @@ router.get('/tournament/:id/match/:matchId.png', async (req, res) => {
     tournament_name: t.name,
     round_label: roundLabel(totalRounds, match.round),
     game_type: t.game_type,
-    team1: t1Names,
-    team2: t2Names,
+    team1: t1Players,
+    team2: t2Players,
     t1Score: match.score_team1 ?? 0,
     t2Score: match.score_team2 ?? 0,
   };
@@ -311,6 +322,12 @@ router.get('/fallback.png', async (req, res) => {
 function playerName(db, userId) {
   const u = db.prepare(`SELECT display_name FROM users WHERE id = ?`).get(userId);
   return u ? u.display_name : null;
+}
+
+function playerObj(db, userId) {
+  const u = db.prepare(`SELECT display_name, avatar_url FROM users WHERE id = ?`).get(userId);
+  if (!u) return null;
+  return { name: u.display_name, avatarUrl: normalizeAvatarUrl(u.avatar_url) };
 }
 
 function roundLabel(totalRounds, round) {
@@ -384,6 +401,7 @@ function buildStandings1v1(db, season) {
       `SELECT
          gp.user_id,
          u.display_name,
+         u.avatar_url,
          COUNT(*) as gp,
          SUM(gp.is_winner) as wins,
          COUNT(*) - SUM(gp.is_winner) as losses,
@@ -405,6 +423,7 @@ function buildStandings1v1(db, season) {
 
   return rows.map((r) => ({
     display_name: r.display_name,
+    avatar_url: normalizeAvatarUrl(r.avatar_url),
     gp: r.gp,
     wins: r.wins,
     losses: r.losses,
@@ -437,7 +456,7 @@ function buildStandings2v2(db, season) {
   for (const game of games) {
     const participants = db
       .prepare(
-        `SELECT gp.*, u.display_name
+        `SELECT gp.*, u.display_name, u.avatar_url
          FROM game_participants gp
          JOIN users u ON gp.user_id = u.id
          WHERE gp.game_id = ?
@@ -457,6 +476,8 @@ function buildStandings2v2(db, season) {
           key,
           user_ids: ids,
           display_name: team.map((p) => p.display_name).join(' & '),
+          // Use the first player's avatar for the pair row in the standings card
+          avatar_url: normalizeAvatarUrl(team[0].avatar_url),
           gp: 0,
           wins: 0,
           losses: 0,
@@ -484,6 +505,7 @@ function buildStandings2v2(db, season) {
     )
     .map((pair) => ({
       display_name: pair.display_name,
+      avatar_url: pair.avatar_url,
       user_ids: pair.user_ids,
       gp: pair.gp,
       wins: pair.wins,
