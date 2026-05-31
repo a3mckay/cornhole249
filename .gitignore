@@ -27,3 +27,9 @@ npm-debug.log*
 
 # Claude
 .claude/
+
+# OG image preview outputs (regenerable via `node server/og/preview.js`)
+og-samples/
+
+# OG image PNG cache (production renderer writes here at runtime)
+server/og/cache/
