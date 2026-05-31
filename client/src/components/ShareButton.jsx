@@ -19,7 +19,7 @@ export default function ShareButton({
   imageUrl,
   title = 'Cornhole249',
   text,
-  variant = 'icon',
+  variant = 'primary',
   className = '',
 }) {
   const { user } = useAuth();
