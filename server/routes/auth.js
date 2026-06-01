@@ -469,6 +469,36 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// ── POST /auth/claim-verify-pin ──────────────────────────────────────────────
+// Verifies a PIN-only user's PIN and stores a short-lived session flag so the
+// next Google OAuth flow links Google to that user instead of creating a new one.
+// Body: { user_id, pin }
+
+router.post('/claim-verify-pin', async (req, res) => {
+  try {
+    const { user_id, pin } = req.body;
+    if (!user_id || !pin) return res.status(400).json({ error: 'user_id and pin required' });
+
+    const db = getDb();
+    const user = await db
+      .selectFrom('users')
+      .select(['id', 'pin', 'email', 'google_id'])
+      .where('id', '=', parseInt(user_id))
+      .executeTakeFirst();
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user.pin || user.pin !== pin) return res.status(401).json({ error: 'Incorrect PIN' });
+    if (user.email || user.google_id) return res.status(409).json({ error: 'Account already claimed' });
+
+    // Store a short-lived claim in the session (5-minute window)
+    req.session.pendingClaim = { userId: user.id, expiresAt: Date.now() + 5 * 60 * 1000 };
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── POST /auth/set-pin ───────────────────────────────────────────────────────
 // DEPRECATED — kept for any code still calling it; always returns 410 Gone.
 

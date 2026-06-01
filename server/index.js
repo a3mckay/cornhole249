@@ -77,14 +77,40 @@ if (process.env.GOOGLE_CLIENT_ID) {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
         scope: ['profile', 'email'],
+        passReqToCallback: true,
       },
-      async (accessToken, refreshToken, profile, done) => {
+      async (req, accessToken, refreshToken, profile, done) => {
         try {
           const db = getDb();
           const googleId = profile.id;
           const googleEmail = profile.emails?.[0]?.value?.toLowerCase() || null;
           const displayName = profile.displayName || 'Player';
           const avatarUrl = profile.photos?.[0]?.value || null;
+
+          // ── Claim-account flow: link Google to an existing PIN-only user ──────
+          const pending = req.session?.pendingClaim;
+          if (pending && pending.expiresAt > Date.now()) {
+            try {
+              const claimed = await db
+                .updateTable('users')
+                .set({
+                  google_id: googleId,
+                  google_email: googleEmail,
+                  pin: null,
+                  email_verified_at: googleEmail ? new Date().toISOString() : null,
+                  ...(avatarUrl ? { avatar_url: avatarUrl } : {}),
+                })
+                .where('id', '=', pending.userId)
+                .returning(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id'])
+                .executeTakeFirstOrThrow();
+              delete req.session.pendingClaim;
+              return done(null, claimed);
+            } catch (e) {
+              return done(e);
+            }
+          }
+
+          // ── Normal Google login / registration ────────────────────────────────
 
           // 1. Look up by google_id
           let user = await db

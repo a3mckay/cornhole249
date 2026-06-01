@@ -47,6 +47,12 @@ export const authApi = {
       .post('/auth/claim-account', { user_id: userId, pin, email, password }, { withCredentials: true })
       .then((r) => r.data),
 
+  // Verify PIN in preparation for linking a Google account (claim-via-Google flow)
+  claimVerifyPin: (userId, pin) =>
+    axios
+      .post('/auth/claim-verify-pin', { user_id: userId, pin }, { withCredentials: true })
+      .then((r) => r.data),
+
   logout: () => axios.post('/auth/logout', {}, { withCredentials: true }).then((r) => r.data),
 
   // Email verification
