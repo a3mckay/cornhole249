@@ -294,6 +294,10 @@ function seed() {
 }
 
 function seedIfEmpty() {
+  // In Postgres mode the DB uses the async Kysely API — sync seed code won't work.
+  // Seeding/bootstrapping is handled by the one-time data migration or BOOTSTRAP_ADMIN_NAME.
+  if (process.env.DATABASE_URL) return;
+
   const db = getDb();
   try {
     const count = db.prepare(`SELECT COUNT(*) as c FROM users`).get().c;

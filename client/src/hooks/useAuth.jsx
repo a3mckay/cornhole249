@@ -1,11 +1,12 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { authApi, usersApi } from '../api';
+import { authApi, usersApi, leaguesApi } from '../api';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
+  const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,18 +16,23 @@ export function AuthProvider({ children }) {
     ]).then(([me, users]) => {
       setUser(me);
       setAllUsers(users);
+      if (me) {
+        leaguesApi.mine().catch(() => []).then(setLeagues);
+      }
     }).finally(() => setLoading(false));
   }, []);
 
-  const login = async (userId, pin) => {
-    const u = await authApi.login(userId, pin);
+  const login = async (email, password) => {
+    const u = await authApi.login(email, password);
     setUser(u);
+    leaguesApi.mine().catch(() => []).then(setLeagues);
     return u;
   };
 
   const logout = async () => {
     await authApi.logout();
     setUser(null);
+    setLeagues([]);
   };
 
   const refreshUser = async () => {
@@ -36,11 +42,15 @@ export function AuthProvider({ children }) {
     ]);
     setUser(me);
     setAllUsers(users);
+    if (me) {
+      const myLeagues = await leaguesApi.mine().catch(() => []);
+      setLeagues(myLeagues);
+    }
     return me;
   };
 
   return (
-    <AuthContext.Provider value={{ user, allUsers, loading, login, logout, setUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, allUsers, leagues, loading, login, logout, setUser, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

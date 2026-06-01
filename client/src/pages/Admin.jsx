@@ -20,12 +20,23 @@ export default function Admin() {
   const [newCode, setNewCode] = useState(null);
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Referrals
+  const [referrals, setReferrals] = useState(null);
+  const [expandedReferrers, setExpandedReferrers] = useState({});
+
+  // Account migration
+  const [migration, setMigration] = useState(null);
+  const [migrationCopied, setMigrationCopied] = useState(false);
+
   useEffect(() => {
     if (!user?.is_admin) { navigate('/'); return; }
-    Promise.all([adminApi.users(), adminApi.joinCodes()])
-      .then(([u, c]) => { setUsers(u); setJoinCodes(c); })
+    Promise.all([adminApi.users(), adminApi.joinCodes(), adminApi.referrals(), adminApi.migrationStatus()])
+      .then(([u, c, r, m]) => { setUsers(u); setJoinCodes(c); setReferrals(r); setMigration(m); })
       .finally(() => setLoading(false));
   }, [user]);
+
+  const toggleReferrer = (id) =>
+    setExpandedReferrers((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const handleGenerateCode = async () => {
     setGeneratingCode(true);
@@ -231,6 +242,121 @@ export default function Admin() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Account Migration */}
+      <div className="card mb-6">
+        <h2 className="font-display text-2xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          🔑 Account Migration
+        </h2>
+        <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Players still using PIN-only login who haven't set up email + password yet.
+        </p>
+
+        {!migration ? (
+          <div className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
+        ) : migration.count === 0 ? (
+          <div className="flex items-center gap-2 text-sm font-ui py-3 px-4 rounded-xl" style={{ background: '#D1FAE5', color: '#065F46' }}>
+            <span>✓</span>
+            <span>All players have claimed their accounts — PIN login can be safely removed.</span>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 mb-3 p-3 rounded-xl" style={{ background: '#FEF3C7', border: '1px solid #FDE68A' }}>
+              <span className="text-lg">⚠️</span>
+              <div className="flex-1">
+                <div className="font-ui font-semibold text-sm" style={{ color: '#92400E' }}>
+                  {migration.count} player{migration.count !== 1 ? 's' : ''} still need to claim {migration.count !== 1 ? 'their accounts' : 'their account'}
+                </div>
+                <div className="text-xs font-ui mt-0.5" style={{ color: '#92400E', opacity: 0.8 }}>
+                  Send them to <strong>cornhole249.com/claim-account</strong> to set up email + password
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(migration.users.map((u) => u.display_name).join(', '));
+                  setMigrationCopied(true);
+                  setTimeout(() => setMigrationCopied(false), 2000);
+                }}
+                className="text-xs font-ui font-semibold px-3 py-1.5 rounded-lg flex-shrink-0"
+                style={{ background: '#FDE68A', color: '#92400E' }}
+              >
+                {migrationCopied ? '✓ Copied!' : 'Copy names'}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {migration.users.map((u) => (
+                <span
+                  key={u.id}
+                  className="text-sm font-ui px-3 py-1 rounded-full"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                >
+                  {u.display_name}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Referrals */}
+      <div className="card mb-6">
+        <h2 className="font-display text-2xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          🔗 Referrals
+        </h2>
+        <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Players who joined via a shared link, and who referred them.
+        </p>
+
+        {!referrals ? (
+          <div className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
+        ) : referrals.total_referrals === 0 ? (
+          <div className="text-sm font-ui py-4 text-center" style={{ color: 'var(--color-text-secondary)' }}>
+            No referrals yet. Share the app and watch this fill up.
+          </div>
+        ) : (
+          <>
+            <div className="text-sm font-ui mb-4 font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+              {referrals.total_referrals} total referral{referrals.total_referrals !== 1 ? 's' : ''} from {referrals.referrers.length} player{referrals.referrers.length !== 1 ? 's' : ''}
+            </div>
+            <div className="flex flex-col gap-2">
+              {referrals.referrers.map((r) => (
+                <div key={r.referrer_id} className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+                  {/* Referrer row */}
+                  <button
+                    onClick={() => toggleReferrer(r.referrer_id)}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-left transition-colors"
+                    style={{ background: 'var(--color-surface)' }}
+                  >
+                    <span className="text-xs" style={{ color: 'var(--color-text-secondary)', minWidth: 12 }}>
+                      {expandedReferrers[r.referrer_id] ? '▾' : '▸'}
+                    </span>
+                    <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                      {r.referrer_name}
+                    </span>
+                    <span className="ml-auto text-xs font-ui px-2 py-0.5 rounded-full" style={{ background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }}>
+                      {r.referral_count} referral{r.referral_count !== 1 ? 's' : ''}
+                    </span>
+                  </button>
+
+                  {/* Referee list — expandable */}
+                  {expandedReferrers[r.referrer_id] && (
+                    <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                      {r.referees.map((ref) => (
+                        <div key={ref.id} className="flex items-center gap-3 px-4 py-2 text-sm font-ui" style={{ background: 'var(--color-bg)' }}>
+                          <span style={{ color: 'var(--color-text-primary)' }}>{ref.display_name}</span>
+                          <span className="ml-auto text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                            joined {new Date(ref.joined_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

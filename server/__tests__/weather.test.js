@@ -5,8 +5,12 @@ describe('WMO weather code mapping', () => {
     expect(mapWmoToCondition(0)).toBe('Clear');
   });
 
-  test('code 3 → Partly Cloudy', () => {
-    expect(mapWmoToCondition(3)).toBe('Partly Cloudy');
+  test('code 2 → Partly Cloudy', () => {
+    expect(mapWmoToCondition(2)).toBe('Partly Cloudy');
+  });
+
+  test('code 3 → Overcast', () => {
+    expect(mapWmoToCondition(3)).toBe('Overcast');
   });
 
   test('code 61 → Rain', () => {

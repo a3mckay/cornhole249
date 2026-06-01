@@ -1,148 +1,18 @@
-require('dotenv').config();
+// Sentry must be initialised before any other require so it can instrument Node internals.
+// instrument.js also calls dotenv.config() so we don't need to repeat it here.
+require('./instrument');
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
 const compression = require('compression');
 const path = require('path');
-const { runMigrations, getDb } = require('./db');
+const passport = require('passport');
+const { Strategy: GoogleStrategy } = require('passport-google-oauth20');
+const bcrypt = require('bcrypt');
+const { runMigrations, getDb, sql } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-// Run migrations first
-runMigrations();
-
-// Recalculate all Elo ratings on startup to apply latest formula
-{
-  const { recalculateAllElos } = require('./lib/elo');
-  const db = getDb();
-  const games = db.prepare(`SELECT * FROM games ORDER BY played_at ASC`).all();
-  const participants = db.prepare(`SELECT * FROM game_participants`).all();
-  if (games.length > 0) {
-    const newElos = recalculateAllElos(games, participants);
-    const stmt = db.prepare(`UPDATE users SET elo_rating = ? WHERE id = ?`);
-    const updateAll = db.transaction((elos) => {
-      for (const [userId, elo] of Object.entries(elos)) {
-        stmt.run(elo, parseInt(userId));
-      }
-    });
-    updateAll(newElos);
-    console.log(`[Elo] Recalculated ratings for ${Object.keys(newElos).length} players`);
-  }
-}
-
-// Backfill venue coordinates and weather for games missing it
-(async () => {
-  try {
-    const { fetchWeatherForGame } = require('./routes/weather');
-    const db = getDb();
-
-    // One-time fix: game timestamps were stored with UTC offset instead of local time.
-    // The datetime-local input was initialised with toISOString() (UTC), so games entered
-    // in Eastern time (EDT = UTC-4) were stored 4 hours ahead of the actual local time.
-    // Correct by subtracting 4 hours for all 249 Park games in 2026.
-    // Uses a kv_store table as a migration guard so this only runs once.
-    {
-      db.prepare(`CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT)`).run();
-      const alreadyFixed = db.prepare(`SELECT value FROM kv_store WHERE key = 'fix_249park_tz_2026'`).get();
-      if (!alreadyFixed) {
-        const venue249Fix = db.prepare(`SELECT id FROM venues WHERE name = '249 Park'`).get();
-        if (venue249Fix) {
-          const affected = db.prepare(`
-            SELECT id, played_at FROM games WHERE venue_id = ? AND season = 2026
-          `).all(venue249Fix.id);
-
-          let fixedCount = 0;
-          for (const game of affected) {
-            const d = new Date(game.played_at);
-            if (isNaN(d.getTime())) continue;
-            const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000);
-            db.prepare(`UPDATE games SET played_at = ? WHERE id = ?`)
-              .run(corrected.toISOString(), game.id);
-            fixedCount++;
-          }
-          console.log(`[DateFix] Corrected ${fixedCount} 249 Park 2026 game timestamps (EDT -4h)`);
-        }
-        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('fix_249park_tz_2026', '1')`).run();
-      }
-    }
-
-    // Set coordinates for 249 Park — always ensure correct coords
-    const venue249 = db.prepare(`SELECT * FROM venues WHERE name = '249 Park'`).get();
-    if (venue249) {
-      const correctLat = 43.26553781771368;
-      const correctLng = -79.86855315885511;
-      const coordsWrong = !venue249.lat || Math.abs(venue249.lat - correctLat) > 0.001;
-      if (coordsWrong) {
-        db.prepare(`UPDATE venues SET lat = ?, lng = ? WHERE id = ?`)
-          .run(correctLat, correctLng, venue249.id);
-        console.log(`[Venue] Set/corrected coordinates for 249 Park (id=${venue249.id})`);
-      }
-      // The global hourly-data clear below already covers this case; the
-      // 249-Park-coords-fix clear is now redundant on every restart.
-    }
-
-    // One-shot: clear all weather_json after switching from daily aggregates
-    // to hourly weather lookup at game time. Daily aggregates produced
-    // misleading conditions (e.g. "14°C with Rain" for a 22°C clear-evening
-    // game where it had only rained earlier in the morning). The clear runs
-    // once per deploy version (kv_store guard) and the backfill loop below
-    // refetches each game with the new hourly logic.
-    {
-      const alreadyDone = db.prepare(`SELECT value FROM kv_store WHERE key = 'weather_hourly_v3'`).get();
-      if (!alreadyDone) {
-        const result = db.prepare(`UPDATE games SET weather_json = NULL WHERE weather_json IS NOT NULL`).run();
-        console.log(`[Weather] Cleared ${result.changes} weather entries — refetching with hourly data`);
-        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('weather_hourly_v3', '1')`).run();
-      }
-    }
-
-    // One-shot: correct game #25's played_at, which was shifted +4 hours by
-    // the edit-form datetime-local bug when a venue was added after the fact.
-    // The bug populated the input from a UTC ISO substring, which the input
-    // then read back as local time, baking the local TZ offset (EDT = +4h)
-    // into played_at on save. Subtract 4h to restore the correct UTC time
-    // and clear weather so it refetches against the corrected timestamp.
-    {
-      const alreadyDone = db.prepare(`SELECT value FROM kv_store WHERE key = 'fix_game25_tz_shift'`).get();
-      if (!alreadyDone) {
-        const g25 = db.prepare(`SELECT id, played_at FROM games WHERE id = 25`).get();
-        if (g25 && g25.played_at) {
-          const d = new Date(g25.played_at);
-          if (!isNaN(d.getTime())) {
-            const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000).toISOString();
-            db.prepare(`UPDATE games SET played_at = ?, weather_json = NULL WHERE id = 25`).run(corrected);
-            console.log(`[Fix] Game #25 played_at ${g25.played_at} → ${corrected}; weather cleared for refetch`);
-          }
-        }
-        db.prepare(`INSERT INTO kv_store (key, value) VALUES ('fix_game25_tz_shift', '1')`).run();
-      }
-    }
-
-    // Backfill weather for games at venues with coordinates but no weather_json
-    const gamesNeedingWeather = db.prepare(`
-      SELECT g.id, g.played_at, v.lat, v.lng
-      FROM games g
-      JOIN venues v ON g.venue_id = v.id
-      WHERE g.weather_json IS NULL AND v.lat IS NOT NULL AND v.lat != 0
-    `).all();
-
-    for (const game of gamesNeedingWeather) {
-      const weather = await fetchWeatherForGame(game.lat, game.lng, game.played_at);
-      if (weather) {
-        db.prepare(`UPDATE games SET weather_json = ? WHERE id = ?`)
-          .run(JSON.stringify(weather), game.id);
-        console.log(`[Weather] Backfilled game #${game.id}: ${weather.condition} ${weather.temp_c}°C`);
-      }
-    }
-  } catch (e) {
-    console.warn('[Startup] Venue/weather backfill failed:', e.message);
-  }
-})();
-
-// Session store
-const SqliteStore = require('better-sqlite3-session-store')(session);
-const sessionDb = getDb();
 
 app.set('trust proxy', 1);
 app.use(compression());
@@ -170,8 +40,21 @@ app.use(cors({
 app.use(express.json({ limit: '3mb' }));
 app.use(express.urlencoded({ extended: true, limit: '3mb' }));
 
+// Session store: Postgres when DATABASE_URL is set, in-memory MemoryStore otherwise
+// (MemoryStore is fine for local dev and tests — it's the express-session default).
+let sessionStore;
+if (process.env.DATABASE_URL) {
+  const pgSession = require('connect-pg-simple')(session);
+  sessionStore = new pgSession({
+    conString: process.env.DATABASE_URL,
+    tableName: 'session',
+    createTableIfMissing: true,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  });
+}
+
 app.use(session({
-  store: new SqliteStore({ client: sessionDb }),
+  store: sessionStore, // undefined → express-session MemoryStore (tests / local without Postgres)
   secret: process.env.SESSION_SECRET || 'cornhole249-dev-secret',
   resave: false,
   saveUninitialized: false,
@@ -182,6 +65,112 @@ app.use(session({
     sameSite: 'lax',
   },
 }));
+
+// ── Google OAuth (Passport) ───────────────────────────────────────────────────
+// Using passport.initialize() only — NOT passport.session().
+// After Google auth, we set req.session.userId manually, just like email/password login.
+if (process.env.GOOGLE_CLIENT_ID) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
+        scope: ['profile', 'email'],
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          const db = getDb();
+          const googleId = profile.id;
+          const googleEmail = profile.emails?.[0]?.value?.toLowerCase() || null;
+          const displayName = profile.displayName || 'Player';
+          const avatarUrl = profile.photos?.[0]?.value || null;
+
+          // 1. Look up by google_id
+          let user = await db
+            .selectFrom('users')
+            .select(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id'])
+            .where('google_id', '=', googleId)
+            .executeTakeFirst();
+
+          if (!user && googleEmail) {
+            // 2. Look up by email — link the Google account to an existing user
+            user = await db
+              .selectFrom('users')
+              .select(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id'])
+              .where('email', '=', googleEmail)
+              .executeTakeFirst();
+            if (user) {
+              // Link Google ID to existing account
+              await db
+                .updateTable('users')
+                .set({ google_id: googleId, google_email: googleEmail, email_verified_at: user.email_verified_at || new Date().toISOString() })
+                .where('id', '=', user.id)
+                .execute();
+              user = { ...user, google_id: googleId, email_verified_at: user.email_verified_at || new Date().toISOString() };
+            }
+          }
+
+          if (!user) {
+            // 3. Create new user
+            const { randomBytes } = require('crypto');
+            let refToken;
+            do {
+              refToken = randomBytes(4).toString('hex');
+              const ex = await db.selectFrom('users').select(['id']).where('ref_token', '=', refToken).executeTakeFirst();
+              if (!ex) break;
+            } while (true); // eslint-disable-line no-constant-condition
+
+            const newAvatarUrl = avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(displayName)}`;
+            user = await db
+              .insertInto('users')
+              .values({
+                display_name: displayName,
+                avatar_url: newAvatarUrl,
+                is_admin: 0,
+                elo_rating: 1000,
+                email: googleEmail,
+                email_verified_at: googleEmail ? new Date().toISOString() : null,
+                google_id: googleId,
+                google_email: googleEmail,
+                ref_token: refToken,
+              })
+              .returning(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id'])
+              .executeTakeFirstOrThrow();
+          }
+
+          done(null, user);
+        } catch (e) {
+          done(e);
+        }
+      }
+    )
+  );
+}
+
+app.use(passport.initialize()); // Note: no passport.session() — we use express-session directly
+
+// Google OAuth routes
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
+
+app.get(
+  '/auth/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/login?error=google_failed' }),
+  (req, res) => {
+    // req.user is set by Passport — manually write to our express-session
+    req.session.userId = req.user.id;
+    req.session.isAdmin = req.user.is_admin === 1;
+
+    // Redirect to the post-auth destination
+    const dest = req.session.authRedirect || '/';
+    delete req.session.authRedirect;
+    res.redirect(dest);
+  }
+);
+
+// ── League context: set req.leagueId = 1 (Cornhole249) for all requests.
+// League-scoped /api/l/:slug/... routes will override it via leagueMiddleware.
+app.use((req, res, next) => { req.leagueId = 1; next(); });
 
 // Routes
 app.use('/auth', require('./routes/auth'));
@@ -207,6 +196,71 @@ app.use('/api/trash-talk', require('./routes/trashtalk'));
 // Admin routes
 app.use('/api/admin', require('./routes/admin'));
 
+// Join/invite route — public, no auth
+app.use('/api/join', require('./routes/join'));
+
+// League CRUD (no slug — operates on the collection)
+app.use('/api/leagues', require('./routes/leagues'));
+
+// ── League-scoped routes: /api/l/:slug/... ──────────────────────────────────
+const { leagueMiddleware, requireLeagueAccess } = require('./middleware/leagueAccess');
+const { requireAuth: requireAuthMw } = require('./middleware/auth');
+
+// Reads are open to public-league non-members; writes always require membership.
+function requireLeagueAccessForMethod(req, res, next) {
+  const mode = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) ? 'write' : 'read';
+  return requireLeagueAccess(mode)(req, res, next);
+}
+
+function mountLeague(path, router) {
+  app.use(
+    `/api/l/:slug/${path}`,
+    leagueMiddleware,
+    requireLeagueAccessForMethod,
+    router
+  );
+}
+
+const gamesRouter      = require('./routes/games');
+const standingsRouter  = require('./routes/standings');
+const statsRouter      = require('./routes/stats');
+const oddsRouter       = require('./routes/odds');
+const venuesRouter     = require('./routes/venues');
+const usersRouter      = require('./routes/users');
+const achievementsRouter = require('./routes/achievements');
+const trashTalkRouter  = require('./routes/trashtalk');
+const tournamentsRouterL = require('./routes/tournaments');
+const commentsRouter   = require('./routes/comments');
+const joinRouterL      = require('./routes/join');
+
+mountLeague('games',        gamesRouter);
+mountLeague('standings',    standingsRouter);
+mountLeague('stats',        statsRouter);
+mountLeague('odds',         oddsRouter);
+mountLeague('venues',       venuesRouter);
+mountLeague('users',        usersRouter);
+mountLeague('achievements', achievementsRouter);
+mountLeague('trash-talk',   trashTalkRouter);
+mountLeague('tournaments',  tournamentsRouterL);
+
+// Comments are mounted at /api/l/:slug/games/:id/comments
+app.use('/api/l/:slug', leagueMiddleware, requireLeagueAccessForMethod, commentsRouter);
+
+// Join is public (no requireLeagueAccess) — the join code itself gates access
+app.use('/api/l/:slug/join', leagueMiddleware, joinRouterL);
+
+// Tournament match updates under league scope
+app.patch(
+  '/api/l/:slug/tournament-matches/:id',
+  leagueMiddleware,
+  requireLeagueAccess('write'),
+  require('./middleware/auth').requireAdmin,
+  (req, res, next) => {
+    req.url = '/matches/' + req.params.id;
+    tournamentsRouterL(req, res, next);
+  }
+);
+
 // OG image routes — must come BEFORE the static-client catch-all so /og/*.png
 // is served by Express rather than handed off to index.html.
 app.use('/og', require('./og/routes'));
@@ -228,18 +282,189 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Sentry error handler — must come BEFORE the custom error handler so Sentry
+// captures the full error object before we send a JSON response.
+if (process.env.SENTRY_DSN) {
+  const Sentry = require('@sentry/node');
+  Sentry.setupExpressErrorHandler(app);
+}
+
 // Error handler
 const { errorHandler } = require('./middleware/errors');
 app.use(errorHandler);
 
-// Auto-seed if empty
-const { seedIfEmpty } = require('./seed');
-seedIfEmpty();
+// ── Async startup: migrations → Elo recalc → one-time fixes → seed ──────────
+(async () => {
+  try {
+    await runMigrations();
 
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`[Server] Cornhole249 running on http://localhost:${PORT}`);
-  });
-}
+    const { recalculateAllElos } = require('./lib/elo');
+    const db = getDb();
+
+    // Recalculate all Elo ratings on startup to apply the latest formula
+    const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
+    const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
+    if (games.length > 0) {
+      const newElos = recalculateAllElos(games, participants);
+      await db.transaction().execute(async (trx) => {
+        for (const [userId, elo] of Object.entries(newElos)) {
+          await trx.updateTable('users').set({ elo_rating: elo }).where('id', '=', parseInt(userId)).execute();
+        }
+      });
+      console.log(`[Elo] Recalculated ratings for ${Object.keys(newElos).length} players`);
+    }
+
+    // One-time venue/weather fixes and weather backfill
+    // Each fix is guarded by a kv_store key so it only runs once per deploy.
+    try {
+      const { fetchWeatherForGame } = require('./routes/weather');
+
+      // One-time fix: game timestamps were stored with UTC offset instead of local time.
+      // The datetime-local input was initialised with toISOString() (UTC), so games entered
+      // in Eastern time (EDT = UTC-4) were stored 4 hours ahead of the actual local time.
+      // Correct by subtracting 4 hours for all 249 Park games in 2026.
+      {
+        const alreadyFixed = await db
+          .selectFrom('kv_store')
+          .select(['value'])
+          .where('key', '=', 'fix_249park_tz_2026')
+          .executeTakeFirst();
+        if (!alreadyFixed) {
+          const venue249Fix = await db
+            .selectFrom('venues')
+            .select(['id'])
+            .where('name', '=', '249 Park')
+            .executeTakeFirst();
+          if (venue249Fix) {
+            const { rows: affected } = await sql`
+              SELECT id, played_at FROM games WHERE venue_id = ${venue249Fix.id} AND season = 2026
+            `.execute(db);
+            let fixedCount = 0;
+            for (const game of affected) {
+              const d = new Date(game.played_at);
+              if (isNaN(d.getTime())) continue;
+              const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000);
+              await db.updateTable('games')
+                .set({ played_at: corrected.toISOString() })
+                .where('id', '=', game.id)
+                .execute();
+              fixedCount++;
+            }
+            console.log(`[DateFix] Corrected ${fixedCount} 249 Park 2026 game timestamps (EDT -4h)`);
+          }
+          await db.insertInto('kv_store')
+            .values({ key: 'fix_249park_tz_2026', value: '1' })
+            .onConflict((oc) => oc.column('key').doNothing())
+            .execute();
+        }
+      }
+
+      // Set coordinates for 249 Park — always ensure correct coords
+      const venue249 = await db
+        .selectFrom('venues')
+        .selectAll()
+        .where('name', '=', '249 Park')
+        .executeTakeFirst();
+      if (venue249) {
+        const correctLat = 43.26553781771368;
+        const correctLng = -79.86855315885511;
+        const coordsWrong = !venue249.lat || Math.abs(venue249.lat - correctLat) > 0.001;
+        if (coordsWrong) {
+          await db.updateTable('venues')
+            .set({ lat: correctLat, lng: correctLng })
+            .where('id', '=', venue249.id)
+            .execute();
+          console.log(`[Venue] Set/corrected coordinates for 249 Park (id=${venue249.id})`);
+        }
+      }
+
+      // One-shot: clear all weather_json after switching from daily aggregates
+      // to hourly weather lookup at game time.
+      {
+        const alreadyDone = await db
+          .selectFrom('kv_store')
+          .select(['value'])
+          .where('key', '=', 'weather_hourly_v3')
+          .executeTakeFirst();
+        if (!alreadyDone) {
+          const { rows: cleared } = await sql`
+            UPDATE games SET weather_json = NULL WHERE weather_json IS NOT NULL RETURNING id
+          `.execute(db);
+          console.log(`[Weather] Cleared ${cleared.length} weather entries — refetching with hourly data`);
+          await db.insertInto('kv_store')
+            .values({ key: 'weather_hourly_v3', value: '1' })
+            .onConflict((oc) => oc.column('key').doNothing())
+            .execute();
+        }
+      }
+
+      // One-shot: correct game #25's played_at, which was shifted +4 hours by
+      // the edit-form datetime-local bug when a venue was added after the fact.
+      {
+        const alreadyDone = await db
+          .selectFrom('kv_store')
+          .select(['value'])
+          .where('key', '=', 'fix_game25_tz_shift')
+          .executeTakeFirst();
+        if (!alreadyDone) {
+          const g25 = await db
+            .selectFrom('games')
+            .select(['id', 'played_at'])
+            .where('id', '=', 25)
+            .executeTakeFirst();
+          if (g25 && g25.played_at) {
+            const d = new Date(g25.played_at);
+            if (!isNaN(d.getTime())) {
+              const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000).toISOString();
+              await db.updateTable('games')
+                .set({ played_at: corrected, weather_json: null })
+                .where('id', '=', 25)
+                .execute();
+              console.log(`[Fix] Game #25 played_at ${g25.played_at} → ${corrected}; weather cleared for refetch`);
+            }
+          }
+          await db.insertInto('kv_store')
+            .values({ key: 'fix_game25_tz_shift', value: '1' })
+            .onConflict((oc) => oc.column('key').doNothing())
+            .execute();
+        }
+      }
+
+      // Backfill weather for games at venues with coordinates but no weather_json
+      const { rows: gamesNeedingWeather } = await sql`
+        SELECT g.id, g.played_at, v.lat, v.lng
+        FROM games g
+        JOIN venues v ON g.venue_id = v.id
+        WHERE g.weather_json IS NULL AND v.lat IS NOT NULL AND v.lat != 0
+      `.execute(db);
+
+      for (const game of gamesNeedingWeather) {
+        const weather = await fetchWeatherForGame(game.lat, game.lng, game.played_at);
+        if (weather) {
+          await db.updateTable('games')
+            .set({ weather_json: JSON.stringify(weather) })
+            .where('id', '=', game.id)
+            .execute();
+          console.log(`[Weather] Backfilled game #${game.id}: ${weather.condition} ${weather.temp_c}°C`);
+        }
+      }
+    } catch (e) {
+      console.warn('[Startup] Venue/weather backfill failed:', e.message);
+    }
+
+    // Auto-seed if empty (no-op in Postgres mode — see seed.js)
+    const { seedIfEmpty } = require('./seed');
+    seedIfEmpty();
+
+    if (require.main === module) {
+      app.listen(PORT, () => {
+        console.log(`[Server] Cornhole249 running on http://localhost:${PORT}`);
+      });
+    }
+  } catch (e) {
+    console.error('[Startup]', e);
+    process.exit(1);
+  }
+})();
 
 module.exports = app;

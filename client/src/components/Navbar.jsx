@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authApi } from '../api';
+import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import { QRCodeSVG } from 'qrcode.react';
 
 // Desktop nav order
@@ -30,25 +31,16 @@ const HAMBURGER_LINKS = [
 ];
 
 export default function Navbar() {
-  const { user, allUsers, login, logout, refreshUser, loading } = useAuth();
+  const { user, leagues, logout, loading } = useAuth();
+  const { slug: currentSlug } = useLeague();
+  const myLeagueRole = leagues?.find((l) => l.slug === currentSlug)?.role;
+  const canManageCurrentLeague = myLeagueRole === 'owner' || myLeagueRole === 'admin';
   const navigate = useNavigate();
-  const [menuOpen,      setMenuOpen]      = useState(false);
-  const [dropdownOpen,  setDropdownOpen]  = useState(false);
-  const [shareOpen,     setShareOpen]     = useState(false);
-  const [copied,        setCopied]        = useState(false);
-
-  // PIN prompt
-  const [pinPrompt,   setPinPrompt]   = useState(null);
-  const [pinValue,    setPinValue]    = useState('');
-  const [pinError,    setPinError]    = useState('');
-  const [pinLoading,  setPinLoading]  = useState(false);
-
-  // Set/change PIN
-  const [showSetPin,     setShowSetPin]     = useState(false);
-  const [newPin,         setNewPin]         = useState('');
-  const [newPinConfirm,  setNewPinConfirm]  = useState('');
-  const [pinChangeError, setPinChangeError] = useState('');
-  const [setPinSuccess,  setSetPinSuccess]  = useState(false);
+  const [menuOpen,       setMenuOpen]       = useState(false);
+  const [dropdownOpen,   setDropdownOpen]   = useState(false);
+  const [leagueDropOpen, setLeagueDropOpen] = useState(false);
+  const [shareOpen,      setShareOpen]      = useState(false);
+  const [copied,         setCopied]         = useState(false);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
@@ -59,51 +51,10 @@ export default function Navbar() {
     });
   };
 
-  const handleLogin = async (u) => {
-    if (user?.id === u.id) { setDropdownOpen(false); return; }
-    if (u.has_pin) {
-      setPinPrompt({ userId: u.id, name: u.display_name });
-      setPinValue(''); setPinError('');
-      setDropdownOpen(false);
-    } else {
-      await login(u.id);
-      setDropdownOpen(false);
-    }
-  };
-
-  const handlePinSubmit = async (e) => {
-    e.preventDefault();
-    setPinLoading(true); setPinError('');
-    try {
-      await login(pinPrompt.userId, pinValue);
-      setPinPrompt(null);
-    } catch (err) {
-      const code = err.response?.data?.error;
-      setPinError(code === 'pin_required' ? 'PIN required' : code || 'Incorrect PIN');
-    } finally {
-      setPinLoading(false);
-    }
-  };
-
-  const handleSetPin = async (e) => {
-    e.preventDefault();
-    setPinChangeError('');
-    if (!/^\d{4}$/.test(newPin)) { setPinChangeError('PIN must be exactly 4 digits'); return; }
-    if (newPin !== newPinConfirm) { setPinChangeError('PINs do not match'); return; }
-    try {
-      await authApi.setPin(newPin);
-      await refreshUser();
-      setSetPinSuccess(true);
-      setNewPin(''); setNewPinConfirm('');
-      setTimeout(() => { setShowSetPin(false); setSetPinSuccess(false); }, 1500);
-    } catch (err) {
-      setPinChangeError(err.response?.data?.error || 'Failed to set PIN');
-    }
-  };
-
-  const handleRegister = () => {
+  const handleLogout = async () => {
+    await logout();
     setDropdownOpen(false);
-    navigate('/register');
+    navigate('/login');
   };
 
   return (
@@ -148,6 +99,52 @@ export default function Navbar() {
           )}
         </div>
 
+        {/* League switcher — desktop (only shown when logged in and has leagues) */}
+        {user && leagues.length > 0 && (
+          <div className="relative hidden lg:block flex-shrink-0">
+            <button
+              onClick={() => setLeagueDropOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-ui font-semibold transition-colors"
+              style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}
+            >
+              <span>🏟</span>
+              <span className="max-w-[100px] truncate">
+                {leagues.find((l) => l.slug === currentSlug)?.name ?? 'League'}
+              </span>
+              <span className="text-xs opacity-70">▾</span>
+            </button>
+            {leagueDropOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setLeagueDropOpen(false)} />
+                <div className="absolute left-0 top-10 z-50 rounded-card shadow-card border w-52 overflow-hidden"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                  <div className="p-2 border-b text-xs font-ui font-semibold uppercase tracking-wider px-3"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                    My Leagues
+                  </div>
+                  {leagues.map((l) => (
+                    <button key={l.id}
+                      onClick={() => { navigate(leaguePath(l.slug, 'standings')); setLeagueDropOpen(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-ui hover:bg-amber-50 text-left transition-colors ${l.slug === currentSlug ? 'font-bold' : ''}`}
+                      style={{ color: 'var(--color-text-primary)' }}>
+                      <span className="flex-1 truncate">{l.name}</span>
+                      <span className="text-xs opacity-50 capitalize">{l.role}</span>
+                      {l.slug === currentSlug && <span className="text-green-600 text-xs">✓</span>}
+                    </button>
+                  ))}
+                  <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+                    <button onClick={() => { navigate('/leagues/new'); setLeagueDropOpen(false); }}
+                      className="w-full px-3 py-2 text-sm font-ui font-semibold text-left hover:bg-amber-50 transition-colors"
+                      style={{ color: 'var(--color-primary)' }}>
+                      + Create new league
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Desktop nav links */}
         <div className="hidden lg:flex items-center gap-1 flex-1 overflow-hidden">
           {NAV_LINKS.map((l) => (
@@ -186,72 +183,94 @@ export default function Navbar() {
         {/* Spacer on mobile */}
         <div className="flex-1 lg:hidden" />
 
-        {/* Auth dropdown */}
+        {/* Auth area */}
         <div className="relative flex-shrink-0">
-          <button
-            onClick={() => setDropdownOpen((o) => !o)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-amber-100 text-sm font-ui font-semibold"
-          >
-            {user ? (
-              <>
-                <img src={user.avatar_url} alt={user.display_name}
+          {loading ? (
+            <div className="w-8 h-8 rounded-full bg-white/10 animate-pulse" />
+          ) : user ? (
+            <>
+              <button
+                onClick={() => setDropdownOpen((o) => !o)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-amber-100 text-sm font-ui font-semibold"
+              >
+                <img
+                  src={user.avatar_url}
+                  alt={user.display_name}
                   className="w-6 h-6 rounded-full object-cover border border-amber-300/40"
-                  onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.display_name}`; }} />
+                  onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.display_name}`; }}
+                />
                 <span className="hidden sm:inline">{user.display_name}</span>
                 <span className="text-xs opacity-70">▾</span>
-              </>
-            ) : (
-              <span>Accounts ▾</span>
-            )}
-          </button>
+              </button>
 
-          {dropdownOpen && (
-            <div className="absolute right-0 mt-2 w-52 rounded-card shadow-card border overflow-hidden z-50"
-              style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-              <div className="p-2 border-b text-xs font-ui font-semibold uppercase tracking-wider px-3"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-                Sign in as
-              </div>
-              {allUsers.map((u) => (
-                <button key={u.id} onClick={() => handleLogin(u)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors text-left ${user?.id === u.id ? 'bg-green-50 font-bold' : ''}`}
-                  style={{ color: 'var(--color-text-primary)' }}>
-                  <img src={u.avatar_url} alt={u.display_name} className="w-7 h-7 rounded-full border"
-                    style={{ borderColor: 'var(--color-border)' }}
-                    onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.display_name}`; }} />
-                  <div>
-                    <div>{u.display_name}</div>
-                    <div className="text-xs opacity-60">"{u.nickname}"</div>
+              {dropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-48 rounded-card shadow-card border overflow-hidden z-50"
+                    style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                    {/* User info header */}
+                    <div className="px-3 py-2.5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+                      <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                        {user.display_name}
+                      </div>
+                      {user.email && (
+                        <div className="text-xs font-ui truncate" style={{ color: 'var(--color-text-secondary)' }}>
+                          {user.email}
+                          {!user.email_verified_at && (
+                            <span className="ml-1 text-amber-600">(unverified)</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="py-1">
+                      {canManageCurrentLeague && (
+                        <button
+                          onClick={() => { navigate(leaguePath(currentSlug, 'settings')); setDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
+                          style={{ color: 'var(--color-text-primary)' }}
+                        >
+                          ⚙️ League Settings
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { navigate('/leagues/new'); setDropdownOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
+                        🏟 Create a league
+                      </button>
+                      {user.needs_migration && (
+                        <button
+                          onClick={() => { navigate('/claim-account'); setDropdownOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-blue-50 transition-colors"
+                          style={{ color: '#1E40AF' }}
+                        >
+                          🔑 Upgrade your login
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="border-t py-1" style={{ borderColor: 'var(--color-border)' }}>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-3 py-2 text-sm font-ui text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        Sign out
+                      </button>
+                    </div>
                   </div>
-                  {u.has_pin  && <span className="ml-auto text-xs opacity-40">🔒</span>}
-                  {u.is_admin && <span className="ml-auto text-yellow-500 text-xs">★ Admin</span>}
-                  {user?.id === u.id && <span className="ml-auto text-green-600 text-xs">✓</span>}
-                </button>
-              ))}
-              <div className="border-t p-2" style={{ borderColor: 'var(--color-border)' }}>
-                {!user && (
-                  <button onClick={handleRegister}
-                    className="w-full text-center text-sm font-ui font-semibold py-1.5 rounded-full transition-colors hover:bg-amber-50"
-                    style={{ color: 'var(--color-primary)' }}>
-                    + Join with code...
-                  </button>
-                )}
-                {user && (
-                  <>
-                    <button
-                      onClick={() => { setShowSetPin(true); setDropdownOpen(false); setPinChangeError(''); setSetPinSuccess(false); setNewPin(''); setNewPinConfirm(''); }}
-                      className="w-full text-center text-sm font-ui font-semibold py-1.5 rounded-full transition-colors hover:bg-amber-50"
-                      style={{ color: 'var(--color-text-secondary)' }}>
-                      🔒 {allUsers.find(u => u.id === user.id)?.has_pin ? 'Change PIN' : 'Set PIN'}
-                    </button>
-                    <button onClick={() => { logout(); setDropdownOpen(false); }}
-                      className="w-full text-center text-sm font-ui font-semibold text-red-600 hover:bg-red-50 py-1.5 rounded-full transition-colors">
-                      Sign out
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
+                </>
+              )}
+            </>
+          ) : (
+            <Link
+              to="/login"
+              className="px-4 py-1.5 rounded-full text-sm font-ui font-semibold text-amber-100 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              Sign In
+            </Link>
           )}
         </div>
 
@@ -265,7 +284,7 @@ export default function Navbar() {
         </button>
       </div>
 
-      {/* Mobile hamburger menu — secondary items */}
+      {/* Mobile hamburger menu */}
       {menuOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col pt-14" style={{ backgroundColor: 'var(--color-navbar)' }}>
           <div className="flex flex-col p-4 gap-1 overflow-y-auto pb-24">
@@ -285,87 +304,60 @@ export default function Navbar() {
                 ⚙️ Admin
               </NavLink>
             )}
+
+            {/* League switcher — mobile */}
+            {user && leagues.length > 0 && (
+              <div className="border-t mt-2 pt-2" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>
+                <div className="px-4 py-1 text-xs font-ui font-semibold uppercase tracking-wider text-amber-200/60">My Leagues</div>
+                {leagues.map((l) => (
+                  <button key={l.id}
+                    onClick={() => { navigate(leaguePath(l.slug, 'standings')); setMenuOpen(false); }}
+                    className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-left transition-colors ${l.slug === currentSlug ? 'bg-white/20 text-white font-bold' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'}`}>
+                    <span className="flex-1">{l.name}</span>
+                    <span className="text-xs opacity-50 capitalize">{l.role}</span>
+                  </button>
+                ))}
+                {canManageCurrentLeague && (
+                  <button
+                    onClick={() => { navigate(leaguePath(currentSlug, 'settings')); setMenuOpen(false); }}
+                    className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-amber-100/80 hover:bg-white/10 hover:text-white transition-colors"
+                  >
+                    ⚙️ League Settings
+                  </button>
+                )}
+                <button onClick={() => { navigate('/leagues/new'); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-amber-300 hover:bg-white/10 transition-colors">
+                  + Create new league
+                </button>
+              </div>
+            )}
+
+            {/* Auth in hamburger */}
+            <div className="border-t mt-2 pt-2" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>
+              {user ? (
+                <button onClick={() => { handleLogout(); setMenuOpen(false); }}
+                  className="w-full text-left px-4 py-3 rounded-xl text-base font-ui font-semibold text-red-300 hover:bg-white/10 transition-colors">
+                  Sign out
+                </button>
+              ) : (
+                <>
+                  <NavLink to="/login" onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-3 rounded-xl text-base font-ui font-semibold text-amber-100/80 hover:text-white hover:bg-white/10 transition-colors">
+                    Sign In
+                  </NavLink>
+                  <NavLink to="/register" onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-3 rounded-xl text-base font-ui font-semibold text-amber-300 hover:bg-white/10 transition-colors">
+                    Create account
+                  </NavLink>
+                </>
+              )}
+            </div>
           </div>
           <button className="absolute top-4 right-4 text-amber-100" onClick={() => setMenuOpen(false)}>
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-        </div>
-      )}
-
-      {/* Close dropdown on outside click */}
-      {dropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />}
-
-      {/* PIN prompt modal */}
-      {pinPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-2xl shadow-xl p-6 w-72" style={{ background: 'var(--color-surface)' }}>
-            <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>Enter PIN</h2>
-            <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-              Signing in as <strong>{pinPrompt.name}</strong>
-            </p>
-            <form onSubmit={handlePinSubmit} className="flex flex-col gap-3">
-              <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={4}
-                value={pinValue}
-                onChange={(e) => setPinValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                placeholder="••••"
-                className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
-                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
-                autoFocus />
-              {pinError && <p className="text-xs font-ui text-center" style={{ color: 'var(--color-danger)' }}>{pinError}</p>}
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setPinPrompt(null)}
-                  className="flex-1 py-2 rounded-xl font-ui text-sm border"
-                  style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>Cancel</button>
-                <button type="submit" disabled={pinValue.length !== 4 || pinLoading}
-                  className="flex-1 py-2 rounded-xl font-ui text-sm font-semibold text-white disabled:opacity-50"
-                  style={{ background: 'var(--color-primary)' }}>
-                  {pinLoading ? '...' : 'Sign in'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Set/Change PIN modal */}
-      {showSetPin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-2xl shadow-xl p-6 w-72" style={{ background: 'var(--color-surface)' }}>
-            <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
-              {allUsers.find(u => u.id === user?.id)?.has_pin ? 'Change PIN' : 'Set PIN'}
-            </h2>
-            <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>Choose a 4-digit PIN to secure your account.</p>
-            {setPinSuccess ? (
-              <p className="text-center font-ui font-semibold py-2" style={{ color: 'var(--color-primary)' }}>✓ PIN saved!</p>
-            ) : (
-              <form onSubmit={handleSetPin} className="flex flex-col gap-3">
-                <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={4}
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="New PIN"
-                  className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
-                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
-                  autoFocus />
-                <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={4}
-                  value={newPinConfirm}
-                  onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="Confirm PIN"
-                  className="w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl tracking-widest"
-                  style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }} />
-                {pinChangeError && <p className="text-xs font-ui text-center" style={{ color: 'var(--color-danger)' }}>{pinChangeError}</p>}
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setShowSetPin(false)}
-                    className="flex-1 py-2 rounded-xl font-ui text-sm border"
-                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>Cancel</button>
-                  <button type="submit" disabled={newPin.length !== 4 || newPinConfirm.length !== 4}
-                    className="flex-1 py-2 rounded-xl font-ui text-sm font-semibold text-white disabled:opacity-50"
-                    style={{ background: 'var(--color-primary)' }}>Save PIN</button>
-                </div>
-              </form>
-            )}
-          </div>
         </div>
       )}
     </nav>

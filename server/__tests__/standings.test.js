@@ -1,42 +1,40 @@
-const Database = require('better-sqlite3');
-const request = require('supertest');
-
-let testDb;
+let rawTestDb;
+let kyselyTestDb;
 
 jest.mock('../db', () => {
-  testDb = new Database(':memory:');
-  testDb.pragma('foreign_keys = ON');
-  testDb.exec(`
-    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, display_name TEXT, nickname TEXT, avatar_url TEXT, is_admin INTEGER DEFAULT 0, elo_rating REAL DEFAULT 1000, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS venues (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, lat REAL, lng REAL, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS games (id INTEGER PRIMARY KEY AUTOINCREMENT, game_type TEXT, played_at TEXT, season INTEGER, venue_id INTEGER, weather_json TEXT, submitted_by_user_id INTEGER, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS game_participants (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id INTEGER, user_id INTEGER, team INTEGER, score INTEGER DEFAULT 0, is_winner INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id INTEGER, user_id INTEGER, body TEXT, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS achievements (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, achievement_key TEXT NOT NULL, earned_at TEXT DEFAULT (datetime('now')), UNIQUE(user_id, achievement_key));
-    CREATE TABLE IF NOT EXISTS trash_talk (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, body TEXT, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS tournaments (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, format TEXT, game_type TEXT, status TEXT DEFAULT 'pending', season INTEGER, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS tournament_matches (id INTEGER PRIMARY KEY AUTOINCREMENT, tournament_id INTEGER, round INTEGER, match_number INTEGER, team1_player_ids TEXT DEFAULT '[]', team2_player_ids TEXT DEFAULT '[]', winner_team INTEGER, score_team1 INTEGER, score_team2 INTEGER, played_at TEXT, next_match_id INTEGER);
-    
-  `);
-  return { getDb: () => testDb, runMigrations: jest.fn() };
+  const Database = require('better-sqlite3');
+  const { Kysely, SqliteDialect, sql } = require('kysely');
+  const { SCHEMA_SQL } = require('./fixtures');
+
+  rawTestDb = new Database(':memory:');
+  rawTestDb.pragma('foreign_keys = ON');
+  rawTestDb.exec(SCHEMA_SQL);
+
+  kyselyTestDb = new Kysely({ dialect: new SqliteDialect({ database: rawTestDb }) });
+
+  return {
+    getDb: () => kyselyTestDb,
+    runMigrations: jest.fn(),
+    sql,
+  };
 });
 
 jest.mock('../seed', () => ({ seedIfEmpty: jest.fn() }));
 
+const request = require('supertest');
 const app = require('../index');
 
 beforeEach(() => {
-  testDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM users;');
+  rawTestDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM users;');
 
-  // Insert 3 players
-  testDb.prepare(`INSERT INTO users (id, display_name, nickname, avatar_url, elo_rating) VALUES (1, 'Alice', 'A', 'https://x.com/a', 1100)`).run();
-  testDb.prepare(`INSERT INTO users (id, display_name, nickname, avatar_url, elo_rating) VALUES (2, 'Bob', 'B', 'https://x.com/b', 1000)`).run();
-  testDb.prepare(`INSERT INTO users (id, display_name, nickname, avatar_url, elo_rating) VALUES (3, 'Carol', 'C', 'https://x.com/c', 900)`).run();
+  rawTestDb.prepare(`INSERT INTO users (id, display_name, nickname, avatar_url, elo_rating) VALUES (1, 'Alice', 'A', 'https://x.com/a', 1100)`).run();
+  rawTestDb.prepare(`INSERT INTO users (id, display_name, nickname, avatar_url, elo_rating) VALUES (2, 'Bob', 'B', 'https://x.com/b', 1000)`).run();
+  rawTestDb.prepare(`INSERT INTO users (id, display_name, nickname, avatar_url, elo_rating) VALUES (3, 'Carol', 'C', 'https://x.com/c', 900)`).run();
 
   const addGame = (id, p1, p2, p1Score, p2Score, date) => {
-    testDb.prepare(`INSERT INTO games (id, game_type, played_at, season, submitted_by_user_id) VALUES (?, '1v1', ?, 2025, 1)`).run(id, date);
-    testDb.prepare(`INSERT INTO game_participants (game_id, user_id, team, score, is_winner) VALUES (?, ?, 1, ?, ?)`).run(id, p1, p1Score, p1Score > p2Score ? 1 : 0);
-    testDb.prepare(`INSERT INTO game_participants (game_id, user_id, team, score, is_winner) VALUES (?, ?, 2, ?, ?)`).run(id, p2, p2Score, p1Score > p2Score ? 0 : 1);
+    rawTestDb.prepare(`INSERT INTO games (id, game_type, played_at, season, submitted_by_user_id) VALUES (?, '1v1', ?, 2025, 1)`).run(id, date);
+    rawTestDb.prepare(`INSERT INTO game_participants (game_id, user_id, team, score, is_winner) VALUES (?, ?, 1, ?, ?)`).run(id, p1, p1Score, p1Score > p2Score ? 1 : 0);
+    rawTestDb.prepare(`INSERT INTO game_participants (game_id, user_id, team, score, is_winner) VALUES (?, ?, 2, ?, ?)`).run(id, p2, p2Score, p1Score > p2Score ? 0 : 1);
   };
 
   // Alice: 3W 2L, Bob: 4W 2L, Carol: 1W 4L
@@ -87,7 +85,6 @@ describe('Standings API', () => {
   test('streak is computed (recent games)', async () => {
     const res = await request(app).get('/api/standings/1v1?season=2025');
     const alice = res.body.find((r) => r.display_name === 'Alice');
-    // Alice's last game was game 8 (L), so streak should start with L
     expect(alice.streak).toMatch(/^L/);
   });
 

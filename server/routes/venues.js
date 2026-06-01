@@ -4,34 +4,54 @@ const { getDb } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
 // GET /api/venues
-router.get('/', (req, res) => {
-  const db = getDb();
-  const venues = db.prepare(`SELECT * FROM venues ORDER BY name`).all();
-  res.json(venues);
+router.get('/', async (req, res) => {
+  try {
+    const db = getDb();
+    const venues = await db.selectFrom('venues').selectAll().where('league_id', '=', req.leagueId).orderBy('name').execute();
+    res.json(venues);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // POST /api/venues
-router.post('/', requireAuth, (req, res) => {
-  const db = getDb();
-  const { name, lat, lng } = req.body;
-  if (!name) return res.status(400).json({ error: 'Venue name required' });
+router.post('/', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { name, lat, lng } = req.body;
+    if (!name) return res.status(400).json({ error: 'Venue name required' });
 
-  const result = db.prepare(
-    `INSERT INTO venues (name, lat, lng) VALUES (?, ?, ?)`
-  ).run(name, lat || null, lng || null);
+    const venue = await db
+      .insertInto('venues')
+      .values({ name, lat: lat || null, lng: lng || null, league_id: req.leagueId })
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
-  const venue = db.prepare(`SELECT * FROM venues WHERE id = ?`).get(result.lastInsertRowid);
-  res.status(201).json(venue);
+    res.status(201).json(venue);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // PATCH /api/venues/:id — update lat/lng
-router.patch('/:id', requireAuth, (req, res) => {
-  const db = getDb();
-  const { lat, lng } = req.body;
-  if (lat == null || lng == null) return res.status(400).json({ error: 'lat and lng required' });
-  db.prepare(`UPDATE venues SET lat = ?, lng = ? WHERE id = ?`).run(lat, lng, parseInt(req.params.id));
-  const venue = db.prepare(`SELECT * FROM venues WHERE id = ?`).get(parseInt(req.params.id));
-  res.json(venue);
+router.patch('/:id', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { lat, lng } = req.body;
+    if (lat == null || lng == null) return res.status(400).json({ error: 'lat and lng required' });
+
+    const venue = await db
+      .updateTable('venues')
+      .set({ lat, lng })
+      .where('id', '=', parseInt(req.params.id))
+      .returningAll()
+      .executeTakeFirst();
+
+    if (!venue) return res.status(404).json({ error: 'Venue not found' });
+    res.json(venue);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

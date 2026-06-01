@@ -13,7 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getDb } = require('../db');
+const { getDb, sql } = require('../db');
 
 let indexHtmlCache = null;
 
@@ -78,25 +78,23 @@ function injectMeta(html, tagBlock) {
 // description, imagePath } if matched, or null if it's a route we don't have
 // custom meta for.
 
-function resolveMeta(url, db) {
+async function resolveMeta(url, db) {
   // /games/:id
   let m = url.match(/^\/games\/(\d+)\/?$/);
   if (m) {
     const id = parseInt(m[1]);
-    const game = db
-      .prepare(
-        `SELECT g.*, v.name as venue_name
-         FROM games g LEFT JOIN venues v ON g.venue_id = v.id WHERE g.id = ?`
-      )
-      .get(id);
+    const { rows: gameRows } = await sql`
+      SELECT g.*, v.name as venue_name
+      FROM games g LEFT JOIN venues v ON g.venue_id = v.id WHERE g.id = ${id}
+    `.execute(db);
+    const game = gameRows[0];
     if (!game) return null;
-    const participants = db
-      .prepare(
-        `SELECT gp.team, gp.score, gp.is_winner, u.display_name
-         FROM game_participants gp JOIN users u ON gp.user_id = u.id
-         WHERE gp.game_id = ? ORDER BY gp.team, gp.id`
-      )
-      .all(id);
+
+    const { rows: participants } = await sql`
+      SELECT gp.team, gp.score, gp.is_winner, u.display_name
+      FROM game_participants gp JOIN users u ON gp.user_id = u.id
+      WHERE gp.game_id = ${id} ORDER BY gp.team, gp.id
+    `.execute(db);
     const t1 = participants.filter((p) => p.team === 1);
     const t2 = participants.filter((p) => p.team === 2);
     if (!t1.length || !t2.length) return null;
@@ -117,16 +115,19 @@ function resolveMeta(url, db) {
   m = url.match(/^\/players\/(\d+)\/?$/);
   if (m) {
     const id = parseInt(m[1]);
-    const user = db.prepare(`SELECT display_name, nickname FROM users WHERE id = ?`).get(id);
+    const user = await db
+      .selectFrom('users')
+      .select(['display_name', 'nickname'])
+      .where('id', '=', id)
+      .executeTakeFirst();
     if (!user) return null;
-    const stats = db
-      .prepare(
-        `SELECT COUNT(*) as gp, SUM(is_winner) as wins
-         FROM game_participants WHERE user_id = ?`
-      )
-      .get(id);
-    const wins = stats.wins || 0;
-    const losses = (stats.gp || 0) - wins;
+    const { rows: statsRows } = await sql`
+      SELECT COUNT(*) as gp, SUM(is_winner) as wins
+      FROM game_participants WHERE user_id = ${id}
+    `.execute(db);
+    const stats = statsRows[0] || {};
+    const wins = parseInt(stats.wins) || 0;
+    const losses = (parseInt(stats.gp) || 0) - wins;
     const name = user.nickname ? `${user.display_name} "${user.nickname}"` : user.display_name;
     return {
       title: `${name} — Cornhole249`,
@@ -162,8 +163,10 @@ function resolveMeta(url, db) {
   if (m) {
     const p1 = parseInt(m[1]);
     const p2 = parseInt(m[2]);
-    const u1 = db.prepare(`SELECT display_name FROM users WHERE id = ?`).get(p1);
-    const u2 = db.prepare(`SELECT display_name FROM users WHERE id = ?`).get(p2);
+    const [u1, u2] = await Promise.all([
+      db.selectFrom('users').select(['display_name']).where('id', '=', p1).executeTakeFirst(),
+      db.selectFrom('users').select(['display_name']).where('id', '=', p2).executeTakeFirst(),
+    ]);
     if (!u1 || !u2) return null;
     return {
       title: `${u1.display_name} & ${u2.display_name} — Cornhole249`,
@@ -172,12 +175,37 @@ function resolveMeta(url, db) {
     };
   }
 
+  // /join/:code — invite landing page
+  m = url.match(/^\/join\/([A-Z0-9]+)\/?$/i);
+  if (m) {
+    const code = m[1].toUpperCase();
+    const joinCode = await db
+      .selectFrom('join_codes')
+      .select(['created_by'])
+      .where('code', '=', code)
+      .executeTakeFirst();
+    let inviterName = 'Someone';
+    if (joinCode?.created_by) {
+      const inviter = await db
+        .selectFrom('users')
+        .select(['display_name'])
+        .where('id', '=', joinCode.created_by)
+        .executeTakeFirst();
+      if (inviter) inviterName = inviter.display_name;
+    }
+    return {
+      title: `${inviterName} invited you to Cornhole249`,
+      description: 'Join the crew. Log games, track standings, talk trash.',
+      imagePath: `/og/standings.png`,
+    };
+  }
+
   return null;
 }
 
 // ── middleware factory ──────────────────────────────────────────────────────
 function ogMetaMiddleware(clientDist) {
-  return function (req, res, next) {
+  return async function (req, res, next) {
     // Only intercept GETs that look like HTML page loads.
     if (req.method !== 'GET') return next();
     // Skip explicit asset requests — /assets/, files with extensions, /og/, /api/.
@@ -188,7 +216,7 @@ function ogMetaMiddleware(clientDist) {
 
     let meta;
     try {
-      meta = resolveMeta(req.path, getDb());
+      meta = await resolveMeta(req.path, getDb());
     } catch (e) {
       console.warn('[OG-Meta] resolver error:', e.message);
       return next();

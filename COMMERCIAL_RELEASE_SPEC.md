@@ -248,22 +248,23 @@ Phases are ordered. Within a phase, features can be built in any order unless no
   - **Copy image** button (writes PNG to clipboard via `navigator.clipboard.write`)
   - **Download PNG** button
   - **Web Share API** button on mobile (iOS/Android native share sheet)
-  - QR code (already have `qrcode.react` installed)
 - Share affordances appear on:
   - Game logged confirmation screen (largest dopamine moment)
   - Game detail page (header action)
   - Tournament detail page
   - Player profile page
-  - Standings page (overall + per-row "share my rank" mini-action)
-  - Each trash talk comment (small share icon, share-this-quote)
-  - Tournament completion modal (champion's victory variant)
+  - Standings page (overall standings)
+  - Tournament completion modal (champion's victory variant) ✅ shipped
 
 **Out of scope:**
 - Twitter/Facebook auto-post integrations (link sharing is enough)
 - Direct DM-to-platform integrations
+- Per-row "share my rank" on standings (removed — low leverage)
+- Share button on individual trash talk comments (removed — low leverage)
+- QR code inside ShareButton modal (removed — QRShare component handles QR separately)
 
 **Locked decisions:**
-- UX pattern: **always show the custom modal** with the card preview, copy link, copy image, download PNG, and QR. On mobile (and any browser supporting Web Share API), include a **"Native share…"** button inside the modal that triggers the OS share sheet. Users who want the preview see it; users who just want to share get one extra tap to the native sheet. Best of both.
+- UX pattern: **always show the custom modal** with the card preview, copy link, copy image, download PNG. On mobile (and any browser supporting Web Share API), include a **"Native share…"** button inside the modal that triggers the OS share sheet. Users who want the preview see it; users who just want to share get one extra tap to the native sheet. Best of both.
 - All options visible by default — no "More options" hiding. The modal is the moment of intent; surfacing all paths reduces friction.
 
 #### 1.5 Invite landing pages

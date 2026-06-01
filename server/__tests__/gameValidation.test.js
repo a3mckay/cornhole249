@@ -1,33 +1,32 @@
-const Database = require('better-sqlite3');
-const request = require('supertest');
-
-let testDb;
+let rawTestDb;
+let kyselyTestDb;
 
 jest.mock('../db', () => {
-  testDb = new Database(':memory:');
-  testDb.pragma('foreign_keys = ON');
-  testDb.exec(`
-    CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, display_name TEXT, nickname TEXT, avatar_url TEXT, is_admin INTEGER DEFAULT 0, elo_rating REAL DEFAULT 1000, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS venues (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, lat REAL, lng REAL, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS games (id INTEGER PRIMARY KEY AUTOINCREMENT, game_type TEXT, played_at TEXT, season INTEGER, venue_id INTEGER, weather_json TEXT, submitted_by_user_id INTEGER, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS game_participants (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id INTEGER, user_id INTEGER, team INTEGER, score INTEGER DEFAULT 0, is_winner INTEGER DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS comments (id INTEGER PRIMARY KEY AUTOINCREMENT, game_id INTEGER, user_id INTEGER, body TEXT, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS achievements (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, achievement_key TEXT NOT NULL, earned_at TEXT DEFAULT (datetime('now')), UNIQUE(user_id, achievement_key));
-    CREATE TABLE IF NOT EXISTS trash_talk (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, body TEXT, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS tournaments (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, format TEXT, game_type TEXT, status TEXT DEFAULT 'pending', season INTEGER, created_at TEXT DEFAULT (datetime('now')));
-    CREATE TABLE IF NOT EXISTS tournament_matches (id INTEGER PRIMARY KEY AUTOINCREMENT, tournament_id INTEGER, round INTEGER, match_number INTEGER, team1_player_ids TEXT DEFAULT '[]', team2_player_ids TEXT DEFAULT '[]', winner_team INTEGER, score_team1 INTEGER, score_team2 INTEGER, played_at TEXT, next_match_id INTEGER);
-    
-  `);
-  return { getDb: () => testDb, runMigrations: jest.fn() };
+  const Database = require('better-sqlite3');
+  const { Kysely, SqliteDialect, sql } = require('kysely');
+  const { SCHEMA_SQL } = require('./fixtures');
+
+  rawTestDb = new Database(':memory:');
+  rawTestDb.pragma('foreign_keys = ON');
+  rawTestDb.exec(SCHEMA_SQL);
+
+  kyselyTestDb = new Kysely({ dialect: new SqliteDialect({ database: rawTestDb }) });
+
+  return {
+    getDb: () => kyselyTestDb,
+    runMigrations: jest.fn(),
+    sql,
+  };
 });
 
 jest.mock('../seed', () => ({ seedIfEmpty: jest.fn() }));
 
+const request = require('supertest');
 const app = require('../index');
 
 beforeEach(() => {
-  testDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM users;');
-  testDb.prepare(`INSERT INTO users (id, display_name, elo_rating) VALUES (1, 'Alice', 1000), (2, 'Bob', 1000), (3, 'Carol', 1000), (4, 'Dave', 1000)`).run();
+  rawTestDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM users; DELETE FROM achievements;');
+  rawTestDb.prepare(`INSERT INTO users (id, display_name, elo_rating) VALUES (1, 'Alice', 1000), (2, 'Bob', 1000), (3, 'Carol', 1000), (4, 'Dave', 1000)`).run();
 });
 
 async function loginAs(agent, userId) {

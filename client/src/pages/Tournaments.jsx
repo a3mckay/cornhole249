@@ -4,6 +4,130 @@ import { useAuth } from '../hooks/useAuth';
 import BracketView from '../components/BracketView';
 import ShareButton from '../components/ShareButton';
 
+/**
+ * Derive the champion team and runner-up from a completed tournament's matches.
+ * The final match is whichever completed match has the highest round number.
+ */
+function extractFinalResult(tournament) {
+  const completedMatches = (tournament.matches || []).filter((m) => m.winner_team != null);
+  if (!completedMatches.length) return null;
+  const finalMatch = completedMatches.reduce((best, m) => (m.round > best.round ? m : best));
+  const champion = finalMatch.winner_team === 1 ? finalMatch.team1_players : finalMatch.team2_players;
+  const runnerUp = finalMatch.winner_team === 1 ? finalMatch.team2_players : finalMatch.team1_players;
+  // Scores: champion's score first
+  const champScore = finalMatch.winner_team === 1 ? finalMatch.score_team1 : finalMatch.score_team2;
+  const runnerScore = finalMatch.winner_team === 1 ? finalMatch.score_team2 : finalMatch.score_team1;
+  return { champion, runnerUp, champScore, runnerScore };
+}
+
+function PlayerAvatars({ players, size = 14 }) {
+  const px = size * 4;
+  return (
+    <div className="flex justify-center" style={{ gap: 4 }}>
+      {players.map((p) => {
+        const initials = p.display_name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+        return (
+          <div key={p.id} style={{ width: px, height: px, borderRadius: '50%', overflow: 'hidden', border: '3px solid #D48B2D', flexShrink: 0 }}>
+            <img
+              src={p.avatar_url}
+              alt={p.display_name}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              onError={(e) => {
+                e.target.style.display = 'none';
+                e.target.parentNode.style.background = 'var(--color-primary)';
+                e.target.parentNode.style.display = 'flex';
+                e.target.parentNode.style.alignItems = 'center';
+                e.target.parentNode.style.justifyContent = 'center';
+                e.target.parentNode.style.color = 'white';
+                e.target.parentNode.style.fontWeight = '700';
+                e.target.parentNode.style.fontSize = `${px * 0.35}px`;
+                e.target.parentNode.textContent = initials;
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TournamentChampionModal({ tournament, onClose }) {
+  const result = extractFinalResult(tournament);
+  if (!result) return null;
+
+  const { champion, runnerUp, champScore, runnerScore } = result;
+  const championNames = champion.map((p) => p.display_name).join(' & ');
+  const runnerUpNames = runnerUp.map((p) => p.display_name).join(' & ');
+  const hasScore = champScore != null && runnerScore != null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(44,36,22,0.75)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-card shadow-card overflow-hidden"
+        style={{ background: 'var(--color-surface)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Gold header */}
+        <div
+          className="text-center px-6 pt-8 pb-6"
+          style={{ background: 'linear-gradient(135deg, #C9952A 0%, #8B6914 100%)' }}
+        >
+          <div style={{ fontSize: 64, lineHeight: 1 }}>🏆</div>
+          <div className="font-display text-white text-xl mt-3 leading-tight">{tournament.name}</div>
+          <div className="font-ui text-sm mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>
+            {tournament.game_type} · {tournament.format === 'single_elim' ? 'Single Elimination' : 'Double Elimination'}
+          </div>
+        </div>
+
+        {/* Champion */}
+        <div className="px-6 pt-6 pb-4 text-center">
+          <div
+            className="text-xs font-ui font-bold uppercase tracking-widest mb-4"
+            style={{ color: '#C9952A', letterSpacing: '0.15em' }}
+          >
+            Champion
+          </div>
+
+          <PlayerAvatars players={champion} size={14} />
+
+          <div className="font-display text-3xl mt-3 leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+            {championNames}
+          </div>
+
+          {hasScore && (
+            <div className="font-ui font-bold text-lg mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              {champScore} – {runnerScore}
+            </div>
+          )}
+
+          {runnerUpNames && (
+            <div className="font-ui text-sm mt-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Runner-up: <span style={{ color: 'var(--color-text-primary)' }}>{runnerUpNames}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="px-6 pb-6 flex flex-col gap-2 mt-2">
+          <ShareButton
+            imageUrl={`/og/tournament/${tournament.id}.png`}
+            shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/tournaments?id=${tournament.id}` : ''}
+            title={`${championNames} wins ${tournament.name}!`}
+            text={`${tournament.game_type} tournament champion — Cornhole249`}
+          />
+          <button onClick={onClose} className="btn btn-ghost text-sm">
+            View Bracket
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STATUS_COLORS = {
   pending: { bg: '#FEF3C7', text: '#92400E', label: 'Pending' },
   active: { bg: '#D1FAE5', text: '#065F46', label: 'Active' },
@@ -26,6 +150,7 @@ export default function Tournaments() {
     manualOrder: [], // ordered list of player ids for manual seeding
   });
   const [creating, setCreating] = useState(false);
+  const [showChampionModal, setShowChampionModal] = useState(false);
 
   useEffect(() => {
     Promise.all([tournamentsApi.list(), usersApi.list()])
@@ -36,6 +161,9 @@ export default function Tournaments() {
   const loadTournament = async (id) => {
     const t = await tournamentsApi.get(id);
     setSelected(t);
+    // Open the champion modal automatically when a completed tournament is viewed.
+    // This is the highest-shareability moment — celebrate the winner.
+    if (t.status === 'complete') setShowChampionModal(true);
   };
 
   const handleCreate = async () => {
@@ -282,6 +410,14 @@ export default function Tournaments() {
             <BracketView tournament={selected} onRefresh={() => loadTournament(selected.id)} />
           </div>
         </div>
+      )}
+
+      {/* Champion modal — shown automatically when a complete tournament is opened */}
+      {selected && showChampionModal && (
+        <TournamentChampionModal
+          tournament={selected}
+          onClose={() => setShowChampionModal(false)}
+        />
       )}
     </div>
   );

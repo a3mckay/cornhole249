@@ -25,18 +25,18 @@ export default function ShareButton({
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
 
-  // Append ?ref=<userId> when a player is logged in so we can attribute
-  // sign-ups to the sharer for the referral program. Always uses the supplied
-  // shareUrl when present, otherwise falls back to the current location.
+  // Append ?ref=<ref_token> when a player is logged in so we can attribute
+  // sign-ups to the sharer. Uses an opaque token (not the user ID) so internal
+  // IDs aren't exposed in shared URLs.
   const buildShareUrl = () => {
     let base = shareUrl;
     if (!base && typeof window !== 'undefined') {
       base = window.location.origin + window.location.pathname;
     }
     if (!base) return '';
-    if (!user?.id) return base;
+    if (!user?.ref_token) return base;
     const sep = base.includes('?') ? '&' : '?';
-    return `${base}${sep}ref=${user.id}`;
+    return `${base}${sep}ref=${user.ref_token}`;
   };
 
   const triggerLabel = variant === 'primary' ? '🔗 Share' : null;
