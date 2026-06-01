@@ -237,22 +237,14 @@ router.post('/migrate-from-sqlite', async (req, res) => {
     // ── Execute migration ────────────────────────────────────────────────────
     const db = getDb();
 
-    // Delete all seed/fake data from Postgres.
-    // games ↔ tournament_matches is a circular FK — null both sides first.
-    await sql`UPDATE games SET tournament_match_id = NULL`.execute(db);
-    await sql`UPDATE tournament_matches SET game_id = NULL`.execute(db);
-    await sql`DELETE FROM achievements`.execute(db);
-    await sql`DELETE FROM comments`.execute(db);
-    await sql`DELETE FROM trash_talk`.execute(db);
-    await sql`DELETE FROM game_participants`.execute(db);
-    await sql`DELETE FROM games`.execute(db);
-    await sql`DELETE FROM tournament_matches`.execute(db);
-    await sql`DELETE FROM tournaments`.execute(db);
-    await sql`DELETE FROM league_memberships`.execute(db);
-    await sql`DELETE FROM join_codes`.execute(db);
-    await sql`DELETE FROM users`.execute(db);
-    await sql`DELETE FROM venues`.execute(db);
-    await sql`DELETE FROM kv_store`.execute(db);
+    // Wipe all seed/fake data. TRUNCATE CASCADE handles circular FKs automatically.
+    await sql`TRUNCATE TABLE
+      achievements, comments, trash_talk,
+      game_participants, games,
+      tournament_matches, tournaments,
+      league_memberships, join_codes,
+      users, venues, kv_store
+      CASCADE`.execute(db);
 
     // Import users
     for (const u of users) {
