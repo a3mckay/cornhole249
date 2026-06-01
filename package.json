@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Hamilton's Most Competitive Backyard Cornhole League",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "dev": "concurrently \"npm run server\" \"npm run client\" --names \"server,client\" --prefix-colors \"green,cyan\"",
     "server": "node server/index.js",
