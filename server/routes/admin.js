@@ -175,7 +175,16 @@ router.get('/migration-status', requireAdmin, async (req, res) => {
 // POST /api/admin/migrate-from-sqlite — one-time import of real data from the Railway volume
 // Pass { dry_run: true } to preview what's in the SQLite without touching Postgres.
 // Pass { dry_run: false, confirm: true } to execute the migration.
-router.post('/migrate-from-sqlite', requireAdmin, async (req, res) => {
+// Auth: either a logged-in admin session OR the x-migration-secret header matching MIGRATION_SECRET env var.
+router.post('/migrate-from-sqlite', async (req, res) => {
+  const secret = process.env.MIGRATION_SECRET;
+  const providedSecret = req.headers['x-migration-secret'];
+  const isAdminSession = req.session?.userId && req.session?.isAdmin;
+  const isSecretAuth = secret && providedSecret === secret;
+
+  if (!isAdminSession && !isSecretAuth) {
+    return res.status(401).json({ error: 'Unauthorized: admin session or x-migration-secret header required' });
+  }
   const SQLITE_PATH = process.env.DATABASE_PATH;
   if (!SQLITE_PATH) return res.status(400).json({ error: 'DATABASE_PATH env var not set' });
 
