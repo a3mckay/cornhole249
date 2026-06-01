@@ -237,14 +237,14 @@ router.post('/migrate-from-sqlite', async (req, res) => {
     // ── Execute migration ────────────────────────────────────────────────────
     const db = getDb();
 
-    // Delete all seed/fake data from Postgres (FK order)
+    // Delete all seed/fake data from Postgres (FK order — games must go before tournament_matches)
     await sql`DELETE FROM achievements`.execute(db);
     await sql`DELETE FROM comments`.execute(db);
     await sql`DELETE FROM trash_talk`.execute(db);
-    await sql`DELETE FROM tournament_matches`.execute(db);
-    await sql`DELETE FROM tournaments`.execute(db);
     await sql`DELETE FROM game_participants`.execute(db);
     await sql`DELETE FROM games`.execute(db);
+    await sql`DELETE FROM tournament_matches`.execute(db);
+    await sql`DELETE FROM tournaments`.execute(db);
     await sql`DELETE FROM league_memberships`.execute(db);
     await sql`DELETE FROM join_codes`.execute(db);
     await sql`DELETE FROM users`.execute(db);
