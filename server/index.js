@@ -37,6 +37,9 @@ app.use(cors({
   origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   credentials: true,
 }));
+// Stripe webhooks require the raw body for signature verification.
+// Mount the raw parser for /api/billing/webhook BEFORE express.json() parses it.
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '3mb' }));
 app.use(express.urlencoded({ extended: true, limit: '3mb' }));
 
@@ -222,6 +225,9 @@ app.use('/api/trash-talk', require('./routes/trashtalk'));
 // Admin routes
 app.use('/api/admin', require('./routes/admin'));
 
+// Billing (Stripe Checkout, Customer Portal, Webhooks)
+app.use('/api/billing', require('./routes/billing'));
+
 // Join/invite route — public, no auth
 app.use('/api/join', require('./routes/join'));
 
@@ -247,6 +253,8 @@ function mountLeague(path, router) {
   );
 }
 
+const { requirePro } = require('./middleware/planAccess');
+
 const gamesRouter      = require('./routes/games');
 const standingsRouter  = require('./routes/standings');
 const statsRouter      = require('./routes/stats');
@@ -259,15 +267,26 @@ const tournamentsRouterL = require('./routes/tournaments');
 const commentsRouter   = require('./routes/comments');
 const joinRouterL      = require('./routes/join');
 
+// Like mountLeague but also requires a Pro plan (used for Stats, which is Pro-only).
+function mountLeaguePro(path, router) {
+  app.use(
+    `/api/l/:slug/${path}`,
+    leagueMiddleware,
+    requireLeagueAccessForMethod,
+    requirePro,
+    router
+  );
+}
+
 mountLeague('games',        gamesRouter);
 mountLeague('standings',    standingsRouter);
-mountLeague('stats',        statsRouter);
+mountLeaguePro('stats',     statsRouter);     // Pro-gated — Stats page
 mountLeague('odds',         oddsRouter);
 mountLeague('venues',       venuesRouter);
 mountLeague('users',        usersRouter);
 mountLeague('achievements', achievementsRouter);
 mountLeague('trash-talk',   trashTalkRouter);
-mountLeague('tournaments',  tournamentsRouterL);
+mountLeague('tournaments',  tournamentsRouterL); // POST (create) gated inside the router
 
 // Comments are mounted at /api/l/:slug/games/:id/comments
 app.use('/api/l/:slug', leagueMiddleware, requireLeagueAccessForMethod, commentsRouter);

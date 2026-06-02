@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
+const { requirePro } = require('../middleware/planAccess');
 const { recalculateAllElos } = require('../lib/elo');
 const { evaluateAchievements } = require('../lib/achievements');
 
@@ -64,7 +65,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/tournaments (admin)
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requireAdmin, requirePro, async (req, res) => {
   try {
     const db = getDb();
     const { name, format, game_type, season, seeding, teams } = req.body;

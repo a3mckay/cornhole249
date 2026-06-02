@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { statsApi } from '../api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import UpgradeModal from '../components/UpgradeModal';
+import { useLeague } from '../contexts/LeagueContext';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -26,6 +28,8 @@ function getWeatherEmoji(condition) {
 }
 
 export default function Stats() {
+  const { leagueId } = useLeague();
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [seasonMode, setSeasonMode] = useState('current'); // 'current' | 'alltime'
   const [performers, setPerformers] = useState(null);
   const [streaks, setStreaks] = useState([]);
@@ -37,6 +41,7 @@ export default function Stats() {
   const [rivals, setRivals] = useState([]);
   const [rivalsType, setRivalsType] = useState('1v1');
   const [loading, setLoading] = useState(true);
+  const [proGated, setProGated] = useState(false);
 
   const season = seasonMode === 'current' ? CURRENT_YEAR : undefined;
   const seasonParam = season ? { season } : {};
@@ -50,7 +55,7 @@ export default function Stats() {
     setClutch([]);
     setVenueKings([]);
     Promise.all([
-      statsApi.performers(seasonParam).catch(() => null),
+      statsApi.performers(seasonParam).catch((e) => { if (e.response?.data?.upgrade) setProGated(true); return null; }),
       statsApi.streaks(seasonParam).catch(() => []),
       statsApi.pointDiff(seasonParam).catch(() => []),
       statsApi.clutch(seasonParam).catch(() => []),
@@ -88,8 +93,22 @@ export default function Stats() {
     : null;
   const activeStreaks = [...streaks].sort((a, b) => Math.abs(b.current_streak) - Math.abs(a.current_streak));
 
+  if (proGated) {
+    return (
+      <div className="max-w-sm mx-auto mt-16 text-center">
+        <UpgradeModal open leagueId={leagueId} feature="Stats" onClose={() => {}} />
+        <div className="text-4xl mb-3">📊</div>
+        <h1 className="font-display text-2xl mb-2" style={{ color: 'var(--color-text-primary)' }}>Stats is a Pro feature</h1>
+        <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+          Upgrade this league to unlock deep analytics.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
+      <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Stats" leagueId={leagueId} />
       <h1 className="font-display text-4xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
         League Stats
       </h1>

@@ -177,4 +177,21 @@ export const joinApi = {
   getInvite: (code) => api.get(`/join/${code}`).then((r) => r.data),
 };
 
+// Billing (Stripe Checkout + Customer Portal)
+export const billingApi = {
+  // Redirects to Stripe Checkout — call then window.location.href = data.url
+  checkout: (leagueId, plan) =>
+    api.post('/billing/checkout', { leagueId, plan }).then((r) => r.data),
+  // Redirects to Stripe Customer Portal
+  portal: (leagueId) =>
+    api.post('/billing/portal', { leagueId }).then((r) => r.data),
+};
+
+// Admin — billing/plan grants
+export const adminBillingApi = {
+  leagues: () => api.get('/admin/leagues').then((r) => r.data),
+  setPlanOverride: (leagueId, plan_override, reason) =>
+    api.patch(`/admin/leagues/${leagueId}/plan`, { plan_override, reason }).then((r) => r.data),
+};
+
 export default api;

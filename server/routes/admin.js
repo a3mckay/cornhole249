@@ -173,6 +173,82 @@ router.get('/migration-status', requireAdmin, async (req, res) => {
 });
 
 
+// GET /api/admin/leagues — all leagues with plan status
+router.get('/leagues', requireAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows } = await sql`
+      SELECT
+        l.id, l.slug, l.name, l.plan, l.plan_override, l.plan_override_reason,
+        l.stripe_subscription_id, l.stripe_current_period_end, l.expires_at,
+        l.created_at,
+        u.display_name AS owner_name,
+        (SELECT COUNT(*) FROM league_memberships lm WHERE lm.league_id = l.id) AS member_count,
+        (SELECT COUNT(*) FROM games g WHERE g.league_id = l.id) AS game_count
+      FROM leagues l
+      LEFT JOIN users u ON u.id = l.owner_user_id
+      ORDER BY l.created_at DESC
+    `.execute(db);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/admin/leagues/:id/plan — grant or revoke a Pro override
+router.patch('/leagues/:id/plan', requireAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const leagueId = parseInt(req.params.id);
+    const { plan_override, reason } = req.body;
+
+    const allowed = [null, 'free', 'pro'];
+    if (!allowed.includes(plan_override)) {
+      return res.status(400).json({ error: 'plan_override must be null, "free", or "pro"' });
+    }
+    if (!reason?.trim()) return res.status(400).json({ error: 'reason is required for audit trail' });
+
+    // Get current plan for the audit log
+    const current = await db
+      .selectFrom('leagues')
+      .select(['plan', 'plan_override'])
+      .where('id', '=', leagueId)
+      .executeTakeFirst();
+
+    if (!current) return res.status(404).json({ error: 'League not found' });
+
+    const fromPlan = current.plan_override || current.plan;
+
+    await db
+      .updateTable('leagues')
+      .set({ plan_override: plan_override || null, plan_override_reason: reason.trim() })
+      .where('id', '=', leagueId)
+      .execute();
+
+    // Append to audit log
+    await db
+      .insertInto('plan_override_audit')
+      .values({
+        league_id: leagueId,
+        changed_by_user_id: req.session.userId,
+        from_plan: fromPlan,
+        to_plan: plan_override || current.plan,
+        reason: reason.trim(),
+      })
+      .execute();
+
+    const updated = await db
+      .selectFrom('leagues')
+      .select(['id', 'slug', 'name', 'plan', 'plan_override', 'plan_override_reason'])
+      .where('id', '=', leagueId)
+      .executeTakeFirstOrThrow();
+
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // DELETE /api/admin/games — bulk delete by date range
 router.delete('/games', requireAdmin, async (req, res) => {
   try {
