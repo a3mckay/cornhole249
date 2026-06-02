@@ -5,6 +5,10 @@ import { authApi } from '../api';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import { QRCodeSVG } from 'qrcode.react';
 
+function ProLock() {
+  return <span title="Pro feature" style={{ fontSize: '0.65em', opacity: 0.7 }}>🔒</span>;
+}
+
 // Desktop nav order
 const NAV_LINKS = [
   { to: '/games',       label: 'Games' },
@@ -32,7 +36,8 @@ const HAMBURGER_LINKS = [
 
 export default function Navbar() {
   const { user, leagues, logout, loading } = useAuth();
-  const { slug: currentSlug } = useLeague();
+  const { slug: currentSlug, plan } = useLeague();
+  const isFree = plan === 'free';
   const myLeagueRole = leagues?.find((l) => l.slug === currentSlug)?.role;
   const canManageCurrentLeague = myLeagueRole === 'owner' || myLeagueRole === 'admin';
   const navigate = useNavigate();
@@ -147,24 +152,28 @@ export default function Navbar() {
 
         {/* Desktop nav links */}
         <div className="hidden lg:flex items-center gap-1 flex-1 overflow-hidden">
-          {NAV_LINKS.map((l) => (
-            <NavLink
-              key={l.to}
-              to={l.to}
-              className={({ isActive }) =>
-                `px-3 py-1.5 rounded-full text-sm font-ui font-600 transition-colors flex-shrink-0 ${
-                  isActive ? 'bg-white/20 text-white' : 'text-amber-100/80 hover:text-white hover:bg-white/10'
-                }`
-              }
-            >
-              {l.short ? (
-                <>
-                  <span className="hidden xl:inline">{l.label}</span>
-                  <span className="xl:hidden">{l.short}</span>
-                </>
-              ) : l.label}
-            </NavLink>
-          ))}
+          {NAV_LINKS.map((l) => {
+            const gated = isFree && (l.to === '/stats' || l.to === '/tournaments');
+            return (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                className={({ isActive }) =>
+                  `px-3 py-1.5 rounded-full text-sm font-ui font-600 transition-colors flex-shrink-0 flex items-center gap-1 ${
+                    isActive ? 'bg-white/20 text-white' : 'text-amber-100/80 hover:text-white hover:bg-white/10'
+                  }`
+                }
+              >
+                {l.short ? (
+                  <>
+                    <span className="hidden xl:inline">{l.label}</span>
+                    <span className="xl:hidden">{l.short}</span>
+                  </>
+                ) : l.label}
+                {gated && <ProLock />}
+              </NavLink>
+            );
+          })}
           {!!user?.is_admin && (
             <NavLink
               to="/admin"
@@ -288,16 +297,20 @@ export default function Navbar() {
       {menuOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col pt-14" style={{ backgroundColor: 'var(--color-navbar)' }}>
           <div className="flex flex-col p-4 gap-1 overflow-y-auto pb-24">
-            {HAMBURGER_LINKS.map((l) => (
-              <NavLink key={l.to} to={l.to} onClick={() => setMenuOpen(false)}
-                className={({ isActive }) =>
-                  `px-4 py-3 rounded-xl text-lg font-ui font-semibold transition-colors ${
-                    isActive ? 'bg-white/20 text-white' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'
-                  }`
-                }>
-                {l.label}
-              </NavLink>
-            ))}
+            {HAMBURGER_LINKS.map((l) => {
+              const gated = isFree && (l.to === '/tournaments');
+              return (
+                <NavLink key={l.to} to={l.to} onClick={() => setMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `px-4 py-3 rounded-xl text-lg font-ui font-semibold transition-colors flex items-center gap-2 ${
+                      isActive ? 'bg-white/20 text-white' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'
+                    }`
+                  }>
+                  {l.label}
+                  {gated && <ProLock />}
+                </NavLink>
+              );
+            })}
             {!!user?.is_admin && (
               <NavLink to="/admin" onClick={() => setMenuOpen(false)}
                 className="px-4 py-3 rounded-xl text-lg font-ui font-semibold text-yellow-300 hover:bg-white/10">

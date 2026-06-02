@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { adminApi } from '../api';
+import { adminApi, adminBillingApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
 export default function Admin() {
@@ -28,12 +28,39 @@ export default function Admin() {
   const [migration, setMigration] = useState(null);
   const [migrationCopied, setMigrationCopied] = useState(false);
 
+  // Leagues & billing
+  const [leagues, setLeagues] = useState([]);
+  const [planOverride, setPlanOverride] = useState({}); // { [leagueId]: { value, reason } }
+  const [planSaving, setPlanSaving] = useState(null); // leagueId being saved
+
   useEffect(() => {
     if (!user?.is_admin) { navigate('/'); return; }
-    Promise.all([adminApi.users(), adminApi.joinCodes(), adminApi.referrals(), adminApi.migrationStatus()])
-      .then(([u, c, r, m]) => { setUsers(u); setJoinCodes(c); setReferrals(r); setMigration(m); })
+    Promise.all([adminApi.users(), adminApi.joinCodes(), adminApi.referrals(), adminApi.migrationStatus(), adminBillingApi.leagues()])
+      .then(([u, c, r, m, l]) => { setUsers(u); setJoinCodes(c); setReferrals(r); setMigration(m); setLeagues(l); })
       .finally(() => setLoading(false));
   }, [user]);
+
+  const openPlanOverride = (leagueId, currentOverride) => {
+    setPlanOverride((prev) => ({
+      ...prev,
+      [leagueId]: { value: currentOverride || '', reason: '' },
+    }));
+  };
+
+  const handleSetPlan = async (leagueId) => {
+    const entry = planOverride[leagueId];
+    if (!entry?.reason?.trim()) return;
+    setPlanSaving(leagueId);
+    try {
+      const updated = await adminBillingApi.setPlanOverride(leagueId, entry.value || null, entry.reason);
+      setLeagues((prev) => prev.map((l) => l.id === leagueId ? { ...l, ...updated } : l));
+      setPlanOverride((prev) => { const next = { ...prev }; delete next[leagueId]; return next; });
+    } catch (e) {
+      alert(e.response?.data?.error || 'Failed to update plan');
+    } finally {
+      setPlanSaving(null);
+    }
+  };
 
   const toggleReferrer = (id) =>
     setExpandedReferrers((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -297,6 +324,111 @@ export default function Admin() {
               ))}
             </div>
           </>
+        )}
+      </div>
+
+      {/* Leagues & Plans */}
+      <div className="card mb-6">
+        <h2 className="font-display text-2xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          🏟 Leagues &amp; Plans
+        </h2>
+        <p className="text-sm font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Grant or revoke Pro access for any league. All changes are logged.
+        </p>
+        {leagues.length === 0 ? (
+          <div className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>Loading…</div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {leagues.map((l) => {
+              const effectivePlan = l.plan_override || l.plan || 'free';
+              const isPro = effectivePlan === 'pro';
+              const editing = planOverride[l.id];
+              return (
+                <div key={l.id} className="rounded-xl p-3 flex flex-col gap-2" style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid var(--color-border)' }}>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                        {l.name}
+                        <span className="ml-1.5 text-xs font-normal opacity-50">{l.slug}</span>
+                      </div>
+                      <div className="text-xs font-ui mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                        {l.owner_name} · {l.member_count} members · {l.game_count} games
+                      </div>
+                      {l.plan_override && (
+                        <div className="text-xs font-ui mt-0.5 italic" style={{ color: 'var(--color-text-secondary)' }}>
+                          Override reason: {l.plan_override_reason}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span
+                        className="text-xs font-ui font-bold px-2 py-0.5 rounded-full"
+                        style={isPro
+                          ? { background: 'rgba(58,107,53,0.12)', color: 'var(--color-primary)' }
+                          : { background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }
+                        }
+                      >
+                        {l.plan_override ? `${l.plan_override} (override)` : effectivePlan}
+                      </span>
+                      {!editing && (
+                        <button
+                          onClick={() => openPlanOverride(l.id, l.plan_override)}
+                          className="text-xs font-ui font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                        >
+                          Edit plan
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {editing && (
+                    <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                      <div className="flex gap-2">
+                        {['pro', 'free', ''].map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => setPlanOverride((prev) => ({ ...prev, [l.id]: { ...prev[l.id], value: v } }))}
+                            className="text-xs font-ui font-semibold px-3 py-1.5 rounded-lg border transition-all"
+                            style={editing.value === v
+                              ? { background: 'var(--color-primary)', borderColor: 'var(--color-primary)', color: '#fff' }
+                              : { background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }
+                            }
+                          >
+                            {v === '' ? 'No override' : v === 'pro' ? '⭐ Grant Pro' : '↓ Set Free'}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Reason (required for audit log)"
+                        value={editing.reason}
+                        onChange={(e) => setPlanOverride((prev) => ({ ...prev, [l.id]: { ...prev[l.id], reason: e.target.value } }))}
+                        className="w-full px-3 py-2 rounded-xl border font-ui text-sm"
+                        style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSetPlan(l.id)}
+                          disabled={!editing.reason?.trim() || planSaving === l.id}
+                          className="btn btn-primary text-sm py-1.5 px-4 disabled:opacity-50"
+                        >
+                          {planSaving === l.id ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => setPlanOverride((prev) => { const next = { ...prev }; delete next[l.id]; return next; })}
+                          className="btn text-sm py-1.5 px-4"
+                          style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

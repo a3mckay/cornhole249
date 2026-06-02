@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { leaguesApi } from '../api';
+import { leaguesApi, billingApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import InviteKit from '../components/InviteKit';
+import UpgradeModal from '../components/UpgradeModal';
 
 const ROLE_BADGE = {
   owner: { label: 'Owner', bg: '#FEF3C7', color: '#92400E' },
@@ -42,6 +43,21 @@ export default function LeagueSettings() {
   // Member removal
   const [removingId, setRemovingId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
+
+  // Billing
+  const { leagueId, plan } = useLeague();
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+
+  const handlePortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { url } = await billingApi.portal(leagueId);
+      window.location.href = url;
+    } catch {
+      setPortalLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -153,6 +169,50 @@ export default function LeagueSettings() {
           <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
             {league?.name}
           </p>
+        </div>
+      </div>
+
+      {/* Billing */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
+              {plan === 'free' ? '⭐ Plan' : '🌟 Plan'}
+            </h2>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span
+                className="text-xs font-ui font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+                style={plan === 'free'
+                  ? { background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }
+                  : { background: 'rgba(58,107,53,0.12)', border: '1px solid rgba(58,107,53,0.3)', color: 'var(--color-primary)' }
+                }
+              >
+                {plan === 'free' ? 'Free' : 'Pro'}
+              </span>
+              {plan !== 'free' && league?.stripe_subscription_id && (
+                <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Active subscription</span>
+              )}
+            </div>
+          </div>
+          <div>
+            {plan === 'free' ? (
+              <button
+                onClick={() => setShowUpgrade(true)}
+                className="btn btn-primary text-sm px-4 py-2"
+              >
+                Upgrade to Pro
+              </button>
+            ) : league?.stripe_subscription_id ? (
+              <button
+                onClick={handlePortal}
+                disabled={portalLoading}
+                className="btn text-sm px-4 py-2 disabled:opacity-50"
+                style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                {portalLoading ? 'Redirecting…' : 'Manage subscription'}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -270,6 +330,13 @@ export default function LeagueSettings() {
           </p>
         )}
       </div>
+
+      <UpgradeModal
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Pro features"
+        leagueId={leagueId}
+      />
 
       {/* Members */}
       <div className="card p-6">
