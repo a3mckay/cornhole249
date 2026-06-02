@@ -47,6 +47,7 @@ export default function LeagueSettings() {
   // Billing
   const { leagueId, plan } = useLeague();
   const [portalLoading, setPortalLoading] = useState(false);
+  const [renewLoading, setRenewLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
   const handlePortal = async () => {
@@ -58,6 +59,23 @@ export default function LeagueSettings() {
       setPortalLoading(false);
     }
   };
+
+  const handleRenewPass = async () => {
+    setRenewLoading(true);
+    try {
+      const { url } = await billingApi.checkout(leagueId, 'weekend_pass');
+      window.location.href = url;
+    } catch {
+      setRenewLoading(false);
+    }
+  };
+
+  // Weekend pass countdown helpers
+  const expiresAtDate = league?.expires_at ? new Date(league.expires_at) : null;
+  const msRemaining = expiresAtDate ? expiresAtDate - Date.now() : null;
+  const daysRemaining = msRemaining !== null ? Math.ceil(msRemaining / (1000 * 60 * 60 * 24)) : null;
+  const passExpired = daysRemaining !== null && daysRemaining <= 0;
+  const passUrgent = daysRemaining !== null && daysRemaining <= 2 && !passExpired;
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -174,35 +192,100 @@ export default function LeagueSettings() {
 
       {/* Billing */}
       <div className="card p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
-              {plan === 'free' ? '⭐ Plan' : '🌟 Plan'}
-            </h2>
-            <div className="flex items-center gap-2 mt-1.5">
+        <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
+          {plan === 'free' ? '⭐ Plan' : '🌟 Plan'}
+        </h2>
+
+        {plan === 'weekend_pass' ? (
+          <div className="flex flex-col gap-4">
+            {/* Status row */}
+            <div className="flex items-center gap-3">
               <span
                 className="text-xs font-ui font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
-                style={plan === 'free'
-                  ? { background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }
-                  : { background: 'rgba(58,107,53,0.12)', border: '1px solid rgba(58,107,53,0.3)', color: 'var(--color-primary)' }
-                }
+                style={{ background: 'rgba(58,107,53,0.12)', border: '1px solid rgba(58,107,53,0.3)', color: 'var(--color-primary)' }}
               >
-                {plan === 'free' ? 'Free' : 'Pro'}
+                Weekend Pass
               </span>
-              {plan !== 'free' && league?.stripe_subscription_id && (
+              {expiresAtDate && (
+                <span
+                  className="text-sm font-ui font-semibold"
+                  style={{ color: passExpired ? 'var(--color-danger)' : passUrgent ? '#B45309' : 'var(--color-text-secondary)' }}
+                >
+                  {passExpired
+                    ? '⚠️ Expired'
+                    : daysRemaining === 1
+                    ? '⚠️ Expires tomorrow'
+                    : `Expires in ${daysRemaining} days`}
+                </span>
+              )}
+            </div>
+
+            {/* Expiry bar */}
+            {expiresAtDate && !passExpired && (
+              <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-border)' }}>
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, (msRemaining / (7 * 24 * 60 * 60 * 1000)) * 100))}%`,
+                    background: passUrgent ? '#D97706' : 'var(--color-primary)',
+                  }}
+                />
+              </div>
+            )}
+
+            {/* CTA */}
+            <div className="flex flex-col gap-2">
+              {(passExpired || passUrgent) && (
+                <p className="text-sm font-ui" style={{ color: passExpired ? 'var(--color-danger)' : '#92400E' }}>
+                  {passExpired
+                    ? 'Your pass has expired — Pro features are now locked.'
+                    : 'Running low — renew or upgrade before access is lost.'}
+                </p>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={handleRenewPass}
+                  disabled={renewLoading}
+                  className="btn btn-primary text-sm px-4 py-2 disabled:opacity-50"
+                >
+                  {renewLoading ? 'Redirecting…' : '🔄 Renew pass — CAD $12'}
+                </button>
+                <button
+                  onClick={() => setShowUpgrade(true)}
+                  className="btn text-sm px-4 py-2"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                >
+                  Upgrade to Pro subscription
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : plan === 'free' ? (
+          <div className="flex items-center justify-between">
+            <span
+              className="text-xs font-ui font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+              style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+            >
+              Free
+            </span>
+            <button onClick={() => setShowUpgrade(true)} className="btn btn-primary text-sm px-4 py-2">
+              Upgrade to Pro
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-xs font-ui font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+                style={{ background: 'rgba(58,107,53,0.12)', border: '1px solid rgba(58,107,53,0.3)', color: 'var(--color-primary)' }}
+              >
+                Pro
+              </span>
+              {league?.stripe_subscription_id && (
                 <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Active subscription</span>
               )}
             </div>
-          </div>
-          <div>
-            {plan === 'free' ? (
-              <button
-                onClick={() => setShowUpgrade(true)}
-                className="btn btn-primary text-sm px-4 py-2"
-              >
-                Upgrade to Pro
-              </button>
-            ) : league?.stripe_subscription_id ? (
+            {league?.stripe_subscription_id && (
               <button
                 onClick={handlePortal}
                 disabled={portalLoading}
@@ -211,9 +294,9 @@ export default function LeagueSettings() {
               >
                 {portalLoading ? 'Redirecting…' : 'Manage subscription'}
               </button>
-            ) : null}
+            )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* League info */}
