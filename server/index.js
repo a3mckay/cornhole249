@@ -482,6 +482,19 @@ app.use(errorHandler);
     const { seedIfEmpty } = require('./seed');
     seedIfEmpty();
 
+    // ── Daily Postgres backup (production only) ──────────────────────────────
+    // Dumps all tables to a gzipped JSON file on the Railway volume.
+    // Keeps the 7 most recent backups; older ones are rotated out.
+    if (process.env.NODE_ENV === 'production') {
+      const cron = require('node-cron');
+      const { runBackup, BACKUP_DIR } = require('./lib/backup');
+      // 03:00 UTC every day
+      cron.schedule('0 3 * * *', () => {
+        runBackup().catch((e) => console.error('[Backup] Cron error:', e.message));
+      });
+      console.log(`[Backup] Daily backup scheduled at 03:00 UTC → ${BACKUP_DIR}`);
+    }
+
     if (require.main === module) {
       app.listen(PORT, () => {
         console.log(`[Server] Cornhole249 running on http://localhost:${PORT}`);

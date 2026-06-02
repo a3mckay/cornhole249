@@ -1,0 +1,32 @@
+# Railway configuration
+# Docs: https://docs.railway.com/reference/config-as-code
+
+[build]
+builder = "nixpacks"
+buildCommand = "npm install --include=dev && cd client && npm install --include=dev && cd .. && npm run build"
+
+[deploy]
+startCommand = "node server/index.js"
+healthcheckPath = "/api/standings"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# ── Preview environments (PR deploys) ──────────────────────────────────────────
+# When "Deploy on PR" is enabled in Railway dashboard, each PR gets its own
+# environment using these overrides instead of the production values.
+#
+# KEY SETUP STEPS (one-time, in Railway dashboard):
+#   1. Project → Settings → Enable "Deploy on PR"
+#   2. In the PR environment, Railway clones all services.
+#      Override DATABASE_URL to a separate preview Postgres if desired, or
+#      leave it pointing to production for read-only UI previews.
+#   3. Set GOOGLE_CALLBACK_URL for the preview domain in Google Cloud Console
+#      (Authorized redirect URIs), or disable Google auth in PR envs.
+#
+# The variables below are only applied to non-production environments.
+# Production environment variables are managed entirely in the Railway dashboard.
+
+[environments.pr-preview]
+# Override start command for preview if needed (same as production here)
+# startCommand = "node server/index.js"

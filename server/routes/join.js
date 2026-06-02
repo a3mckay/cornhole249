@@ -40,6 +40,15 @@ router.get('/:code', async (req, res) => {
 
     const leagueId = joinCode.league_id || 1;
 
+    // League plan info (for cap enforcement)
+    const league = await db
+      .selectFrom('leagues')
+      .select(['plan'])
+      .where('id', '=', leagueId)
+      .executeTakeFirst();
+    const leaguePlan = league?.plan || 'free';
+    const MEMBER_LIMIT = 8; // free-plan cap
+
     // Member avatars — up to 12, ordered by join date
     const memberAvatars = await db
       .selectFrom('users')
@@ -120,6 +129,8 @@ router.get('/:code', async (req, res) => {
       })
     );
 
+    const isFull = leaguePlan === 'free' && memberCount >= MEMBER_LIMIT;
+
     res.json({
       valid: true,
       used: false,
@@ -127,6 +138,8 @@ router.get('/:code', async (req, res) => {
       inviter,
       inviter_ref_token: inviterRefToken,
       member_count: memberCount,
+      member_limit: leaguePlan === 'free' ? MEMBER_LIMIT : null,
+      is_full: isFull,
       member_avatars: memberAvatars,
       top3,
       recent_games: hydratedGames,

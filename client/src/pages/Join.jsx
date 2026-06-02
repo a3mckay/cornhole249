@@ -165,8 +165,15 @@ export default function Join() {
             ))}
           </div>
           <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-            {data.member_count} {data.member_count === 1 ? 'player' : 'players'} in the league
+            {data.member_limit
+              ? `${data.member_count} / ${data.member_limit} players`
+              : `${data.member_count} ${data.member_count === 1 ? 'player' : 'players'}`}
           </span>
+          {data.is_full && (
+            <span className="ml-1 text-xs font-ui font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>
+              Full
+            </span>
+          )}
         </div>
       </div>
 
@@ -213,12 +220,24 @@ export default function Join() {
 
       {/* CTAs */}
       <div className="flex flex-col gap-3">
-        <button
-          onClick={() => navigate(`/register?code=${code}`)}
-          className="btn btn-primary w-full text-base py-3"
-        >
-          Join this league →
-        </button>
+        {data.is_full ? (
+          <div className="card text-center py-6">
+            <div className="text-3xl mb-2">🔒</div>
+            <p className="font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+              This league is full ({data.member_count}/{data.member_limit} players)
+            </p>
+            <p className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              Ask an admin to upgrade the league to add more players.
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={() => navigate(`/register?code=${code}`)}
+            className="btn btn-primary w-full text-base py-3"
+          >
+            Join this league →
+          </button>
+        )}
         <Link
           to="/"
           className="font-ui text-sm text-center"
