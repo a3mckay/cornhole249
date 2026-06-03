@@ -1,9 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { useLeague, leaguePath } from '../contexts/LeagueContext';
 
-const TABS = [
+const TAB_DEFS = [
   {
-    to: '/games',
+    key: 'games',
     label: 'Games',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -13,7 +14,7 @@ const TABS = [
     ),
   },
   {
-    to: '/standings',
+    key: 'standings',
     label: 'Standings',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -22,7 +23,7 @@ const TABS = [
     ),
   },
   {
-    to: '/stats',
+    key: 'stats',
     label: 'Stats',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -31,7 +32,7 @@ const TABS = [
     ),
   },
   {
-    to: '/trash-talk',
+    key: 'trash-talk',
     label: 'Trash 🍺',
     icon: (
       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -42,6 +43,9 @@ const TABS = [
 ];
 
 export default function BottomNav() {
+  const { slug } = useLeague();
+  const tabs = TAB_DEFS.map((t) => ({ ...t, to: leaguePath(slug, t.key) }));
+
   return (
     <nav
       className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex border-t"
@@ -51,9 +55,9 @@ export default function BottomNav() {
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      {TABS.map((tab) => (
+      {tabs.map((tab) => (
         <NavLink
-          key={tab.to}
+          key={tab.key}
           to={tab.to}
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs font-ui font-semibold transition-colors ${

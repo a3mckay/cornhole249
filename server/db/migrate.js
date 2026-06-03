@@ -13,11 +13,14 @@ const path = require('path');
 const { sql } = require('kysely');
 
 const MIGRATIONS = [
-  { name: '001_initial_schema',               file: './migrations/001_initial_schema' },
-  { name: '002_league_model',                 file: './migrations/002_league_model' },
+  { name: '001_initial_schema',                 file: './migrations/001_initial_schema' },
+  { name: '002_league_model',                   file: './migrations/002_league_model' },
   { name: '003_achievements_unique_constraint', file: './migrations/003_achievements_unique_constraint' },
-  { name: '004_leagues_columns',              file: './migrations/004_leagues_columns' },
-  { name: '005_auth_upgrade',                 file: './migrations/005_auth_upgrade' },
+  { name: '004_leagues_columns',                file: './migrations/004_leagues_columns' },
+  { name: '005_auth_upgrade',                   file: './migrations/005_auth_upgrade' },
+  { name: '006_stripe_billing',                 file: './migrations/006_stripe_billing' },
+  { name: '007_league_tagline',                 file: './migrations/007_league_tagline' },
+  { name: '008_invite_tokens',                  file: './migrations/008_invite_tokens' },
 ];
 
 async function run(db) {

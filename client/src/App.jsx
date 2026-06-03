@@ -168,7 +168,7 @@ export default function App() {
 
             {/* ── Other leagues under /l/:slug/ ─────────────────────────── */}
             <Route path="/l/:slug" element={<LeagueProvider />}>
-              <Route index element={<Navigate to="standings" replace />} />
+              <Route index element={<PageWrapper><Home /></PageWrapper>} />
               <Route path="standings" element={<PageWrapper><Standings /></PageWrapper>} />
               <Route path="games" element={<PageWrapper><Games /></PageWrapper>} />
               <Route path="games/new" element={<PageWrapper><GameNew onAchievement={addToast} /></PageWrapper>} />

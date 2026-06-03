@@ -9,30 +9,35 @@ function ProLock() {
   return <span title="Pro feature" style={{ fontSize: '0.65em', opacity: 0.7 }}>🔒</span>;
 }
 
-// Desktop nav order
-const NAV_LINKS = [
-  { to: '/games',       label: 'Games' },
-  { to: '/standings',   label: 'Standings' },
-  { to: '/stats',       label: 'Stats' },
-  { to: '/trash-talk',  label: 'Trash Talk 🍺', short: 'Trash 🍺' },
-  { to: '/tournaments', label: 'Tournaments' },
-  { to: '/players',     label: 'Players' },
-  { to: '/teams',       label: 'Teams' },
-  { to: '/hall-of-fame',label: 'Hall of Fame', short: 'HoF' },
-  { to: '/odds',        label: 'Odds' },
-  { to: '/rules',       label: 'Rules' },
-];
+function makeNavLinks(slug) {
+  const p = (sub) => leaguePath(slug, sub);
+  return [
+    { to: p('games'),        label: 'Games',              key: 'games' },
+    { to: p('standings'),    label: 'Standings',           key: 'standings' },
+    { to: p('stats'),        label: 'Stats',               key: 'stats' },
+    { to: p('trash-talk'),   label: 'Trash Talk 🍺',       key: 'trash-talk', short: 'Trash 🍺' },
+    { to: p('tournaments'),  label: 'Tournaments',         key: 'tournaments' },
+    { to: p('players'),      label: 'Players',             key: 'players' },
+    { to: p('teams'),        label: 'Teams',               key: 'teams' },
+    { to: p('hall-of-fame'), label: 'Hall of Fame',        key: 'hall-of-fame', short: 'HoF' },
+    { to: p('odds'),         label: 'Odds',                key: 'odds' },
+    { to: p('rules'),        label: 'Rules',               key: 'rules' },
+  ];
+}
 
-// Mobile hamburger — secondary items (primary 4 are in BottomNav)
-const HAMBURGER_LINKS = [
-  { to: '/',            label: '🏠 Home' },
-  { to: '/tournaments', label: 'Tournaments' },
-  { to: '/players',     label: 'Players' },
-  { to: '/teams',       label: 'Teams' },
-  { to: '/hall-of-fame',label: 'Hall of Fame' },
-  { to: '/odds',        label: 'Odds' },
-  { to: '/rules',       label: 'Rules' },
-];
+function makeHamburgerLinks(slug) {
+  const home = slug === 'cornhole249' ? '/' : `/l/${slug}`;
+  const p = (sub) => leaguePath(slug, sub);
+  return [
+    { to: home,              label: '🏠 Home',             key: 'home' },
+    { to: p('tournaments'),  label: 'Tournaments',         key: 'tournaments' },
+    { to: p('players'),      label: 'Players',             key: 'players' },
+    { to: p('teams'),        label: 'Teams',               key: 'teams' },
+    { to: p('hall-of-fame'), label: 'Hall of Fame',        key: 'hall-of-fame' },
+    { to: p('odds'),         label: 'Odds',                key: 'odds' },
+    { to: p('rules'),        label: 'Rules',               key: 'rules' },
+  ];
+}
 
 export default function Navbar() {
   const { user, leagues, logout, loading } = useAuth();
@@ -48,6 +53,9 @@ export default function Navbar() {
   const [copied,         setCopied]         = useState(false);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const NAV_LINKS = makeNavLinks(currentSlug);
+  const HAMBURGER_LINKS = makeHamburgerLinks(currentSlug);
+  const leagueHome = (slug) => slug === 'cornhole249' ? '/' : `/l/${slug}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(siteUrl).then(() => {
@@ -129,7 +137,7 @@ export default function Navbar() {
                   </div>
                   {leagues.map((l) => (
                     <button key={l.id}
-                      onClick={() => { navigate(leaguePath(l.slug, 'standings')); setLeagueDropOpen(false); }}
+                      onClick={() => { navigate(leagueHome(l.slug)); setLeagueDropOpen(false); }}
                       className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-ui hover:bg-amber-50 text-left transition-colors ${l.slug === currentSlug ? 'font-bold' : ''}`}
                       style={{ color: 'var(--color-text-primary)' }}>
                       <span className="flex-1 truncate">{l.name}</span>
@@ -153,10 +161,10 @@ export default function Navbar() {
         {/* Desktop nav links */}
         <div className="hidden lg:flex items-center gap-1 flex-1 overflow-hidden">
           {NAV_LINKS.map((l) => {
-            const gated = isFree && (l.to === '/stats' || l.to === '/tournaments');
+            const gated = isFree && (l.key === 'stats' || l.key === 'tournaments');
             return (
               <NavLink
-                key={l.to}
+                key={l.key}
                 to={l.to}
                 className={({ isActive }) =>
                   `px-3 py-1.5 rounded-full text-sm font-ui font-600 transition-colors flex-shrink-0 flex items-center gap-1 ${
@@ -298,9 +306,9 @@ export default function Navbar() {
         <div className="lg:hidden fixed inset-0 z-40 flex flex-col pt-14" style={{ backgroundColor: 'var(--color-navbar)' }}>
           <div className="flex flex-col p-4 gap-1 overflow-y-auto pb-24">
             {HAMBURGER_LINKS.map((l) => {
-              const gated = isFree && (l.to === '/tournaments');
+              const gated = isFree && (l.key === 'tournaments');
               return (
-                <NavLink key={l.to} to={l.to} onClick={() => setMenuOpen(false)}
+                <NavLink key={l.key} to={l.to} onClick={() => setMenuOpen(false)}
                   className={({ isActive }) =>
                     `px-4 py-3 rounded-xl text-lg font-ui font-semibold transition-colors flex items-center gap-2 ${
                       isActive ? 'bg-white/20 text-white' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'
@@ -324,7 +332,7 @@ export default function Navbar() {
                 <div className="px-4 py-1 text-xs font-ui font-semibold uppercase tracking-wider text-amber-200/60">My Leagues</div>
                 {leagues.map((l) => (
                   <button key={l.id}
-                    onClick={() => { navigate(leaguePath(l.slug, 'standings')); setMenuOpen(false); }}
+                    onClick={() => { navigate(leagueHome(l.slug)); setMenuOpen(false); }}
                     className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-left transition-colors ${l.slug === currentSlug ? 'bg-white/20 text-white font-bold' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'}`}>
                     <span className="flex-1">{l.name}</span>
                     <span className="text-xs opacity-50 capitalize">{l.role}</span>
