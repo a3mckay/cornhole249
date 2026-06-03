@@ -2,6 +2,25 @@ const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 
+// ── Simple in-memory TTL cache ────────────────────────────────────────────────
+// Standings are expensive to compute (streak + last-5 queries per player).
+// Cache results for 30 seconds — negligible staleness vs. large query savings.
+const _cache = new Map();
+const CACHE_TTL = 30_000;
+
+function getCache(key) {
+  const hit = _cache.get(key);
+  if (!hit) return null;
+  if (Date.now() > hit.exp) { _cache.delete(key); return null; }
+  return hit.data;
+}
+
+function setCache(key, data) {
+  _cache.set(key, { data, exp: Date.now() + CACHE_TTL });
+}
+
+// ── Streak / last-5 helpers ───────────────────────────────────────────────────
+
 async function computePairStreak(ids, db, season, leagueId) {
   const { rows } = await sql`
     SELECT gp1.is_winner, g.played_at
@@ -70,13 +89,17 @@ async function computeLast5(userId, db, season, leagueId) {
   return rows.map((r) => (r.is_winner ? 'W' : 'L'));
 }
 
-// GET /api/standings/1v1
+// ── GET /api/standings/1v1 ────────────────────────────────────────────────────
 router.get('/1v1', async (req, res) => {
   try {
     const db = getDb();
     const { season } = req.query;
     const seasonInt = season ? parseInt(season) : null;
     const leagueId = req.leagueId;
+
+    const cacheKey = `${leagueId}:1v1:${seasonInt ?? ''}`;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json(cached);
 
     const { rows } = await sql`
       SELECT
@@ -120,13 +143,14 @@ router.get('/1v1', async (req, res) => {
       }))
     );
 
+    setCache(cacheKey, result);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/standings/2v2
+// ── GET /api/standings/2v2 ────────────────────────────────────────────────────
 router.get('/2v2', async (req, res) => {
   try {
     const db = getDb();
@@ -134,47 +158,54 @@ router.get('/2v2', async (req, res) => {
     const seasonInt = season ? parseInt(season) : null;
     const leagueId = req.leagueId;
 
-    const { rows: games } = await sql`
-      SELECT g.id as game_id, g.played_at
-      FROM games g
+    const cacheKey = `${leagueId}:2v2:${seasonInt ?? ''}`;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json(cached);
+
+    // Fetch all 2v2 participants in one query instead of N+1 per-game queries.
+    // Map preserves insertion order (games sorted by played_at ASC).
+    const { rows: allRows } = await sql`
+      SELECT gp.game_id, gp.team, gp.user_id, gp.score, gp.is_winner,
+             u.display_name, u.nickname, u.avatar_url
+      FROM game_participants gp
+      JOIN games g ON gp.game_id = g.id
+      JOIN users u ON gp.user_id = u.id
       WHERE g.game_type = '2v2' AND g.league_id = ${leagueId}
       ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
-      ORDER BY g.played_at ASC
+      ORDER BY g.played_at ASC, gp.team
     `.execute(db);
+
+    // Group participants by game
+    const gameMap = new Map();
+    for (const row of allRows) {
+      if (!gameMap.has(row.game_id)) gameMap.set(row.game_id, []);
+      gameMap.get(row.game_id).push(row);
+    }
 
     const pairStats = {};
 
-    for (const game of games) {
-      const { rows: participants } = await sql`
-        SELECT gp.*, u.display_name, u.nickname, u.avatar_url
-        FROM game_participants gp
-        JOIN users u ON gp.user_id = u.id
-        WHERE gp.game_id = ${game.game_id}
-        ORDER BY gp.team
-      `.execute(db);
+    const processTeam = (team, opponent) => {
+      const ids = team.map((p) => p.user_id).sort((a, b) => a - b);
+      const key = ids.join('-');
+      if (!pairStats[key]) {
+        pairStats[key] = {
+          key, user_ids: ids,
+          players: team.map((p) => ({ user_id: p.user_id, display_name: p.display_name, nickname: p.nickname, avatar_url: p.avatar_url })),
+          gp: 0, wins: 0, losses: 0, total_scored: 0, total_against: 0,
+        };
+      }
+      const won = team[0].is_winner === 1;
+      pairStats[key].gp++;
+      if (won) pairStats[key].wins++;
+      else pairStats[key].losses++;
+      pairStats[key].total_scored += team[0].score || 0;
+      pairStats[key].total_against += opponent[0].score || 0;
+    };
 
+    for (const participants of gameMap.values()) {
       const team1 = participants.filter((p) => p.team === 1);
       const team2 = participants.filter((p) => p.team === 2);
       if (team1.length < 2 || team2.length < 2) continue;
-
-      const processTeam = (team, opponent) => {
-        const ids = team.map((p) => p.user_id).sort((a, b) => a - b);
-        const key = ids.join('-');
-        if (!pairStats[key]) {
-          pairStats[key] = {
-            key, user_ids: ids,
-            players: team.map((p) => ({ user_id: p.user_id, display_name: p.display_name, nickname: p.nickname, avatar_url: p.avatar_url })),
-            gp: 0, wins: 0, losses: 0, total_scored: 0, total_against: 0,
-          };
-        }
-        const won = team[0].is_winner === 1;
-        pairStats[key].gp++;
-        if (won) pairStats[key].wins++;
-        else pairStats[key].losses++;
-        pairStats[key].total_scored += team[0].score || 0;
-        pairStats[key].total_against += opponent[0].score || 0;
-      };
-
       processTeam(team1, team2);
       processTeam(team2, team1);
     }
@@ -195,13 +226,14 @@ router.get('/2v2', async (req, res) => {
       }))
     );
 
+    setCache(cacheKey, result);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/standings/team/:p1/:p2
+// ── GET /api/standings/team/:p1/:p2 ──────────────────────────────────────────
 router.get('/team/:p1/:p2', async (req, res) => {
   try {
     const db = getDb();
@@ -317,7 +349,7 @@ router.get('/team/:p1/:p2', async (req, res) => {
   }
 });
 
-// GET /api/standings/history/:user_id
+// ── GET /api/standings/history/:user_id ───────────────────────────────────────
 router.get('/history/:user_id', async (req, res) => {
   try {
     const db = getDb();

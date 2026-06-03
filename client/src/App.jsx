@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, Link, useLocation, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { LeagueProvider } from './contexts/LeagueContext';
@@ -7,41 +7,59 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import QRShare from './components/QRShare';
 
-import Home from './pages/Home';
+// ── Eagerly loaded — shown on every visit or the very first navigation ────────
+import Home      from './pages/Home';
 import Standings from './pages/Standings';
-import Games from './pages/Games';
-import GameNew from './pages/GameNew';
+import Games     from './pages/Games';
+import GameNew   from './pages/GameNew';
 import GameDetail from './pages/GameDetail';
-import Players from './pages/Players';
-import PlayerProfile from './pages/PlayerProfile';
-import Teams from './pages/Teams';
-import TeamProfile from './pages/TeamProfile';
-import Stats from './pages/Stats';
-import Tournaments from './pages/Tournaments';
-import Odds from './pages/Odds';
-import HallOfFame from './pages/HallOfFame';
-import Rules from './pages/Rules';
-import TrashTalk from './pages/TrashTalk';
-import Admin from './pages/Admin';
-import Register from './pages/Register';
-import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword';
-import ResetPassword from './pages/ResetPassword';
-import ClaimAccount from './pages/ClaimAccount';
-import VerifyEmail from './pages/VerifyEmail';
-import Join from './pages/Join';
-import CreateLeague from './pages/CreateLeague';
-import LeagueWelcome from './pages/LeagueWelcome';
-import UseCase from './pages/UseCase';
-import LeagueSettings from './pages/LeagueSettings';
-import Landing from './pages/Landing';
-import Terms from './pages/Terms';
-import Privacy from './pages/Privacy';
-import Refunds from './pages/Refunds';
-import Cookies from './pages/Cookies';
+import Register  from './pages/Register';
+import Login     from './pages/Login';
+import Landing   from './pages/Landing';
+
+// ── Lazy loaded — split into separate chunks, fetched on first visit ──────────
+const Players       = lazy(() => import('./pages/Players'));
+const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
+const Teams         = lazy(() => import('./pages/Teams'));
+const TeamProfile   = lazy(() => import('./pages/TeamProfile'));
+const Stats         = lazy(() => import('./pages/Stats'));
+const Tournaments   = lazy(() => import('./pages/Tournaments'));
+const Odds          = lazy(() => import('./pages/Odds'));
+const HallOfFame    = lazy(() => import('./pages/HallOfFame'));
+const Rules         = lazy(() => import('./pages/Rules'));
+const TrashTalk     = lazy(() => import('./pages/TrashTalk'));
+const Admin         = lazy(() => import('./pages/Admin'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
+const ClaimAccount   = lazy(() => import('./pages/ClaimAccount'));
+const VerifyEmail    = lazy(() => import('./pages/VerifyEmail'));
+const Join           = lazy(() => import('./pages/Join'));
+const CreateLeague   = lazy(() => import('./pages/CreateLeague'));
+const LeagueWelcome  = lazy(() => import('./pages/LeagueWelcome'));
+const UseCase        = lazy(() => import('./pages/UseCase'));
+const LeagueSettings = lazy(() => import('./pages/LeagueSettings'));
+const Terms   = lazy(() => import('./pages/Terms'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Refunds = lazy(() => import('./pages/Refunds'));
+const Cookies = lazy(() => import('./pages/Cookies'));
+
+// Fallback shown while a lazy chunk is downloading
+function PageSkeleton() {
+  return (
+    <div className="flex items-center justify-center py-24">
+      <span className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)', opacity: 0.4 }}>
+        Loading…
+      </span>
+    </div>
+  );
+}
 
 function PageWrapper({ children }) {
-  return <div className="page-enter">{children}</div>;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <div className="page-enter">{children}</div>
+    </Suspense>
+  );
 }
 
 function RootRoute() {
