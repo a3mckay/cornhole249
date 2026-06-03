@@ -23,6 +23,8 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
@@ -31,6 +33,8 @@ body {
   font-family: 'Nunito', sans-serif;
   min-height: 100vh;
   position: relative;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 /* Grain texture overlay */
