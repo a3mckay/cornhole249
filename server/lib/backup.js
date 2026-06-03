@@ -19,8 +19,21 @@ const zlib = require('zlib');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
+const crypto = require('crypto');
 
 const gzip = promisify(zlib.gzip);
+
+// Encrypt with AES-256-GCM. Key must be 64 hex chars (32 bytes) via BACKUP_ENCRYPTION_KEY.
+// Output format: 12-byte IV || 16-byte auth tag || ciphertext
+function encryptBuffer(buf, keyHex) {
+  const key = Buffer.from(keyHex, 'hex');
+  if (key.length !== 32) throw new Error('BACKUP_ENCRYPTION_KEY must be 64 hex characters (32 bytes)');
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(buf), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, encrypted]);
+}
 
 const BACKUP_DIR = process.env.BACKUP_DIR || '/data/backups';
 const MAX_BACKUPS = 7;
@@ -70,18 +83,25 @@ async function runBackup() {
     // Ensure backup directory exists
     fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
-    // Filename: cornhole249_2026-06-01T03-00-00.json.gz
+    const encKey = process.env.BACKUP_ENCRYPTION_KEY;
+    if (!encKey) {
+      console.warn('[Backup] WARNING: BACKUP_ENCRYPTION_KEY not set — backup will be unencrypted. Set a 64-char hex key to enable encryption.');
+    }
+
+    // Filename: cornhole249_2026-06-01T03-00-00.json.gz[.enc]
     const ts = new Date().toISOString().replace(/:/g, '-').replace(/\..+$/, '');
-    const filename = `cornhole249_${ts}.json.gz`;
+    const ext = encKey ? '.json.gz.enc' : '.json.gz';
+    const filename = `cornhole249_${ts}${ext}`;
     const filepath = path.join(BACKUP_DIR, filename);
 
     const compressed = await gzip(JSON.stringify(dump));
-    fs.writeFileSync(filepath, compressed);
+    const output = encKey ? encryptBuffer(compressed, encKey) : compressed;
+    fs.writeFileSync(filepath, output);
 
     // Rotate: keep only MAX_BACKUPS most-recent files
     const existing = fs
       .readdirSync(BACKUP_DIR)
-      .filter((f) => f.startsWith('cornhole249_') && f.endsWith('.json.gz'))
+      .filter((f) => f.startsWith('cornhole249_') && (f.endsWith('.json.gz') || f.endsWith('.json.gz.enc')))
       .map((f) => ({ name: f, mtime: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
       .sort((a, b) => b.mtime - a.mtime);
 

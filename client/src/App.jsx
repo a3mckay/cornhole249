@@ -34,6 +34,7 @@ import CreateLeague from './pages/CreateLeague';
 import LeagueWelcome from './pages/LeagueWelcome';
 import UseCase from './pages/UseCase';
 import LeagueSettings from './pages/LeagueSettings';
+import Privacy from './pages/Privacy';
 
 function PageWrapper({ children }) {
   return <div className="page-enter">{children}</div>;
@@ -200,8 +201,16 @@ export default function App() {
             <Route path="/join" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/join/:code" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/leagues/new" element={<PageWrapper><CreateLeague /></PageWrapper>} />
+            <Route path="/privacy" element={<PageWrapper><Privacy /></PageWrapper>} />
           </Routes>
         </main>
+
+        {/* Privacy footer */}
+        <footer className="text-center py-4 pb-24 lg:pb-4">
+          <Link to="/privacy" className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>
+            Privacy Policy
+          </Link>
+        </footer>
 
         {/* Bottom nav — mobile only */}
         <BottomNav />

@@ -512,4 +512,57 @@ router.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
+// ── DELETE /auth/account ─────────────────────────────────────────────────────
+// Permanently removes all PII from the user's account (PIPEDA / CCPA compliance).
+// Game history rows are retained but the user record is anonymised so scores
+// remain accurate. Comments and trash talk are hard-deleted.
+
+router.delete('/account', async (req, res) => {
+  try {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const userId = req.session.userId;
+    const db = getDb();
+
+    // Delete personal content
+    await db.deleteFrom('comments').where('user_id', '=', userId).execute();
+    await db.deleteFrom('trash_talk').where('user_id', '=', userId).execute();
+    await db.deleteFrom('achievements').where('user_id', '=', userId).execute();
+    await db.deleteFrom('league_memberships').where('user_id', '=', userId).execute();
+
+    // Null out FK references in other tables
+    await db.updateTable('join_codes').set({ created_by: null }).where('created_by', '=', userId).execute();
+    await db.updateTable('join_codes').set({ used_by: null }).where('used_by', '=', userId).execute();
+    await db.updateTable('games').set({ submitted_by_user_id: null }).where('submitted_by_user_id', '=', userId).execute();
+    // Clear referral links that point to this user
+    await db.updateTable('users').set({ referred_by_user_id: null }).where('referred_by_user_id', '=', userId).execute();
+
+    // Anonymise the user row — clears all PII, keeps the row so game_participants FKs stay valid
+    await db
+      .updateTable('users')
+      .set({
+        display_name: `Deleted User`,
+        nickname: null,
+        avatar_url: null,
+        email: null,
+        password_hash: null,
+        pin: null,
+        google_id: null,
+        google_email: null,
+        stripe_customer_id: null,
+        ref_token: null,
+        referred_by_user_id: null,
+        email_verify_token: null,
+        email_verify_token_expires_at: null,
+        password_reset_token: null,
+        password_reset_expires_at: null,
+      })
+      .where('id', '=', userId)
+      .execute();
+
+    req.session.destroy(() => res.json({ ok: true }));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

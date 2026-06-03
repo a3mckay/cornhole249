@@ -37,7 +37,7 @@ function getTransporter() {
 
 async function sendEmail({ to, subject, html }) {
   if (!process.env.GMAIL_USER) {
-    console.log(`[Email] Would send to=${to} subject="${subject}" (GMAIL_USER not set)`);
+    console.log(`[Email] Would send subject="${subject}" (GMAIL_USER not configured — recipient suppressed)`);
     return;
   }
   await getTransporter().sendMail({

@@ -55,6 +55,8 @@ export const authApi = {
 
   logout: () => axios.post('/auth/logout', {}, { withCredentials: true }).then((r) => r.data),
 
+  deleteAccount: () => axios.delete('/auth/account', { withCredentials: true }).then((r) => r.data),
+
   // Email verification
   verifyEmail: (token) =>
     axios.get(`/auth/verify-email/${token}`, { withCredentials: true }).then((r) => r.data),

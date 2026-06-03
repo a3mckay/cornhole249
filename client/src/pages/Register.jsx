@@ -171,6 +171,17 @@ export default function Register() {
             />
           </div>
 
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input type="checkbox" required className="mt-0.5 flex-shrink-0 accent-primary" />
+            <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+              I agree to the{' '}
+              <Link to="/privacy" target="_blank" className="underline" style={{ color: 'var(--color-primary)' }}>
+                Privacy Policy
+              </Link>
+              . Your email is used for account management only — no marketing.
+            </span>
+          </label>
+
           {error && (
             <div className="text-sm font-ui p-2 rounded-lg" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>
               ⚠️ {error}

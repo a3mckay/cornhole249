@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { usersApi, achievementsApi, statsApi, standingsApi, gamesApi } from '../api';
+import { usersApi, achievementsApi, statsApi, standingsApi, gamesApi, authApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -33,6 +33,10 @@ export default function PlayerProfile() {
   const [editError, setEditError] = useState('');
   const [avatarPreview, setAvatarPreview] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Delete account state
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isOwn = currentUser?.id === parseInt(id);
   const isAdmin = !!currentUser?.is_admin;
@@ -128,6 +132,18 @@ export default function PlayerProfile() {
       navigate('/players');
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to delete player');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await authApi.deleteAccount();
+      window.location.href = '/';
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete account');
+      setDeleting(false);
+      setDeleteConfirm(false);
     }
   };
 
@@ -289,6 +305,32 @@ export default function PlayerProfile() {
                   {editSaving ? 'Saving...' : '💾 Save Changes'}
                 </button>
               </div>
+
+              {isOwn && (
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: '#FCA5A5' }}>
+                  <p className="text-xs font-ui font-semibold mb-2" style={{ color: 'var(--color-danger)' }}>
+                    Danger Zone
+                  </p>
+                  {!deleteConfirm ? (
+                    <button
+                      onClick={() => setDeleteConfirm(true)}
+                      className="btn btn-danger text-sm w-full"
+                    >
+                      Delete My Account
+                    </button>
+                  ) : (
+                    <div className="rounded-xl p-3 text-sm font-ui space-y-3" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>
+                      <p className="font-semibold">This will permanently remove your email, name, and all personal data. Game scores are kept anonymously. This cannot be undone.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setDeleteConfirm(false)} className="btn btn-ghost flex-1 text-sm">Cancel</button>
+                        <button onClick={handleDeleteAccount} disabled={deleting} className="btn btn-danger flex-1 text-sm">
+                          {deleting ? 'Deleting...' : 'Yes, delete my account'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
