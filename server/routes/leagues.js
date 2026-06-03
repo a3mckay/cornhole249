@@ -115,14 +115,26 @@ router.post('/', requireAuth, async (req, res) => {
       .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
       .execute();
 
-    // Generate a join code
+    // Generate a join code (legacy backward compat)
     const code = generateJoinCode();
     await db
       .insertInto('join_codes')
       .values({ code, league_id: league.id, created_by: userId })
       .execute();
 
-    res.status(201).json({ league, joinCode: code });
+    // For private leagues, also generate a stable invite token
+    let inviteToken = null;
+    if (!is_public) {
+      inviteToken = generateInviteToken();
+      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      await db
+        .updateTable('leagues')
+        .set({ invite_token: inviteToken, invite_token_expires_at: expiresAt })
+        .where('id', '=', league.id)
+        .execute();
+    }
+
+    res.status(201).json({ league, joinCode: code, inviteToken });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

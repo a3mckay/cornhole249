@@ -35,7 +35,7 @@ export default function UseCase() {
   const location = useLocation();
   const { slug } = useParams();
 
-  const { league, joinCode } = location.state || {};
+  const { league, joinCode, inviteToken } = location.state || {};
   const leagueName = league?.name ?? slug ?? 'Your League';
 
   const [selected, setSelected] = useState(null);
@@ -53,12 +53,12 @@ export default function UseCase() {
     }
 
     if (selected === 'exploring') {
-      navigate('/');
+      navigate(leaguePath(slug, ''), { replace: true });
       return;
     }
 
     // For all other paths, land on the welcome page (invite kit + what-next cards)
-    navigate(leaguePath(slug, 'welcome'), { state: { league, joinCode } });
+    navigate(leaguePath(slug, 'welcome'), { state: { league, joinCode, inviteToken, useCase: selected } });
   };
 
   return (

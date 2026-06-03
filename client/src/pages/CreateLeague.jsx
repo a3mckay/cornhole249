@@ -34,9 +34,9 @@ export default function CreateLeague() {
     setLoading(true);
     setError('');
     try {
-      const { league, joinCode } = await leaguesApi.create({ name: name.trim(), tagline: tagline.trim() || undefined, is_public: isPublic, rules });
+      const { league, joinCode, inviteToken } = await leaguesApi.create({ name: name.trim(), tagline: tagline.trim() || undefined, is_public: isPublic, rules });
       await refreshUser(); // update nav league list immediately
-      navigate(`/l/${league.slug}/wizard`, { state: { league, joinCode } });
+      navigate(`/l/${league.slug}/wizard`, { state: { league, joinCode, inviteToken } });
     } catch (err) {
       if (err.response?.data?.upgrade) {
         setUpgradeRequired(true);

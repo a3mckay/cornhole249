@@ -486,16 +486,6 @@ Phases are ordered. Within a phase, features can be built in any order unless no
 - Apple SSO (defer; add only if iOS demand is real)
 - Facebook/Twitter login (no value for this audience)
 
-#### 4.3 PIN as fast-login
-
-**In scope:**
-- After full auth, users can optionally set a 4-digit PIN for "fast league sign-in" on shared family devices
-- PIN login only works for that account + that browser (some kind of device-bound token)
-- Email/password remains the source of truth
-
-**Open questions:**
-- Should PIN-only logins have any restrictions (e.g., can't change account settings)? (Recommendation: yes — must re-auth with password for sensitive actions.)
-
 ---
 
 ### Phase 5 — Payments
@@ -610,6 +600,51 @@ The "Cornhole249" watermark on shared images is intentionally **not** a Pro perk
 
 **Open questions:**
 - Operating entity / business address on legal pages? (Andrew to provide.)
+
+---
+
+### Phase 6.5 — PII Compliance & Data Safety ✅ Complete
+
+**Goal:** Achieve minimum legal compliance under PIPEDA (Canada) and CCPA (US) before public launch. Completed in a separate cloud session on June 3, 2026. All changes shipped to `main`.
+
+#### What we store (audit findings)
+
+| Data | Table / Column | Notes |
+|------|---------------|-------|
+| Email address | `users.email` | Login, verification, password reset |
+| Google email | `users.google_email` | From OAuth profile |
+| Google ID | `users.google_id` | OAuth identifier |
+| Display name | `users.display_name` | Shown on leaderboards |
+| Nickname | `users.nickname` | Optional |
+| Avatar URL | `users.avatar_url` | Auto-generated or Google photo |
+| Password hash | `users.password_hash` | bcrypt 12 rounds — handled correctly |
+| Stripe customer ID | `users.stripe_customer_id` | Reference ID only, not payment data |
+| Venue coordinates | `venues.lat` / `venues.lng` | Associated with places, not users |
+
+**Not stored:** phone numbers, physical addresses, SSN, credit card numbers, IP addresses.
+
+#### Completed ✅
+
+| Item | File(s) | Notes |
+|------|---------|-------|
+| Privacy Policy page | `client/src/pages/Privacy.jsx` | PIPEDA + CCPA language; contact `hello@cornhole249.com` |
+| Delete account endpoint | `server/routes/auth.js` `DELETE /auth/account` | Hard-deletes PII; anonymises `users` row to preserve game history; destroys session |
+| Delete account UI | `client/src/pages/PlayerProfile.jsx` | Two-step confirmation in own profile edit panel |
+| Backup encryption | `server/lib/backup.js` | AES-256-GCM via Node `crypto`; key set via `BACKUP_ENCRYPTION_KEY` env var |
+| Consent checkbox at registration | `client/src/pages/Register.jsx` | Required checkbox linking to Privacy Policy before account creation |
+| Dev email logging fix | `server/lib/email.js` | No longer logs recipient address when `GMAIL_USER` is unset |
+
+#### Production action
+
+- ✅ `BACKUP_ENCRYPTION_KEY` set in Railway (June 3, 2026)
+
+#### Still outstanding (not yet done)
+
+| Item | Severity | Notes |
+|------|----------|-------|
+| Rate limiting on `/auth/login` + `/auth/forgot-password` | Security hardening | Add `express-rate-limit`; 20 req / 15 min window |
+| Sentry PII scrubbing | Low risk | Add `beforeSend` hook to strip PII fields from error events |
+| Data export endpoint | Nice-to-have | PIPEDA right of access; low urgency pre-launch |
 
 ---
 

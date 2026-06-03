@@ -180,7 +180,10 @@ if (process.env.GOOGLE_CLIENT_ID) {
 app.use(passport.initialize()); // Note: no passport.session() — we use express-session directly
 
 // Google OAuth routes
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
+app.get('/auth/google', (req, res, next) => {
+  if (req.query.returnTo) req.session.authRedirect = req.query.returnTo;
+  next();
+}, passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
 
 app.get(
   '/auth/google/callback',

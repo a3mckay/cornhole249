@@ -34,10 +34,21 @@ import CreateLeague from './pages/CreateLeague';
 import LeagueWelcome from './pages/LeagueWelcome';
 import UseCase from './pages/UseCase';
 import LeagueSettings from './pages/LeagueSettings';
+import Landing from './pages/Landing';
+import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import Refunds from './pages/Refunds';
+import Cookies from './pages/Cookies';
 
 function PageWrapper({ children }) {
   return <div className="page-enter">{children}</div>;
+}
+
+function RootRoute() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Landing />;
+  return <Home />;
 }
 
 /**
@@ -149,7 +160,7 @@ export default function App() {
           <Routes>
             {/* ── Cornhole249 root (unchanged URLs) ────────────────────── */}
             <Route element={<LeagueProvider slug="cornhole249" />}>
-              <Route path="/" element={<PageWrapper><Home /></PageWrapper>} />
+              <Route path="/" element={<PageWrapper><RootRoute /></PageWrapper>} />
               <Route path="/standings" element={<PageWrapper><Standings /></PageWrapper>} />
               <Route path="/games" element={<PageWrapper><Games /></PageWrapper>} />
               <Route path="/games/new" element={<PageWrapper><GameNew onAchievement={addToast} /></PageWrapper>} />
@@ -201,7 +212,10 @@ export default function App() {
             <Route path="/join" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/join/:code" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/leagues/new" element={<PageWrapper><CreateLeague /></PageWrapper>} />
+            <Route path="/terms" element={<PageWrapper><Terms /></PageWrapper>} />
             <Route path="/privacy" element={<PageWrapper><Privacy /></PageWrapper>} />
+            <Route path="/refunds" element={<PageWrapper><Refunds /></PageWrapper>} />
+            <Route path="/cookies" element={<PageWrapper><Cookies /></PageWrapper>} />
           </Routes>
         </main>
 

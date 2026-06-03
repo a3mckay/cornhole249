@@ -17,6 +17,8 @@ export default function Login() {
       : ''
   );
 
+  const returnTo = searchParams.get('returnTo');
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) { setError('Email and password are required'); return; }
@@ -25,7 +27,7 @@ export default function Login() {
     try {
       await authApi.login(email.trim(), password);
       await refreshUser();
-      navigate('/');
+      navigate(returnTo || '/');
     } catch (err) {
       setError(err.response?.data?.error || 'Incorrect email or password');
     } finally {
@@ -45,7 +47,7 @@ export default function Login() {
 
         {/* Google SSO */}
         <a
-          href="/auth/google"
+          href={returnTo ? `/auth/google?returnTo=${encodeURIComponent(returnTo)}` : '/auth/google'}
           className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border font-ui font-semibold text-sm mb-4 transition-colors hover:bg-gray-50"
           style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-primary)', textDecoration: 'none' }}
         >
