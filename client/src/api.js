@@ -170,11 +170,22 @@ export const leaguesApi = {
   members: (slug) => api.get(`/leagues/${slug}/members`).then((r) => r.data),
   removeMember: (slug, userId) => api.delete(`/leagues/${slug}/members/${userId}`).then((r) => r.data),
   generateCode: (slug) => api.post(`/leagues/${slug}/join-codes`).then((r) => r.data),
+  // Invite token (private leagues)
+  resetInviteToken: (slug) => api.post(`/leagues/${slug}/invite-token`).then((r) => r.data),
+  // Join requests (public leagues)
+  joinInfo: (slug) => api.get(`/leagues/${slug}/join-info`).then((r) => r.data),
+  requestJoin: (slug, data) => api.post(`/leagues/${slug}/join-requests`, data).then((r) => r.data),
+  getJoinRequests: (slug) => api.get(`/leagues/${slug}/join-requests`).then((r) => r.data),
+  reviewJoinRequest: (slug, id, action) =>
+    api.patch(`/leagues/${slug}/join-requests/${id}`, { action }).then((r) => r.data),
 };
 
-// Join / invite landing (global — code resolves the league)
+// Join / invite landing
 export const joinApi = {
   getInvite: (code) => api.get(`/join/${code}`).then((r) => r.data),
+  // Token-based (private league invite links)
+  getToken: (token) => api.get(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
+  joinWithToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
 };
 
 // Billing (Stripe Checkout + Customer Portal)

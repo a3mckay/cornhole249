@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { leaguePreview } = require('../lib/leaguePreview');
 
 const FREE_LEAGUE_OWNER_CAP = 2;
 
@@ -170,6 +171,80 @@ router.patch('/:slug', requireAuth, async (req, res) => {
   }
 });
 
+// ── Public join page ─────────────────────────────────────────────────────────
+
+// GET /api/leagues/:slug/join-info — rich preview for the public join request page
+router.get('/:slug/join-info', async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows } = await sql`SELECT id, is_public FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    if (!rows[0]) return res.status(404).json({ error: 'League not found' });
+    if (!rows[0].is_public) return res.status(403).json({ error: 'This league is private' });
+
+    const preview = await leaguePreview(db, rows[0].id);
+
+    // If requester is logged in, check membership and any pending request
+    let alreadyMember = false;
+    let pendingRequest = false;
+    if (req.session?.userId) {
+      const { rows: memRows } = await sql`
+        SELECT 1 FROM league_memberships
+        WHERE league_id = ${rows[0].id} AND user_id = ${req.session.userId}
+      `.execute(db);
+      alreadyMember = memRows.length > 0;
+
+      if (!alreadyMember) {
+        const { rows: reqRows } = await sql`
+          SELECT status FROM join_requests
+          WHERE league_id = ${rows[0].id} AND user_id = ${req.session.userId}
+        `.execute(db);
+        pendingRequest = reqRows[0]?.status === 'pending';
+      }
+    }
+
+    res.json({ ...preview, already_member: alreadyMember, pending_request: pendingRequest });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/leagues/:slug/join-requests — submit a request to join a public league
+router.post('/:slug/join-requests', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows } = await sql`
+      SELECT id, is_public, plan FROM leagues WHERE slug = ${req.params.slug}
+    `.execute(db);
+    const league = rows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+    if (!league.is_public) return res.status(403).json({ error: 'This league is private — you need an invite link to join' });
+
+    // Already a member?
+    const { rows: memRows } = await sql`
+      SELECT 1 FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (memRows.length > 0) return res.status(409).json({ error: 'You are already a member of this league' });
+
+    const { message } = req.body;
+
+    await db
+      .insertInto('join_requests')
+      .values({
+        league_id: league.id,
+        user_id: req.session.userId,
+        status: 'pending',
+        message: message?.trim() || null,
+      })
+      .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+      .execute();
+
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Member management ────────────────────────────────────────────────────────
 
 // GET /api/leagues/:slug/members — list members with user info (owner/admin only)
@@ -270,11 +345,126 @@ router.post('/:slug/join-codes', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/leagues/:slug/invite-token — generate/reset the 30-day invite token
+router.post('/:slug/invite-token', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const token = generateInviteToken();
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    await db
+      .updateTable('leagues')
+      .set({ invite_token: token, invite_token_expires_at: expiresAt })
+      .where('id', '=', league.id)
+      .execute();
+
+    res.json({ token, expires_at: expiresAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/leagues/:slug/join-requests — list pending requests (owner/admin)
+router.get('/:slug/join-requests', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const { rows } = await sql`
+      SELECT jr.id, jr.status, jr.created_at, jr.message,
+             u.id as user_id, u.display_name, u.avatar_url, u.email
+      FROM join_requests jr
+      JOIN users u ON u.id = jr.user_id
+      WHERE jr.league_id = ${league.id} AND jr.status = 'pending'
+      ORDER BY jr.created_at ASC
+    `.execute(db);
+
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/leagues/:slug/join-requests/:id — approve or deny
+router.patch('/:slug/join-requests/:id', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const { action } = req.body; // 'approve' | 'deny'
+    if (!['approve', 'deny'].includes(action)) {
+      return res.status(400).json({ error: 'action must be approve or deny' });
+    }
+
+    const requestId = parseInt(req.params.id);
+    const { rows: reqRows } = await sql`
+      SELECT * FROM join_requests WHERE id = ${requestId} AND league_id = ${league.id}
+    `.execute(db);
+    if (!reqRows[0]) return res.status(404).json({ error: 'Request not found' });
+
+    const status = action === 'approve' ? 'approved' : 'denied';
+    await sql`
+      UPDATE join_requests
+      SET status = ${status}, reviewed_at = NOW(), reviewed_by = ${req.session.userId}
+      WHERE id = ${requestId}
+    `.execute(db);
+
+    if (action === 'approve') {
+      await db
+        .insertInto('league_memberships')
+        .values({ league_id: league.id, user_id: reqRows[0].user_id, role: 'player' })
+        .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+        .execute();
+    }
+
+    res.json({ ok: true, status });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 function generateJoinCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
+}
+
+function generateInviteToken() {
+  const { randomBytes } = require('crypto');
+  return randomBytes(18).toString('base64url');
 }
 
 module.exports = router;

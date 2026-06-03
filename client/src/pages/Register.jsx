@@ -50,7 +50,8 @@ export default function Register() {
       });
       clearRefCookie();
       await refreshUser();
-      navigate('/');
+      const returnTo = searchParams.get('returnTo');
+      navigate(returnTo || '/');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create account');
     } finally {

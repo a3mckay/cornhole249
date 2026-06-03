@@ -186,6 +186,7 @@ export default function App() {
               <Route path="welcome" element={<PageWrapper><LeagueWelcome /></PageWrapper>} />
               <Route path="wizard" element={<PageWrapper><UseCase /></PageWrapper>} />
               <Route path="settings" element={<PageWrapper><LeagueSettings /></PageWrapper>} />
+              <Route path="join" element={<PageWrapper><Join /></PageWrapper>} />
             </Route>
 
             {/* ── Non-league routes ─────────────────────────────────────── */}
@@ -196,6 +197,7 @@ export default function App() {
             <Route path="/reset-password" element={<PageWrapper><ResetPassword /></PageWrapper>} />
             <Route path="/claim-account" element={<PageWrapper><ClaimAccount /></PageWrapper>} />
             <Route path="/verify-email/:token" element={<PageWrapper><VerifyEmail /></PageWrapper>} />
+            <Route path="/join" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/join/:code" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/leagues/new" element={<PageWrapper><CreateLeague /></PageWrapper>} />
           </Routes>
