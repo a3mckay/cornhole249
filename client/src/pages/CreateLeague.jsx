@@ -21,8 +21,8 @@ export default function CreateLeague() {
         <p className="font-ui text-lg" style={{ color: 'var(--color-text-secondary)' }}>
           You need to be signed in to create a league.
         </p>
-        <button className="btn btn-primary mt-4" onClick={() => navigate('/register')}>
-          Join or Sign In
+        <button className="btn btn-primary mt-4" onClick={() => navigate('/register?returnTo=/leagues/new')}>
+          Create an account →
         </button>
       </div>
     );

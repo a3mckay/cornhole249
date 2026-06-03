@@ -51,7 +51,8 @@ export default function Register() {
       clearRefCookie();
       await refreshUser();
       const returnTo = searchParams.get('returnTo');
-      navigate(returnTo || '/');
+      // New users with no specific destination go straight to league creation
+      navigate(returnTo || '/leagues/new');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create account');
     } finally {

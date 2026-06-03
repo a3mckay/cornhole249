@@ -166,6 +166,8 @@ if (process.env.GOOGLE_CLIENT_ID) {
               })
               .returning(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id'])
               .executeTakeFirstOrThrow();
+            // Flag so the OAuth callback can redirect new users to league creation
+            user = { ...user, _isNewAccount: true };
           }
 
           done(null, user);
@@ -193,8 +195,11 @@ app.get(
     req.session.userId = req.user.id;
     req.session.isAdmin = req.user.is_admin === 1;
 
-    // Redirect to the post-auth destination
-    const dest = req.session.authRedirect || '/';
+    // Redirect to the post-auth destination.
+    // New Google users (no prior account) go to league creation unless a
+    // specific returnTo was set (e.g. arriving from an invite link).
+    const dest = req.session.authRedirect
+      || (req.user._isNewAccount ? '/leagues/new' : '/');
     delete req.session.authRedirect;
     res.redirect(dest);
   }
