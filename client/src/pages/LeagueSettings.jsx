@@ -31,6 +31,7 @@ export default function LeagueSettings() {
 
   // Edit form state
   const [name, setName] = useState('');
+  const [tagline, setTagline] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [rules, setRules] = useState('hamilton');
   const [saving, setSaving] = useState(false);
@@ -106,6 +107,7 @@ export default function LeagueSettings() {
         } catch (_) { /* non-fatal */ }
       }
       setName(leagueData.name);
+      setTagline(leagueData.tagline || '');
       setIsPublic(!!leagueData.is_public);
       setRules(leagueData.rules || 'hamilton');
     } catch (e) {
@@ -120,7 +122,7 @@ export default function LeagueSettings() {
     if (!name.trim()) { setSaveError('League name is required'); return; }
     setSaving(true); setSaveError(''); setSaveSuccess(false);
     try {
-      const updated = await leaguesApi.update(slug, { name: name.trim(), is_public: isPublic, rules });
+      const updated = await leaguesApi.update(slug, { name: name.trim(), tagline: tagline.trim(), is_public: isPublic, rules });
       setLeague(updated);
       setName(updated.name);
       setSaveSuccess(true);
@@ -322,6 +324,21 @@ export default function LeagueSettings() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={60}
+              className="w-full px-3 py-2.5 rounded-xl border font-ui"
+              style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-ui font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)' }}>
+              Tagline <span className="font-normal opacity-50">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={tagline}
+              onChange={(e) => setTagline(e.target.value)}
+              maxLength={80}
+              placeholder="e.g. Hamilton's Most Competitive Backyard League"
               className="w-full px-3 py-2.5 rounded-xl border font-ui"
               style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
             />

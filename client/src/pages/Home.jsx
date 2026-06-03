@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { gamesApi, statsApi, tournamentsApi } from '../api';
+import { useLeague, leaguePath } from '../contexts/LeagueContext';
+import { useAuth } from '../hooks/useAuth';
 import GameCard from '../components/GameCard';
 import QRShare from '../components/QRShare';
 import TrashTalkBanner from '../components/TrashTalkBanner';
@@ -27,6 +29,23 @@ function StringLights() {
 }
 
 export default function Home() {
+  const { slug, leagueName, tagline, createdAt } = useLeague();
+  const { leagues } = useAuth();
+  const navigate = useNavigate();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const switcherRef = useRef(null);
+
+  // Close switcher on outside click
+  useEffect(() => {
+    if (!switcherOpen) return;
+    const handler = (e) => { if (switcherRef.current && !switcherRef.current.contains(e.target)) setSwitcherOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [switcherOpen]);
+
+  const otherLeagues = (leagues || []).filter((l) => l.slug !== slug);
+  const estYear = createdAt ? new Date(createdAt).getFullYear() : 2024;
+
   const [recentGames, setRecentGames] = useState([]);
   const [performers, setPerformers] = useState(null);
   const [recap, setRecap] = useState(null);
@@ -48,7 +67,6 @@ export default function Home() {
   }, []);
 
   const currentYear = new Date().getFullYear();
-
   return (
     <div>
       {/* Hero */}
@@ -61,20 +79,61 @@ export default function Home() {
       >
         <StringLights />
         <div className="relative z-10">
-          <h1 className="font-display text-5xl md:text-7xl text-white drop-shadow-lg" style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.2)' }}>
-            Cornhole249
-          </h1>
-          <p className="font-ui text-lg md:text-xl text-white/90 mt-2 font-semibold">
-            Hamilton's Most Competitive Backyard League
-          </p>
+          {/* League name — pill button with switcher if user has multiple leagues */}
+          <div className="flex justify-center mb-2">
+            {otherLeagues.length > 0 ? (
+              <div className="relative" ref={switcherRef}>
+                <button
+                  onClick={() => setSwitcherOpen((o) => !o)}
+                  className="flex items-center gap-2 px-4 py-1.5 rounded-full font-display text-5xl md:text-7xl text-white drop-shadow-lg"
+                  style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.2)', background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.35)' }}
+                >
+                  {leagueName ?? slug}
+                  <span className="text-2xl md:text-4xl opacity-80">▾</span>
+                </button>
+                {switcherOpen && (
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2 mt-2 rounded-2xl shadow-xl overflow-hidden z-20 min-w-48"
+                    style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+                  >
+                    {(leagues || []).map((l) => (
+                      <button
+                        key={l.slug}
+                        onClick={() => { setSwitcherOpen(false); navigate(l.slug === 'cornhole249' ? '/' : `/l/${l.slug}`); }}
+                        className="w-full text-left px-4 py-3 font-ui font-semibold text-sm flex items-center justify-between gap-4 hover:opacity-80 transition-opacity"
+                        style={{
+                          color: 'var(--color-text-primary)',
+                          background: l.slug === slug ? 'rgba(58,107,53,0.08)' : 'transparent',
+                          borderBottom: '1px solid var(--color-border)',
+                        }}
+                      >
+                        {l.name}
+                        {l.slug === slug && <span style={{ color: 'var(--color-primary)' }}>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <h1 className="font-display text-5xl md:text-7xl text-white drop-shadow-lg" style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.2)' }}>
+                {leagueName ?? slug}
+              </h1>
+            )}
+          </div>
+
+          {tagline && (
+            <p className="font-ui text-lg md:text-xl text-white/90 mt-1 font-semibold">
+              {tagline}
+            </p>
+          )}
           <p className="font-ui text-white/70 mt-1 text-sm">
-            Season {currentYear} · Est. 2024
+            Season {currentYear} · Est. {estYear}
           </p>
           <div className="flex gap-3 justify-center mt-6 flex-wrap">
-            <Link to="/games/new" className="btn btn-primary">
+            <Link to={leaguePath(slug, 'games/new')} className="btn btn-primary">
               + Log a Game
             </Link>
-            <Link to="/standings" className="btn" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid rgba(255,255,255,0.4)' }}>
+            <Link to={leaguePath(slug, 'standings')} className="btn" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '2px solid rgba(255,255,255,0.4)' }}>
               View Standings
             </Link>
           </div>

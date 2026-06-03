@@ -87,7 +87,7 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
 
-    const { name, is_public = true, rules = 'hamilton' } = req.body;
+    const { name, is_public = true, rules = 'hamilton', tagline } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'League name required' });
 
     // Build a unique slug
@@ -103,7 +103,7 @@ router.post('/', requireAuth, async (req, res) => {
 
     const league = await db
       .insertInto('leagues')
-      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules })
+      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null })
       .returningAll()
       .executeTakeFirstOrThrow();
 
@@ -144,7 +144,7 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Owner or admin role required' });
     }
 
-    const { name, is_public, rules, use_case } = req.body;
+    const { name, is_public, rules, use_case, tagline } = req.body;
     const updates = {};
     if (name !== undefined) {
       if (!name.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
@@ -153,6 +153,7 @@ router.patch('/:slug', requireAuth, async (req, res) => {
     if (is_public !== undefined) updates.is_public = is_public ? 1 : 0;
     if (rules !== undefined) updates.rules = rules;
     if (use_case !== undefined) updates.use_case = use_case;
+    if (tagline !== undefined) updates.tagline = tagline?.trim() || null;
 
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update' });
 

@@ -31,21 +31,27 @@ export function LeagueProvider({ slug: slugProp }) {
   const [leagueId, setLeagueId] = useState(slug === 'cornhole249' ? 1 : null);
   const [plan, setPlan] = useState(slug === 'cornhole249' ? 'pro' : 'free');
   const [expiresAt, setExpiresAt] = useState(null);
+  const [leagueName, setLeagueName] = useState(slug === 'cornhole249' ? 'Cornhole249' : null);
+  const [tagline, setTagline] = useState(null);
+  const [createdAt, setCreatedAt] = useState(null);
 
   useEffect(() => {
-    if (slug === 'cornhole249') {
-      setLeagueId(1);
-      setPlan('pro'); // Cornhole249 is always Pro (per migration 004)
-      setExpiresAt(null);
-    } else {
-      leaguesApi.get(slug)
-        .then((league) => {
+    leaguesApi.get(slug)
+      .then((league) => {
+        setLeagueName(league?.name ?? slug);
+        setTagline(league?.tagline ?? null);
+        setCreatedAt(league?.created_at ?? null);
+        if (slug !== 'cornhole249') {
           setLeagueId(league?.id ?? null);
           setPlan(league?.plan_override || league?.plan || 'free');
           setExpiresAt(league?.expires_at ?? null);
-        })
-        .catch(() => { setLeagueId(null); setPlan('free'); setExpiresAt(null); });
-    }
+        }
+      })
+      .catch(() => {
+        if (slug !== 'cornhole249') {
+          setLeagueId(null); setPlan('free'); setExpiresAt(null);
+        }
+      });
   }, [slug]);
 
   // Weekend pass expiry banner (shown when ≤ 3 days remaining)
@@ -57,7 +63,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
 
   return (
-    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt }}>
+    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, leagueName, tagline, createdAt }}>
       {showBanner && (
         <div
           className="px-4 py-2.5 text-sm font-ui flex items-center justify-between gap-4"

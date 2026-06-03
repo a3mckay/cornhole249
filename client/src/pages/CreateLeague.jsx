@@ -8,6 +8,7 @@ export default function CreateLeague() {
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
+  const [tagline, setTagline] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [rules, setRules] = useState('hamilton');
   const [loading, setLoading] = useState(false);
@@ -33,7 +34,7 @@ export default function CreateLeague() {
     setLoading(true);
     setError('');
     try {
-      const { league, joinCode } = await leaguesApi.create({ name: name.trim(), is_public: isPublic, rules });
+      const { league, joinCode } = await leaguesApi.create({ name: name.trim(), tagline: tagline.trim() || undefined, is_public: isPublic, rules });
       await refreshUser(); // update nav league list immediately
       navigate(`/l/${league.slug}/wizard`, { state: { league, joinCode } });
     } catch (err) {
@@ -87,6 +88,22 @@ export default function CreateLeague() {
               placeholder="e.g. Bach Party, Backyard Legends…"
               maxLength={60}
               required
+              className="w-full px-3 py-2.5 rounded-xl border font-ui"
+              style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+            />
+          </div>
+
+          {/* Tagline */}
+          <div>
+            <label className="block text-sm font-ui font-semibold mb-1.5" style={{ color: 'var(--color-text-primary)' }}>
+              Tagline <span className="font-normal opacity-50">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={tagline}
+              onChange={(e) => setTagline(e.target.value)}
+              placeholder="e.g. The Most Competitive Backyard League"
+              maxLength={80}
               className="w-full px-3 py-2.5 rounded-xl border font-ui"
               style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
             />
