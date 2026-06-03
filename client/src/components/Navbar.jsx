@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authApi } from '../api';
-import { useLeague, leaguePath } from '../contexts/LeagueContext';
+import { leaguePath } from '../contexts/LeagueContext';
 import { QRCodeSVG } from 'qrcode.react';
 
 function ProLock() {
@@ -41,16 +41,21 @@ function makeHamburgerLinks(slug) {
 
 export default function Navbar() {
   const { user, leagues, logout, loading } = useAuth();
-  const { slug: currentSlug, plan } = useLeague();
-  const isFree = plan === 'free';
-  const myLeagueRole = leagues?.find((l) => l.slug === currentSlug)?.role;
+  const location = useLocation();
+  // Derive current slug from the URL — more reliable than LeagueContext since
+  // Navbar renders outside the LeagueProvider layout route.
+  const currentSlug = location.pathname.match(/^\/l\/([^/]+)/)?.[1] ?? 'cornhole249';
+  // Derive the effective plan from the server-fetched leagues list (plan_override takes precedence).
+  const currentLeague = leagues?.find((l) => l.slug === currentSlug);
+  const effectivePlan = currentLeague?.plan_override || currentLeague?.plan || 'free';
+  const isFree = effectivePlan === 'free';
+  const myLeagueRole = currentLeague?.role;
   const canManageCurrentLeague = myLeagueRole === 'owner' || myLeagueRole === 'admin';
   const navigate = useNavigate();
-  const [menuOpen,       setMenuOpen]       = useState(false);
-  const [dropdownOpen,   setDropdownOpen]   = useState(false);
-  const [leagueDropOpen, setLeagueDropOpen] = useState(false);
-  const [shareOpen,      setShareOpen]      = useState(false);
-  const [copied,         setCopied]         = useState(false);
+  const [menuOpen,     setMenuOpen]     = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [shareOpen,    setShareOpen]    = useState(false);
+  const [copied,       setCopied]       = useState(false);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const NAV_LINKS = makeNavLinks(currentSlug);
@@ -112,51 +117,6 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* League switcher — desktop (only shown when logged in and has leagues) */}
-        {user && leagues.length > 0 && (
-          <div className="relative hidden lg:block flex-shrink-0">
-            <button
-              onClick={() => setLeagueDropOpen((o) => !o)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-ui font-semibold transition-colors"
-              style={{ background: 'rgba(255,255,255,0.12)', color: 'white' }}
-            >
-              <span>🏟</span>
-              <span className="max-w-[100px] truncate">
-                {leagues.find((l) => l.slug === currentSlug)?.name ?? 'League'}
-              </span>
-              <span className="text-xs opacity-70">▾</span>
-            </button>
-            {leagueDropOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setLeagueDropOpen(false)} />
-                <div className="absolute left-0 top-10 z-50 rounded-card shadow-card border w-52 overflow-hidden"
-                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
-                  <div className="p-2 border-b text-xs font-ui font-semibold uppercase tracking-wider px-3"
-                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-                    My Leagues
-                  </div>
-                  {leagues.map((l) => (
-                    <button key={l.id}
-                      onClick={() => { navigate(leagueHome(l.slug)); setLeagueDropOpen(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-sm font-ui hover:bg-amber-50 text-left transition-colors ${l.slug === currentSlug ? 'font-bold' : ''}`}
-                      style={{ color: 'var(--color-text-primary)' }}>
-                      <span className="flex-1 truncate">{l.name}</span>
-                      <span className="text-xs opacity-50 capitalize">{l.role}</span>
-                      {l.slug === currentSlug && <span className="text-green-600 text-xs">✓</span>}
-                    </button>
-                  ))}
-                  <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-                    <button onClick={() => { navigate('/leagues/new'); setLeagueDropOpen(false); }}
-                      className="w-full px-3 py-2 text-sm font-ui font-semibold text-left hover:bg-amber-50 transition-colors"
-                      style={{ color: 'var(--color-primary)' }}>
-                      + Create new league
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
 
         {/* Desktop nav links */}
         <div className="hidden lg:flex items-center gap-1 flex-1 overflow-hidden">
@@ -326,8 +286,8 @@ export default function Navbar() {
               </NavLink>
             )}
 
-            {/* League switcher — mobile */}
-            {user && leagues.length > 0 && (
+            {/* League switcher — mobile (only shown when user has multiple leagues) */}
+            {user && leagues.length > 1 && (
               <div className="border-t mt-2 pt-2" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>
                 <div className="px-4 py-1 text-xs font-ui font-semibold uppercase tracking-wider text-amber-200/60">My Leagues</div>
                 {leagues.map((l) => (

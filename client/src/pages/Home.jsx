@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { gamesApi, statsApi, tournamentsApi } from '../api';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import { useAuth } from '../hooks/useAuth';
@@ -32,8 +32,10 @@ export default function Home() {
   const { slug, leagueName, tagline, createdAt } = useLeague();
   const { leagues } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef(null);
+  const [joinToast, setJoinToast] = useState(null);
 
   // Close switcher on outside click
   useEffect(() => {
@@ -42,6 +44,16 @@ export default function Home() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [switcherOpen]);
+
+  // Show a welcome toast when navigated here right after joining via invite
+  useEffect(() => {
+    if (!location.state?.justJoined) return;
+    setJoinToast(location.state.leagueName || leagueName || 'this league');
+    // Clear the navigation state so a refresh doesn't re-show the toast
+    window.history.replaceState({}, '');
+    const t = setTimeout(() => setJoinToast(null), 5000);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const otherLeagues = (leagues || []).filter((l) => l.slug !== slug);
   const estYear = createdAt ? new Date(createdAt).getFullYear() : 2024;
@@ -69,6 +81,24 @@ export default function Home() {
   const currentYear = new Date().getFullYear();
   return (
     <div>
+      {/* Welcome toast — shown after joining via invite link */}
+      {joinToast && (
+        <div
+          className="mb-5 px-4 py-3 rounded-2xl flex items-center justify-between gap-3"
+          style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', color: '#065F46' }}
+        >
+          <span className="font-ui font-semibold text-sm">
+            🎉 Welcome to {joinToast}!{' '}
+            <Link to={leaguePath(slug, 'games/new')} className="underline">
+              Log a game to get on the board →
+            </Link>
+          </span>
+          <button onClick={() => setJoinToast(null)} className="opacity-60 hover:opacity-100 flex-shrink-0 text-base leading-none">
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Hero */}
       <div
         className="relative rounded-[20px] overflow-hidden mb-8 pt-12 pb-10 px-6 text-center"

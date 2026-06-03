@@ -10,22 +10,25 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // authApi.me() + leaguesApi.mine() run in parallel — both needed for initial render.
+    // usersApi.list() is large and only needed by specific pages; load it in the
+    // background so it never delays setLoading(false).
     Promise.all([
       authApi.me().catch(() => null),
-      usersApi.list().catch(() => []),
-    ]).then(([me, users]) => {
+      leaguesApi.mine().catch(() => []),
+    ]).then(([me, myLeagues]) => {
       setUser(me);
-      setAllUsers(users);
-      if (me) {
-        leaguesApi.mine().catch(() => []).then(setLeagues);
-      }
+      setLeagues(me ? myLeagues : []);
     }).finally(() => setLoading(false));
+
+    usersApi.list().catch(() => []).then(setAllUsers);
   }, []);
 
   const login = async (email, password) => {
     const u = await authApi.login(email, password);
     setUser(u);
     leaguesApi.mine().catch(() => []).then(setLeagues);
+    usersApi.list().catch(() => []).then(setAllUsers);
     return u;
   };
 
@@ -36,16 +39,13 @@ export function AuthProvider({ children }) {
   };
 
   const refreshUser = async () => {
-    const [me, users] = await Promise.all([
+    const [me, myLeagues] = await Promise.all([
       authApi.me().catch(() => null),
-      usersApi.list().catch(() => []),
+      leaguesApi.mine().catch(() => []),
     ]);
     setUser(me);
-    setAllUsers(users);
-    if (me) {
-      const myLeagues = await leaguesApi.mine().catch(() => []);
-      setLeagues(myLeagues);
-    }
+    setLeagues(me ? myLeagues : []);
+    usersApi.list().catch(() => []).then(setAllUsers);
     return me;
   };
 

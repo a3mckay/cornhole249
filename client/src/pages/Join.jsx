@@ -162,8 +162,7 @@ function TokenJoin({ token }) {
     try {
       const { slug } = await joinApi.joinWithToken(token);
       await refreshUser();
-      setJoined(true);
-      setTimeout(() => navigate(`/l/${slug}`), 1500);
+      setJoined(slug); // store slug so the confirmation card can navigate
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to join league');
     } finally {
@@ -191,15 +190,22 @@ function TokenJoin({ token }) {
   }
 
   if (joined) {
+    // `joined` is the league slug — navigate with state so the home page can show a welcome toast
     return (
       <div className="max-w-lg mx-auto mt-16 card text-center">
         <div className="text-4xl mb-4">🎉</div>
         <h1 className="font-display text-2xl mb-2" style={{ color: 'var(--color-text-primary)' }}>
           You're in!
         </h1>
-        <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          Taking you to {data.league_name}…
+        <p className="font-ui text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+          Welcome to {data.league_name}. Let's get on the board!
         </p>
+        <button
+          onClick={() => navigate(`/l/${joined}`, { state: { justJoined: true, leagueName: data.league_name } })}
+          className="btn btn-primary"
+        >
+          Go to {data.league_name} →
+        </button>
       </div>
     );
   }
