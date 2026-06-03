@@ -22,13 +22,17 @@ const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'f
 export function LeagueProvider({ slug: slugProp }) {
   const params = useParams();
   const slug = slugProp ?? params.slug ?? 'cornhole249';
+
+  // Set synchronously so child components use the correct slug on their first render.
+  // useEffect runs after children mount, so any API calls in children would use a stale slug.
+  setCurrentLeague(slug);
+
   // Cornhole249 is always id=1; other leagues are fetched on first render.
   const [leagueId, setLeagueId] = useState(slug === 'cornhole249' ? 1 : null);
-  const [plan, setPlan] = useState('free');
+  const [plan, setPlan] = useState(slug === 'cornhole249' ? 'pro' : 'free');
   const [expiresAt, setExpiresAt] = useState(null);
 
   useEffect(() => {
-    setCurrentLeague(slug);
     if (slug === 'cornhole249') {
       setLeagueId(1);
       setPlan('pro'); // Cornhole249 is always Pro (per migration 004)

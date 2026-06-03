@@ -95,8 +95,16 @@ export default function LeagueSettings() {
         leaguesApi.members(slug),
       ]);
       setLeague(leagueData);
-      setJoinCode(leagueData.join_code);
       setMembers(membersData);
+      // Auto-generate an invite code if none exists — no manual step needed
+      if (leagueData.join_code) {
+        setJoinCode(leagueData.join_code);
+      } else {
+        try {
+          const { code } = await leaguesApi.generateCode(slug);
+          setJoinCode(code);
+        } catch (_) { /* non-fatal */ }
+      }
       setName(leagueData.name);
       setIsPublic(!!leagueData.is_public);
       setRules(leagueData.rules || 'hamilton');
@@ -387,7 +395,7 @@ export default function LeagueSettings() {
         </form>
       </div>
 
-      {/* Invite kit */}
+      {/* Invite link */}
       <div className="card p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
@@ -399,19 +407,13 @@ export default function LeagueSettings() {
             className="text-xs font-ui underline disabled:opacity-50"
             style={{ color: 'var(--color-text-secondary)' }}
           >
-            {generatingCode ? 'Generating…' : 'Generate new code'}
+            {generatingCode ? 'Regenerating…' : '↺ Regenerate'}
           </button>
         </div>
-        {joinLink ? (
-          <InviteKit joinLink={joinLink} joinCode={joinCode} leagueName={league?.name} />
-        ) : (
-          <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-            No active join code.{' '}
-            <button onClick={handleGenerateCode} className="underline" style={{ color: 'var(--color-primary)' }}>
-              Generate one
-            </button>
-          </p>
-        )}
+        {joinLink
+          ? <InviteKit joinLink={joinLink} joinCode={joinCode} leagueName={league?.name} />
+          : <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>Setting up invite link…</p>
+        }
       </div>
 
       <UpgradeModal
