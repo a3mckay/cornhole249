@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { tournamentsApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { useLeague } from '../contexts/LeagueContext';
 import BracketView from '../components/BracketView';
 import ShareButton from '../components/ShareButton';
+import UpgradeModal from '../components/UpgradeModal';
 
 /**
  * Derive the champion team and runner-up from a completed tournament's matches.
@@ -136,10 +138,12 @@ const STATUS_COLORS = {
 
 export default function Tournaments() {
   const { user } = useAuth();
+  const { plan, leagueId } = useLeague();
   const [tournaments, setTournaments] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
 
   // Create form state
@@ -236,7 +240,10 @@ export default function Tournaments() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <h1 className="font-display text-4xl" style={{ color: 'var(--color-text-primary)' }}>Tournaments</h1>
         {!!user?.is_admin && (
-          <button onClick={() => setShowCreate((s) => !s)} className="btn btn-primary self-start sm:self-auto">
+          <button
+            onClick={() => plan === 'free' ? setShowUpgrade(true) : setShowCreate((s) => !s)}
+            className="btn btn-primary self-start sm:self-auto"
+          >
             + Create Tournament
           </button>
         )}
@@ -419,6 +426,13 @@ export default function Tournaments() {
           onClose={() => setShowChampionModal(false)}
         />
       )}
+
+      <UpgradeModal
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Tournaments"
+        leagueId={leagueId}
+      />
     </div>
   );
 }

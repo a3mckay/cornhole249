@@ -4,7 +4,7 @@ import { leaguesApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
 export default function CreateLeague() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -34,6 +34,7 @@ export default function CreateLeague() {
     setError('');
     try {
       const { league, joinCode } = await leaguesApi.create({ name: name.trim(), is_public: isPublic, rules });
+      await refreshUser(); // update nav league list immediately
       navigate(`/l/${league.slug}/wizard`, { state: { league, joinCode } });
     } catch (err) {
       if (err.response?.data?.upgrade) {
