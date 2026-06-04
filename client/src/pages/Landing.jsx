@@ -279,20 +279,10 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── FAQ ──────────────────────────────────────────────────── */}
-      <section className="mb-16 px-4">
-        <h2 className="font-display text-3xl text-center mb-8" style={{ color: 'var(--color-text-primary)' }}>
-          Questions?
-        </h2>
-        <div className="max-w-2xl mx-auto">
-          <FAQ />
-        </div>
-      </section>
-
       {/* ── Founder ──────────────────────────────────────────────── */}
       <section className="mb-16 px-4">
         <div
-          className="max-w-2xl mx-auto rounded-[20px] px-8 py-10 flex flex-col sm:flex-row items-center gap-8"
+          className="rounded-[20px] px-8 py-10 flex flex-col sm:flex-row items-center gap-8"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '4px 4px 0 var(--color-border)' }}
         >
           <img
@@ -313,6 +303,16 @@ export default function Landing() {
               <span className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>· Founder, Cornhole249</span>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ──────────────────────────────────────────────────── */}
+      <section className="mb-16 px-4">
+        <h2 className="font-display text-3xl text-center mb-8" style={{ color: 'var(--color-text-primary)' }}>
+          Questions?
+        </h2>
+        <div className="max-w-2xl mx-auto">
+          <FAQ />
         </div>
       </section>
 
