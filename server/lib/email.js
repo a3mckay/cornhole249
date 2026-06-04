@@ -227,6 +227,95 @@ async function sendWeekendPassWelcomeEmail({ to, userName, leagueName, leagueUrl
   });
 }
 
+/**
+ * Day-before warning email for expiring Weekend Pass.
+ */
+async function sendWeekendPassWarningEmail({ to, userName, leagueName, leagueUrl, expiresAt }) {
+  const expiryStr = expiresAt
+    ? new Date(expiresAt).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })
+    : 'tomorrow';
+  await sendEmail({
+    to,
+    subject: `Your Weekend Pass for ${leagueName} expires tomorrow`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        Your Weekend Pass for <strong>${leagueName}</strong> expires on <strong>${expiryStr}</strong>.
+        Grab another pass or upgrade to keep the Pro features going.
+      </p>
+      <table style="font-family:sans-serif;border-collapse:collapse;width:100%;max-width:400px">
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=weekend_pass" style="display:inline-block;padding:10px 20px;background:#3A6B35;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Renew Weekend Pass — CAD $12
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=pro_monthly" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Upgrade to Pro Monthly — CAD $9/mo
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=pro_yearly" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Upgrade to Pro Yearly — CAD $80/yr
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="font-family:sans-serif;color:#888;font-size:12px;margin-top:16px">
+        After expiry, ${leagueName} will revert to the free plan (up to 8 players).
+      </p>
+    `,
+  });
+}
+
+/**
+ * Expiry notification for a Weekend Pass that has lapsed.
+ */
+async function sendWeekendPassExpiredEmail({ to, userName, leagueName, leagueUrl }) {
+  await sendEmail({
+    to,
+    subject: `Your Weekend Pass for ${leagueName} has expired`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        Your Weekend Pass for <strong>${leagueName}</strong> has expired and the league has returned to the free plan.
+        Grab another pass or upgrade to Pro to restore all features.
+      </p>
+      <table style="font-family:sans-serif;border-collapse:collapse;width:100%;max-width:400px">
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=weekend_pass" style="display:inline-block;padding:10px 20px;background:#3A6B35;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Buy another Weekend Pass — CAD $12
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=pro_monthly" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Upgrade to Pro Monthly — CAD $9/mo
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=pro_yearly" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Upgrade to Pro Yearly — CAD $80/yr
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="font-family:sans-serif;color:#888;font-size:12px;margin-top:16px">
+        All your game history and stats are safe — nothing was deleted.
+      </p>
+    `,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -235,4 +324,6 @@ module.exports = {
   sendJoinDeniedEmail,
   sendProWelcomeEmail,
   sendWeekendPassWelcomeEmail,
+  sendWeekendPassWarningEmail,
+  sendWeekendPassExpiredEmail,
 };

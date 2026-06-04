@@ -515,11 +515,90 @@ app.use(errorHandler);
     if (process.env.NODE_ENV === 'production') {
       const cron = require('node-cron');
       const { runBackup, BACKUP_DIR } = require('./lib/backup');
+      const { getDb, sql } = require('./db');
+      const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail } = require('./lib/email');
+
       // 03:00 UTC every day
-      cron.schedule('0 3 * * *', () => {
+      cron.schedule('0 3 * * *', async () => {
         runBackup().catch((e) => console.error('[Backup] Cron error:', e.message));
+
+        const db = getDb();
+        const baseUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+
+        // ── Weekend pass: day-before warning ──────────────────────────────────
+        try {
+          const { rows: expiringSoon } = await sql`
+            SELECT l.id, l.name, l.slug, l.expires_at,
+                   u.email, u.display_name
+            FROM leagues l
+            JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+            JOIN users u ON u.id = lm.user_id
+            WHERE l.plan = 'weekend_pass'
+              AND l.expires_at > NOW()
+              AND l.expires_at <= NOW() + INTERVAL '48 hours'
+              AND l.pass_warning_sent_at IS NULL
+              AND u.email IS NOT NULL
+          `.execute(db);
+
+          for (const row of expiringSoon) {
+            try {
+              const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+              await sendWeekendPassWarningEmail({
+                to: row.email,
+                userName: row.display_name,
+                leagueName: row.name,
+                leagueUrl,
+                expiresAt: row.expires_at,
+              });
+              await sql`UPDATE leagues SET pass_warning_sent_at = NOW() WHERE id = ${row.id}`.execute(db);
+              console.log(`[Cron] Weekend pass warning sent → league ${row.id}`);
+            } catch (err) {
+              console.error(`[Cron] Warning email failed for league ${row.id}:`, err.message);
+            }
+          }
+        } catch (e) {
+          console.error('[Cron] Weekend pass warning query failed:', e.message);
+        }
+
+        // ── Weekend pass: expiry — flip to free + notify ───────────────────
+        try {
+          const { rows: expired } = await sql`
+            SELECT l.id, l.name, l.slug,
+                   u.email, u.display_name
+            FROM leagues l
+            JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+            JOIN users u ON u.id = lm.user_id
+            WHERE l.plan = 'weekend_pass'
+              AND l.expires_at < NOW()
+              AND u.email IS NOT NULL
+          `.execute(db);
+
+          for (const row of expired) {
+            try {
+              await sql`
+                UPDATE leagues
+                SET plan = 'free', expires_at = NULL, pass_warning_sent_at = NULL
+                WHERE id = ${row.id}
+              `.execute(db);
+              const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+              await sendWeekendPassExpiredEmail({
+                to: row.email,
+                userName: row.display_name,
+                leagueName: row.name,
+                leagueUrl,
+              });
+              console.log(`[Cron] Weekend pass expired → league ${row.id} → free`);
+            } catch (err) {
+              console.error(`[Cron] Expiry handling failed for league ${row.id}:`, err.message);
+            }
+          }
+        } catch (e) {
+          console.error('[Cron] Weekend pass expiry query failed:', e.message);
+        }
       });
+
       console.log(`[Backup] Daily backup scheduled at 03:00 UTC → ${BACKUP_DIR}`);
+      console.log('[Cron] Weekend pass warning + expiry scheduled at 03:00 UTC');
     }
 
     if (require.main === module) {

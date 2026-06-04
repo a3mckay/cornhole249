@@ -22,6 +22,7 @@ const MIGRATIONS = [
   { name: '007_league_tagline',                 file: './migrations/007_league_tagline' },
   { name: '008_invite_tokens',                  file: './migrations/008_invite_tokens' },
   { name: '009_league_id_indexes',              file: './migrations/009_league_id_indexes' },
+  { name: '010_pass_warning_sent_at',           file: './migrations/010_pass_warning_sent_at' },
 ];
 
 async function run(db) {
