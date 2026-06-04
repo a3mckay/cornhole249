@@ -174,6 +174,7 @@ export const leaguesApi = {
   generateCode: (slug) => api.post(`/leagues/${slug}/join-codes`).then((r) => r.data),
   // Invite token (private leagues)
   resetInviteToken: (slug) => api.post(`/leagues/${slug}/invite-token`).then((r) => r.data),
+  touchInviteToken: (slug) => api.post(`/leagues/${slug}/invite-token/touch`).then((r) => r.data),
   // Join requests (public leagues)
   joinInfo: (slug) => api.get(`/leagues/${slug}/join-info`).then((r) => r.data),
   requestJoin: (slug, data) => api.post(`/leagues/${slug}/join-requests`, data).then((r) => r.data),

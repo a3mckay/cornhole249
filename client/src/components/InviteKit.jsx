@@ -9,7 +9,7 @@ import { QRCodeCanvas } from 'qrcode.react';
  *   joinCode  {string}  The 8-char join code (displayed as text below the QR)
  *   leagueName {string} League name, used to personalise SMS/email prefills
  */
-export default function InviteKit({ joinLink, joinCode, leagueName = 'our league' }) {
+export default function InviteKit({ joinLink, joinCode, leagueName = 'our league', onShare }) {
   const [copied, setCopied] = useState(false);
   const qrRef = useRef(null);
 
@@ -19,6 +19,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
     navigator.clipboard.writeText(joinLink).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      onShare?.();
     });
   };
 
@@ -31,6 +32,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
     } else {
       handleCopy();
     }
+    onShare?.();
   };
 
   const smsBody = encodeURIComponent(
@@ -52,6 +54,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
     a.href = url;
     a.download = `${leagueName.replace(/\s+/g, '-').toLowerCase()}-invite-qr.png`;
     a.click();
+    onShare?.();
   };
 
   return (
@@ -83,6 +86,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
       <div className="flex gap-2">
         <a
           href={smsHref}
+          onClick={() => onShare?.()}
           className="btn btn-secondary flex-1 text-center"
           style={{ textDecoration: 'none' }}
         >
@@ -90,6 +94,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
         </a>
         <a
           href={emailHref}
+          onClick={() => onShare?.()}
           className="btn btn-secondary flex-1 text-center"
           style={{ textDecoration: 'none' }}
         >

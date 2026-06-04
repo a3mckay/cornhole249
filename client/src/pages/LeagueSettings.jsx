@@ -4,6 +4,7 @@ import { leaguesApi, billingApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import UpgradeModal from '../components/UpgradeModal';
+import InviteKit from '../components/InviteKit';
 
 const ROLE_BADGE = {
   owner: { label: 'Owner', bg: '#FEF3C7', color: '#92400E' },
@@ -40,9 +41,6 @@ export default function LeagueSettings() {
 
   // Invite token (private leagues)
   const [inviteToken, setInviteToken] = useState(null);
-  const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState(null);
-  const [generatingToken, setGeneratingToken] = useState(false);
-  const [tokenCopied, setTokenCopied] = useState(false);
 
   // Member removal
   const [removingId, setRemovingId] = useState(null);
@@ -179,7 +177,6 @@ export default function LeagueSettings() {
       if (!leagueData.is_public) {
         if (leagueData.invite_token) {
           setInviteToken(leagueData.invite_token);
-          setInviteTokenExpiresAt(leagueData.invite_token_expires_at);
         } else {
           try {
             const { token, expires_at } = await leaguesApi.resetInviteToken(slug);
@@ -221,25 +218,9 @@ export default function LeagueSettings() {
     }
   };
 
-  const handleResetToken = async () => {
-    setGeneratingToken(true);
-    try {
-      const { token, expires_at } = await leaguesApi.resetInviteToken(slug);
-      setInviteToken(token);
-      setInviteTokenExpiresAt(expires_at);
-    } catch (_) {
-      // Silent fail
-    } finally {
-      setGeneratingToken(false);
-    }
-  };
-
-  const handleCopyInviteLink = () => {
-    const link = `${window.location.origin}/join?t=${inviteToken}`;
-    navigator.clipboard.writeText(link).then(() => {
-      setTokenCopied(true);
-      setTimeout(() => setTokenCopied(false), 2000);
-    });
+  const handleInviteShared = () => {
+    // Fire-and-forget: extend invite token expiry 30 days from now
+    leaguesApi.touchInviteToken(slug).catch(() => {});
   };
 
   const handleReviewRequest = async (id, action) => {
@@ -604,130 +585,86 @@ export default function LeagueSettings() {
       {/* Invite — private league: stable token link */}
       {!isPublic && (
         <div id="invite-section" className="card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
-              🔗 Invite Link
-            </h2>
-            <button
-              onClick={handleResetToken}
-              disabled={generatingToken}
-              className="text-xs font-ui underline disabled:opacity-50"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              {generatingToken ? 'Resetting…' : '↺ Reset link'}
-            </button>
-          </div>
+          <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
+            🔗 Invite Link
+          </h2>
           {inviteToken ? (
-            <div className="flex flex-col gap-3">
-              <div
-                className="flex items-center gap-2 px-3 py-2.5 rounded-xl border font-ui text-sm break-all"
-                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-              >
-                <span className="flex-1 truncate">{window.location.origin}/join?t={inviteToken}</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCopyInviteLink}
-                  className="btn btn-primary flex-1 text-sm py-2"
-                >
-                  {tokenCopied ? '✓ Copied!' : '📋 Copy link'}
-                </button>
-                {navigator.share && (
-                  <button
-                    onClick={() => navigator.share({ url: `${window.location.origin}/join?t=${inviteToken}`, title: `Join ${league?.name}` })}
-                    className="btn text-sm py-2 px-4"
-                    style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
-                  >
-                    Share
-                  </button>
-                )}
-              </div>
-              {inviteTokenExpiresAt && (
-                <p className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-                  Expires {new Date(inviteTokenExpiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  {' · '}Anyone with this link auto-joins. Reset it to revoke.
-                </p>
-              )}
-            </div>
+            <InviteKit
+              joinLink={`${window.location.origin}/join?t=${inviteToken}`}
+              joinCode={null}
+              leagueName={league?.name}
+              onShare={handleInviteShared}
+            />
           ) : (
             <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>Setting up invite link…</p>
           )}
+          <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+            Anyone with this link auto-joins {league?.name}.
+          </p>
         </div>
       )}
 
-      {/* Invite — public league: shareable join page + pending requests */}
+      {/* Invite — public league: shareable join page */}
       {isPublic && (
         <div id="invite-section" className="card p-6">
           <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             🔗 Join Page
           </h2>
-          <div className="flex flex-col gap-3">
-            <div
-              className="px-3 py-2.5 rounded-xl border font-ui text-sm truncate"
-              style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-            >
-              {window.location.origin}/l/{slug}/join
-            </div>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(`${window.location.origin}/l/${slug}/join`);
-                setTokenCopied(true);
-                setTimeout(() => setTokenCopied(false), 2000);
-              }}
-              className="btn btn-primary text-sm py-2"
-            >
-              {tokenCopied ? '✓ Copied!' : '📋 Copy link'}
-            </button>
-            <p className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-              Anyone can find your league here and request to join. You approve each request.
-            </p>
-          </div>
+          <InviteKit
+            joinLink={`${window.location.origin}/l/${slug}/join`}
+            joinCode={null}
+            leagueName={league?.name}
+          />
+          <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
+            Anyone can find your league here and request to join. You approve each request.
+          </p>
+        </div>
+      )}
 
-          {joinRequests.length > 0 && (
-            <div className="mt-5">
-              <h3 className="font-ui font-semibold text-sm mb-3" style={{ color: 'var(--color-text-primary)' }}>
-                Pending Requests ({joinRequests.length})
-              </h3>
-              <div className="flex flex-col gap-2">
-                {joinRequests.map((r) => (
-                  <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-xl border" style={{ borderColor: 'var(--color-border)' }}>
-                    <img
-                      src={r.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.display_name}`}
-                      alt={r.display_name}
-                      className="w-8 h-8 rounded-full flex-shrink-0"
-                      onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.display_name}`; }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-ui font-semibold text-sm truncate" style={{ color: 'var(--color-text-primary)' }}>
-                        {r.display_name}
-                      </div>
-                      {r.message && (
-                        <div className="font-ui text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
-                          "{r.message}"
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={() => handleReviewRequest(r.id, 'approve')}
-                        className="text-xs font-ui font-semibold px-2.5 py-1 rounded-lg text-white"
-                        style={{ background: 'var(--color-primary)' }}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => handleReviewRequest(r.id, 'deny')}
-                        className="text-xs font-ui px-2.5 py-1 rounded-lg border"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-                      >
-                        Deny
-                      </button>
-                    </div>
+      {/* Pending join requests — public leagues only */}
+      {isPublic && joinRequests.length > 0 && (
+        <div className="card p-6">
+          <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
+            📬 Pending Requests ({joinRequests.length})
+          </h2>
+          <div className="flex flex-col gap-2">
+            {joinRequests.map((r) => (
+              <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-xl border" style={{ borderColor: 'var(--color-border)' }}>
+                <img
+                  src={r.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.display_name}`}
+                  alt={r.display_name}
+                  className="w-8 h-8 rounded-full flex-shrink-0"
+                  onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.display_name}`; }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="font-ui font-semibold text-sm truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    {r.display_name}
                   </div>
-                ))}
+                  {r.message && (
+                    <div className="font-ui text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
+                      "{r.message}"
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => handleReviewRequest(r.id, 'approve')}
+                    className="text-xs font-ui font-semibold px-2.5 py-1 rounded-lg text-white"
+                    style={{ background: 'var(--color-primary)' }}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => handleReviewRequest(r.id, 'deny')}
+                    className="text-xs font-ui px-2.5 py-1 rounded-lg border"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+                  >
+                    Deny
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
 

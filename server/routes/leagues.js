@@ -434,6 +434,31 @@ router.post('/:slug/invite-token', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/leagues/:slug/invite-token/touch — extend expiry 30 days (no new token)
+router.post('/:slug/invite-token/touch', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await sql`UPDATE leagues SET invite_token_expires_at = ${expiresAt} WHERE id = ${league.id}`.execute(db);
+
+    res.json({ expires_at: expiresAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/leagues/:slug/join-requests — list pending requests (owner/admin)
 router.get('/:slug/join-requests', requireAuth, async (req, res) => {
   try {

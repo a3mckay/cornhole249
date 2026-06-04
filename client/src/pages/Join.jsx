@@ -181,7 +181,7 @@ function TokenJoin({ token }) {
         </h1>
         <p className="font-ui text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
           {data?.reason === 'expired'
-            ? 'This invite link has expired. Ask the league owner to reset it.'
+            ? 'This invite link has expired. Ask the league owner to share a new one.'
             : "That invite link doesn't exist. Ask someone in the league for a fresh one."}
         </p>
         <Link to="/" className="btn btn-secondary text-sm">Back to home</Link>
