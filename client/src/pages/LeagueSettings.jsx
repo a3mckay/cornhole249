@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { leaguesApi, billingApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
@@ -14,6 +14,7 @@ const ROLE_BADGE = {
 export default function LeagueSettings() {
   const { slug } = useLeague();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, leagues, refreshUser } = useAuth();
 
   // Determine the current user's role in this league
@@ -53,6 +54,18 @@ export default function LeagueSettings() {
   const [renewLoading, setRenewLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
+  // Billing redirect banner state.
+  // Persisted via sessionStorage so it survives the page reload that happens
+  // once the webhook has confirmed the plan change.
+  const [billingBanner, setBillingBanner] = useState(() => {
+    const stored = sessionStorage.getItem('billing_banner');
+    if (stored) {
+      sessionStorage.removeItem('billing_banner');
+      try { return JSON.parse(stored); } catch { return null; }
+    }
+    return null;
+  });
+
   const handlePortal = async () => {
     setPortalLoading(true);
     try {
@@ -79,6 +92,54 @@ export default function LeagueSettings() {
   const daysRemaining = msRemaining !== null ? Math.ceil(msRemaining / (1000 * 60 * 60 * 24)) : null;
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
   const passUrgent = daysRemaining !== null && daysRemaining <= 2 && !passExpired;
+
+  // Handle ?billing=success / ?billing=cancelled from Stripe redirect
+  useEffect(() => {
+    const bStatus = searchParams.get('billing');
+    if (!bStatus) return;
+
+    // Scrub the query param from the URL immediately
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('billing');
+    window.history.replaceState(null, '', cleanUrl.toString());
+
+    if (bStatus === 'cancelled') {
+      setBillingBanner({ type: 'cancelled' });
+      return;
+    }
+
+    if (bStatus === 'success') {
+      setBillingBanner({ type: 'activating' });
+
+      // Poll until the webhook has updated the league plan in the DB (usually < 5s).
+      // On confirmation, store the success state in sessionStorage and reload the
+      // page so LeagueContext re-fetches with the new plan — billing card shows correctly.
+      let attempts = 0;
+      const MAX_ATTEMPTS = 8; // 16 seconds total
+      const intervalId = setInterval(async () => {
+        attempts++;
+        try {
+          const updated = await leaguesApi.get(slug);
+          const updatedPlan = updated?.plan_override || updated?.plan || 'free';
+          if (updatedPlan !== 'free') {
+            clearInterval(intervalId);
+            sessionStorage.setItem('billing_banner', JSON.stringify({ type: 'success', plan: updatedPlan }));
+            window.location.href = window.location.pathname; // reload clean — context will re-fetch
+          } else if (attempts >= MAX_ATTEMPTS) {
+            clearInterval(intervalId);
+            setBillingBanner({ type: 'success_pending' });
+          }
+        } catch {
+          if (attempts >= MAX_ATTEMPTS) {
+            clearInterval(intervalId);
+            setBillingBanner({ type: 'success_pending' });
+          }
+        }
+      }, 2000);
+
+      return () => clearInterval(intervalId);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -230,6 +291,86 @@ export default function LeagueSettings() {
           </p>
         </div>
       </div>
+
+      {/* ── Billing redirect banners ────────────────────────────────────────── */}
+
+      {billingBanner?.type === 'activating' && (
+        <div
+          className="rounded-2xl px-5 py-4 flex items-center gap-3"
+          style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF' }}
+        >
+          <div className="w-5 h-5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin flex-shrink-0" />
+          <span className="font-ui font-semibold text-sm">Payment confirmed! Activating your plan…</span>
+        </div>
+      )}
+
+      {billingBanner?.type === 'success' && (
+        <div
+          className="rounded-2xl px-6 py-5"
+          style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, #2D5A27 100%)' }}
+        >
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="text-3xl mb-2">🎉</div>
+              <h2 className="font-display text-xl text-white mb-1">
+                {billingBanner.plan === 'weekend_pass' ? 'Weekend Pass activated!' : 'Welcome to Pro!'}
+              </h2>
+              <p className="font-ui text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                {billingBanner.plan === 'weekend_pass'
+                  ? 'You have 7 days of full Pro access. Make it count.'
+                  : `${league?.name || 'Your league'} is now on Pro. All features are unlocked.`}
+              </p>
+            </div>
+            <button
+              onClick={() => setBillingBanner(null)}
+              className="text-xl flex-shrink-0"
+              style={{ color: 'rgba(255,255,255,0.6)' }}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Link
+              to={leaguePath(slug, 'stats')}
+              className="btn text-sm px-4 py-1.5 font-semibold"
+              style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.35)' }}
+            >
+              📊 Explore Stats
+            </Link>
+            <Link
+              to={leaguePath(slug, 'tournaments')}
+              className="btn text-sm px-4 py-1.5 font-semibold"
+              style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.35)' }}
+            >
+              🏆 Run a Tournament
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {billingBanner?.type === 'success_pending' && (
+        <div
+          className="rounded-2xl px-5 py-4 flex items-center justify-between gap-3"
+          style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', color: '#065F46' }}
+        >
+          <span className="font-ui font-semibold text-sm">
+            ✓ Payment received! Your plan will activate in a moment — refresh if needed.
+          </span>
+          <button onClick={() => setBillingBanner(null)} className="opacity-60 hover:opacity-100 flex-shrink-0">✕</button>
+        </div>
+      )}
+
+      {billingBanner?.type === 'cancelled' && (
+        <div
+          className="rounded-2xl px-5 py-4 flex items-center justify-between gap-3"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+        >
+          <span className="font-ui text-sm">
+            No worries — you can upgrade any time from the Plan section below.
+          </span>
+          <button onClick={() => setBillingBanner(null)} className="opacity-60 hover:opacity-100 flex-shrink-0">✕</button>
+        </div>
+      )}
 
       {/* Billing */}
       <div className="card p-6">

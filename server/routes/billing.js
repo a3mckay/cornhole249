@@ -15,6 +15,7 @@ const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStripe, PRICES } = require('../lib/stripe');
 const { effectivePlan } = require('../lib/plan');
+const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail } = require('../lib/email');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
@@ -187,6 +188,9 @@ router.post('/webhook', async (req, res) => {
         const plan = session.metadata?.plan;
         if (!leagueId || !plan) break;
 
+        let activatedPlan = null;
+        let weekendPassExpiresAt = null;
+
         if (session.mode === 'subscription') {
           // subscription_id is on the session for subscriptions
           const subscriptionId = session.subscription;
@@ -205,21 +209,63 @@ router.post('/webhook', async (req, res) => {
             .where('id', '=', leagueId)
             .execute();
 
+          activatedPlan = 'pro';
           console.log(`[Billing] League ${leagueId} → Pro (sub ${subscriptionId})`);
         } else if (session.mode === 'payment' && plan === 'weekend_pass') {
           // Weekend pass: set plan + expires_at = now + 7 days
-          const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+          weekendPassExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
           await db
             .updateTable('leagues')
             .set({
               plan: 'weekend_pass',
-              expires_at: expiresAt,
+              expires_at: weekendPassExpiresAt,
             })
             .where('id', '=', leagueId)
             .execute();
 
-          console.log(`[Billing] League ${leagueId} → Weekend Pass (expires ${expiresAt})`);
+          activatedPlan = 'weekend_pass';
+          console.log(`[Billing] League ${leagueId} → Weekend Pass (expires ${weekendPassExpiresAt})`);
         }
+
+        // Send welcome email — fire-and-forget, don't block the webhook response
+        if (activatedPlan && session.metadata?.user_id) {
+          (async () => {
+            try {
+              const baseUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+              const [user, league] = await Promise.all([
+                db.selectFrom('users')
+                  .select(['email', 'display_name'])
+                  .where('id', '=', parseInt(session.metadata.user_id))
+                  .executeTakeFirst(),
+                db.selectFrom('leagues')
+                  .select(['name', 'slug'])
+                  .where('id', '=', leagueId)
+                  .executeTakeFirst(),
+              ]);
+              if (!user?.email || !league) return;
+              const leagueUrl = `${baseUrl}${league.slug === 'cornhole249' ? '' : `/l/${league.slug}`}`;
+              if (activatedPlan === 'weekend_pass') {
+                await sendWeekendPassWelcomeEmail({
+                  to: user.email,
+                  userName: user.display_name,
+                  leagueName: league.name,
+                  leagueUrl,
+                  expiresAt: weekendPassExpiresAt,
+                });
+              } else {
+                await sendProWelcomeEmail({
+                  to: user.email,
+                  userName: user.display_name,
+                  leagueName: league.name,
+                  leagueUrl,
+                });
+              }
+            } catch (err) {
+              console.error('[Billing] Welcome email failed:', err);
+            }
+          })();
+        }
+
         break;
       }
 

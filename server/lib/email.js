@@ -163,10 +163,72 @@ async function sendJoinDeniedEmail({ to, applicantName, leagueName }) {
   });
 }
 
+/**
+ * Welcome email for a new Pro subscription (monthly or yearly).
+ */
+async function sendProWelcomeEmail({ to, userName, leagueName, leagueUrl }) {
+  await sendEmail({
+    to,
+    subject: `🎉 Welcome to Pro — ${leagueName} is fully unlocked`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        <strong>${leagueName}</strong> is now on Cornhole249 Pro. Every feature is unlocked.
+      </p>
+      <ul style="font-family:sans-serif;padding-left:1.2em;line-height:1.8">
+        <li>📊 Full stats &amp; analytics</li>
+        <li>🏆 Tournament brackets</li>
+        <li>♾️ Unlimited players</li>
+        <li>📤 CSV export</li>
+      </ul>
+      <p style="font-family:sans-serif">
+        <a href="${leagueUrl}" style="color:#3A6B35;font-weight:bold">Go to ${leagueName} →</a>
+      </p>
+      <p style="font-family:sans-serif;color:#888;font-size:12px">
+        Manage or cancel your subscription any time from League Settings.
+      </p>
+    `,
+  });
+}
+
+/**
+ * Welcome email for a Weekend Pass purchase.
+ */
+async function sendWeekendPassWelcomeEmail({ to, userName, leagueName, leagueUrl, expiresAt }) {
+  const expiryStr = expiresAt
+    ? new Date(expiresAt).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })
+    : 'in 7 days';
+  await sendEmail({
+    to,
+    subject: `Your Weekend Pass for ${leagueName} is active`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        Your Weekend Pass for <strong>${leagueName}</strong> is active —
+        all Pro features are unlocked until <strong>${expiryStr}</strong>.
+      </p>
+      <ul style="font-family:sans-serif;padding-left:1.2em;line-height:1.8">
+        <li>📊 Full stats &amp; analytics</li>
+        <li>🏆 Tournament brackets</li>
+        <li>♾️ Unlimited players</li>
+        <li>📤 CSV export</li>
+      </ul>
+      <p style="font-family:sans-serif">
+        <a href="${leagueUrl}" style="color:#3A6B35;font-weight:bold">Go to ${leagueName} →</a>
+      </p>
+      <p style="font-family:sans-serif;color:#888;font-size:12px">
+        Need more time after the weekend? Upgrade to Pro Monthly or Yearly from League Settings.
+      </p>
+    `,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendJoinRequestEmail,
   sendJoinApprovedEmail,
   sendJoinDeniedEmail,
+  sendProWelcomeEmail,
+  sendWeekendPassWelcomeEmail,
 };
