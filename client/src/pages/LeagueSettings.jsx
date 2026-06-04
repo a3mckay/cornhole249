@@ -317,8 +317,8 @@ export default function LeagueSettings() {
               </h2>
               <p className="font-ui text-sm" style={{ color: 'rgba(255,255,255,0.8)' }}>
                 {billingBanner.plan === 'weekend_pass'
-                  ? 'You have 7 days of full Pro access. Make it count.'
-                  : `${league?.name || 'Your league'} is now on Pro. All features are unlocked.`}
+                  ? 'You have 7 days of full Pro access — tournaments, stats, and no player cap.'
+                  : `${league?.name || 'Your league'} is now on Pro — tournaments, stats, and no 8-player cap.`}
               </p>
             </div>
             <button
@@ -344,6 +344,13 @@ export default function LeagueSettings() {
             >
               🏆 Run a Tournament
             </Link>
+            <a
+              href="#invite-section"
+              className="btn text-sm px-4 py-1.5 font-semibold"
+              style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.35)' }}
+            >
+              👥 Invite More Players
+            </a>
           </div>
         </div>
       )}
@@ -586,7 +593,7 @@ export default function LeagueSettings() {
 
       {/* Invite — private league: stable token link */}
       {!isPublic && (
-        <div className="card p-6">
+        <div id="invite-section" className="card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
               🔗 Invite Link
@@ -640,7 +647,7 @@ export default function LeagueSettings() {
 
       {/* Invite — public league: shareable join page + pending requests */}
       {isPublic && (
-        <div className="card p-6">
+        <div id="invite-section" className="card p-6">
           <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             🔗 Join Page
           </h2>

@@ -178,11 +178,13 @@ async function sendProWelcomeEmail({ to, userName, leagueName, leagueUrl }) {
       <ul style="font-family:sans-serif;padding-left:1.2em;line-height:1.8">
         <li>📊 Full stats &amp; analytics</li>
         <li>🏆 Tournament brackets</li>
-        <li>♾️ Unlimited players</li>
+        <li>♾️ Unlimited players — no 8-player cap</li>
         <li>📤 CSV export</li>
       </ul>
       <p style="font-family:sans-serif">
-        <a href="${leagueUrl}" style="color:#3A6B35;font-weight:bold">Go to ${leagueName} →</a>
+        <a href="${leagueUrl}/settings#invite-section" style="color:#3A6B35;font-weight:bold">Invite more players →</a>
+        &nbsp;&nbsp;
+        <a href="${leagueUrl}" style="color:#3A6B35">Go to ${leagueName} →</a>
       </p>
       <p style="font-family:sans-serif;color:#888;font-size:12px">
         Manage or cancel your subscription any time from League Settings.
@@ -210,11 +212,13 @@ async function sendWeekendPassWelcomeEmail({ to, userName, leagueName, leagueUrl
       <ul style="font-family:sans-serif;padding-left:1.2em;line-height:1.8">
         <li>📊 Full stats &amp; analytics</li>
         <li>🏆 Tournament brackets</li>
-        <li>♾️ Unlimited players</li>
+        <li>♾️ Unlimited players — no 8-player cap</li>
         <li>📤 CSV export</li>
       </ul>
       <p style="font-family:sans-serif">
-        <a href="${leagueUrl}" style="color:#3A6B35;font-weight:bold">Go to ${leagueName} →</a>
+        <a href="${leagueUrl}/settings#invite-section" style="color:#3A6B35;font-weight:bold">Invite more players →</a>
+        &nbsp;&nbsp;
+        <a href="${leagueUrl}" style="color:#3A6B35">Go to ${leagueName} →</a>
       </p>
       <p style="font-family:sans-serif;color:#888;font-size:12px">
         Need more time after the weekend? Upgrade to Pro Monthly or Yearly from League Settings.
