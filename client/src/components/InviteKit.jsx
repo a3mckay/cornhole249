@@ -118,9 +118,11 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
         >
           ⬇️ Download QR
         </button>
-        <p className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-          Join code: <span className="font-mono font-bold tracking-widest">{joinCode}</span>
-        </p>
+        {joinCode && (
+          <p className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+            Join code: <span className="font-mono font-bold tracking-widest">{joinCode}</span>
+          </p>
+        )}
       </div>
     </div>
   );
