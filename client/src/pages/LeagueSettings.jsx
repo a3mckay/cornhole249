@@ -93,8 +93,18 @@ export default function LeagueSettings() {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
   const passUrgent = daysRemaining !== null && daysRemaining <= 2 && !passExpired;
 
+  // Handle ?plan= from email CTAs (weekend pass warning/expiry emails) —
+  // auto-open the upgrade modal so the user sees all options immediately.
   // Handle ?billing=success / ?billing=cancelled from Stripe redirect
   useEffect(() => {
+    const planParam = searchParams.get('plan');
+    if (planParam && ['pro_monthly', 'pro_yearly', 'weekend_pass'].includes(planParam)) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete('plan');
+      window.history.replaceState(null, '', cleanUrl.toString());
+      setShowUpgrade(true);
+    }
+
     const bStatus = searchParams.get('billing');
     if (!bStatus) return;
 
@@ -724,7 +734,7 @@ export default function LeagueSettings() {
       <UpgradeModal
         open={showUpgrade}
         onClose={() => setShowUpgrade(false)}
-        feature="Pro features"
+        feature={null}
         leagueId={leagueId}
       />
 
