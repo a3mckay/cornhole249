@@ -58,6 +58,8 @@ export default function Navbar() {
   const [copied,       setCopied]       = useState(false);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const pendingCount = currentLeague?.pending_requests_count ?? 0;
+  const hasPendingRequests = canManageCurrentLeague && pendingCount > 0;
   const NAV_LINKS = makeNavLinks(currentSlug);
   const HAMBURGER_LINKS = makeHamburgerLinks(currentSlug);
   const leagueHome = (slug) => slug === 'cornhole249' ? '/' : `/l/${slug}`;
@@ -205,10 +207,18 @@ export default function Navbar() {
                       {canManageCurrentLeague && (
                         <button
                           onClick={() => { navigate(leaguePath(currentSlug, 'settings')); setDropdownOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
+                          className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors flex items-center justify-between gap-2"
                           style={{ color: 'var(--color-text-primary)' }}
                         >
-                          ⚙️ League Settings
+                          <span>⚙️ League Settings</span>
+                          {hasPendingRequests && (
+                            <span
+                              className="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded-full"
+                              style={{ background: '#EF4444', color: '#fff', minWidth: '1.25rem', textAlign: 'center' }}
+                            >
+                              {pendingCount}
+                            </span>
+                          )}
                         </button>
                       )}
                       <button
@@ -303,7 +313,15 @@ export default function Navbar() {
                     onClick={() => { navigate(leaguePath(currentSlug, 'settings')); setMenuOpen(false); }}
                     className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-amber-100/80 hover:bg-white/10 hover:text-white transition-colors"
                   >
-                    ⚙️ League Settings
+                    <span className="flex-1 text-left">⚙️ League Settings</span>
+                    {hasPendingRequests && (
+                      <span
+                        className="flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: '#EF4444', color: '#fff', minWidth: '1.25rem', textAlign: 'center' }}
+                      >
+                        {pendingCount}
+                      </span>
+                    )}
                   </button>
                 )}
                 <button onClick={() => { navigate('/leagues/new'); setMenuOpen(false); }}

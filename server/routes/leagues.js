@@ -3,6 +3,7 @@ const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { leaguePreview } = require('../lib/leaguePreview');
+const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
 
 const FREE_LEAGUE_OWNER_CAP = 2;
 
@@ -23,12 +24,15 @@ router.get('/mine', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const { rows } = await sql`
-      SELECT l.*, lm.role
+      SELECT l.*, lm.role,
+        CASE WHEN lm.role IN ('owner', 'admin') THEN
+          (SELECT COUNT(*) FROM join_requests jr WHERE jr.league_id = l.id AND jr.status = 'pending')
+        ELSE 0 END AS pending_requests_count
       FROM leagues l
       JOIN league_memberships lm ON lm.league_id = l.id AND lm.user_id = ${req.session.userId}
       ORDER BY l.name
     `.execute(db);
-    res.json(rows);
+    res.json(rows.map(r => ({ ...r, pending_requests_count: parseInt(r.pending_requests_count) || 0 })));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -64,7 +68,17 @@ router.get('/:slug', async (req, res) => {
       }
     }
 
-    res.json({ ...league, member_count: parseInt(league.member_count), join_code: joinCode });
+    // Check if the logged-in user has a pending join request
+    let userPendingRequest = false;
+    if (req.session?.userId) {
+      const { rows: reqRows } = await sql`
+        SELECT 1 FROM join_requests
+        WHERE league_id = ${league.id} AND user_id = ${req.session.userId} AND status = 'pending'
+      `.execute(db);
+      userPendingRequest = reqRows.length > 0;
+    }
+
+    res.json({ ...league, member_count: parseInt(league.member_count), join_code: joinCode, user_pending_request: userPendingRequest });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -225,7 +239,7 @@ router.post('/:slug/join-requests', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const { rows } = await sql`
-      SELECT id, is_public, plan FROM leagues WHERE slug = ${req.params.slug}
+      SELECT id, is_public, plan, name, slug FROM leagues WHERE slug = ${req.params.slug}
     `.execute(db);
     const league = rows[0];
     if (!league) return res.status(404).json({ error: 'League not found' });
@@ -250,6 +264,38 @@ router.post('/:slug/join-requests', requireAuth, async (req, res) => {
       })
       .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
       .execute();
+
+    // Notify league owners/admins — fire-and-forget, don't block the response
+    (async () => {
+      try {
+        const [{ rows: admins }, { rows: requesterRows }] = await Promise.all([
+          sql`
+            SELECT u.email, u.display_name
+            FROM league_memberships lm
+            JOIN users u ON u.id = lm.user_id
+            WHERE lm.league_id = ${league.id}
+              AND lm.role IN ('owner', 'admin')
+              AND u.email IS NOT NULL
+          `.execute(db),
+          sql`SELECT display_name FROM users WHERE id = ${req.session.userId}`.execute(db),
+        ]);
+        const joinerName = requesterRows[0]?.display_name || 'Someone';
+        const reviewUrl = `${(process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '')}/l/${league.slug}/settings`;
+        await Promise.all(
+          admins.map((admin) =>
+            sendJoinRequestEmail({
+              to: admin.email,
+              adminName: admin.display_name,
+              leagueName: league.name,
+              joinerName,
+              reviewUrl,
+            })
+          )
+        );
+      } catch (err) {
+        console.error('[Email] join request notification failed:', err);
+      }
+    })();
 
     res.status(201).json({ ok: true });
   } catch (e) {
@@ -423,7 +469,7 @@ router.get('/:slug/join-requests', requireAuth, async (req, res) => {
 router.patch('/:slug/join-requests/:id', requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const { rows: leagueRows } = await sql`SELECT id, name, slug FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
     const league = leagueRows[0];
     if (!league) return res.status(404).json({ error: 'League not found' });
 
@@ -460,6 +506,36 @@ router.patch('/:slug/join-requests/:id', requireAuth, async (req, res) => {
         .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
         .execute();
     }
+
+    // Notify the applicant — fire-and-forget
+    (async () => {
+      try {
+        const { rows: applicantRows } = await sql`
+          SELECT display_name, email FROM users WHERE id = ${reqRows[0].user_id}
+        `.execute(db);
+        const applicant = applicantRows[0];
+        if (!applicant?.email) return;
+
+        const baseUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+        if (action === 'approve') {
+          const leagueUrl = `${baseUrl}/l/${league.slug}`;
+          await sendJoinApprovedEmail({
+            to: applicant.email,
+            applicantName: applicant.display_name,
+            leagueName: league.name,
+            leagueUrl,
+          });
+        } else {
+          await sendJoinDeniedEmail({
+            to: applicant.email,
+            applicantName: applicant.display_name,
+            leagueName: league.name,
+          });
+        }
+      } catch (err) {
+        console.error('[Email] join review notification failed:', err);
+      }
+    })();
 
     res.json({ ok: true, status });
   } catch (e) {

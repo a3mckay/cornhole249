@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { Outlet, useParams, Link } from 'react-router-dom';
 import { setCurrentLeague, leaguesApi } from '../api';
 
-const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free' });
+const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false });
 
 /**
  * React Router v6 layout route component.
@@ -34,6 +34,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const [leagueName, setLeagueName] = useState(slug === 'cornhole249' ? 'Cornhole249' : null);
   const [tagline, setTagline] = useState(null);
   const [createdAt, setCreatedAt] = useState(null);
+  const [userPendingRequest, setUserPendingRequest] = useState(false);
 
   useEffect(() => {
     leaguesApi.get(slug)
@@ -41,6 +42,7 @@ export function LeagueProvider({ slug: slugProp }) {
         setLeagueName(league?.name ?? slug);
         setTagline(league?.tagline ?? null);
         setCreatedAt(league?.created_at ?? null);
+        setUserPendingRequest(league?.user_pending_request ?? false);
         if (slug !== 'cornhole249') {
           setLeagueId(league?.id ?? null);
           setPlan(league?.plan_override || league?.plan || 'free');
@@ -63,7 +65,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
 
   return (
-    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, leagueName, tagline, createdAt }}>
+    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, leagueName, tagline, createdAt, userPendingRequest }}>
       {showBanner && (
         <div
           className="px-4 py-2.5 text-sm font-ui flex items-center justify-between gap-4"

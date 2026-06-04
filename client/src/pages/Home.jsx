@@ -29,13 +29,19 @@ function StringLights() {
 }
 
 export default function Home() {
-  const { slug, leagueName, tagline, createdAt } = useLeague();
+  const { slug, leagueName, tagline, createdAt, userPendingRequest } = useLeague();
   const { leagues } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const switcherRef = useRef(null);
   const [joinToast, setJoinToast] = useState(null);
+  const [requestToast, setRequestToast] = useState(null);
+
+  // Derive admin pending count from the server-fetched leagues list
+  const currentLeagueData = (leagues || []).find((l) => l.slug === slug);
+  const pendingCount = currentLeagueData?.pending_requests_count ?? 0;
+  const isManager = currentLeagueData?.role === 'owner' || currentLeagueData?.role === 'admin';
 
   // Close switcher on outside click
   useEffect(() => {
@@ -49,9 +55,17 @@ export default function Home() {
   useEffect(() => {
     if (!location.state?.justJoined) return;
     setJoinToast(location.state.leagueName || leagueName || 'this league');
-    // Clear the navigation state so a refresh doesn't re-show the toast
     window.history.replaceState({}, '');
     const t = setTimeout(() => setJoinToast(null), 5000);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Show a toast when navigated here right after submitting a join request
+  useEffect(() => {
+    if (!location.state?.justRequested) return;
+    setRequestToast(location.state.leagueName || leagueName || 'this league');
+    window.history.replaceState({}, '');
+    const t = setTimeout(() => setRequestToast(null), 6000);
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -96,6 +110,53 @@ export default function Home() {
           <button onClick={() => setJoinToast(null)} className="opacity-60 hover:opacity-100 flex-shrink-0 text-base leading-none">
             ✕
           </button>
+        </div>
+      )}
+
+      {/* Request toast — shown right after submitting a join request */}
+      {requestToast && (
+        <div
+          className="mb-5 px-4 py-3 rounded-2xl flex items-center justify-between gap-3"
+          style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF' }}
+        >
+          <span className="font-ui font-semibold text-sm">
+            📬 Your request to join {requestToast} has been sent! The admin will review it soon.
+          </span>
+          <button onClick={() => setRequestToast(null)} className="opacity-60 hover:opacity-100 flex-shrink-0 text-base leading-none">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Persistent pending-request banner — shown to non-members awaiting approval */}
+      {userPendingRequest && !requestToast && (
+        <div
+          className="mb-5 px-4 py-3 rounded-2xl flex items-center gap-3"
+          style={{ background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E' }}
+        >
+          <span className="font-ui text-sm">
+            ⏳ <strong>Your request to join {leagueName || slug} is pending review.</strong>{' '}
+            You'll get access once an admin approves it.
+          </span>
+        </div>
+      )}
+
+      {/* Admin banner — shown to owners/admins when there are pending join requests */}
+      {isManager && pendingCount > 0 && (
+        <div
+          className="mb-5 px-4 py-3 rounded-2xl flex items-center justify-between gap-3"
+          style={{ background: '#FEE2E2', border: '1px solid #FECACA', color: '#991B1B' }}
+        >
+          <span className="font-ui font-semibold text-sm">
+            📥 {pendingCount === 1 ? '1 person wants' : `${pendingCount} people want`} to join {leagueName || slug}.
+          </span>
+          <Link
+            to={leaguePath(slug, 'settings')}
+            className="btn text-xs px-3 py-1.5 font-semibold flex-shrink-0"
+            style={{ background: '#991B1B', color: '#fff', borderRadius: '0.75rem' }}
+          >
+            Review requests →
+          </Link>
         </div>
       )}
 

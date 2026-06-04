@@ -317,10 +317,10 @@ function PublicJoin({ slug }) {
     setError('');
     try {
       await leaguesApi.requestJoin(slug, { message });
-      setSubmitted(true);
+      // Navigate to the league home so the pending banner is shown there
+      navigate(`/l/${slug}`, { state: { justRequested: true, leagueName: data.league_name } });
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to send request');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -350,9 +350,14 @@ function PublicJoin({ slug }) {
           Request sent!
         </h1>
         <p className="font-ui text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-          The league admin will review your request. Check back soon.
+          The league admin will review your request. You'll be added once they approve it.
         </p>
-        <Link to="/" className="btn btn-secondary text-sm">Back to home</Link>
+        <button
+          onClick={() => navigate(`/l/${slug}`, { state: { justRequested: true, leagueName: data.league_name } })}
+          className="btn btn-primary text-sm"
+        >
+          View {data.league_name} →
+        </button>
       </div>
     );
   }
