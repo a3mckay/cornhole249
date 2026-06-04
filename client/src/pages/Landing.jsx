@@ -289,6 +289,33 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── Founder ──────────────────────────────────────────────── */}
+      <section className="mb-16 px-4">
+        <div
+          className="max-w-2xl mx-auto rounded-[20px] px-8 py-10 flex flex-col sm:flex-row items-center gap-8"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '4px 4px 0 var(--color-border)' }}
+        >
+          <img
+            src="/founder.jpg"
+            alt="Andrew McKay, founder"
+            className="flex-shrink-0 rounded-full object-cover object-top border-4"
+            style={{ width: 120, height: 120, borderColor: 'var(--color-secondary)' }}
+          />
+          <div>
+            <blockquote
+              className="font-ui text-base italic mb-4 leading-relaxed"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
+              "I created this site after a friend of mine contested who the best cornhole player was. I needed empirical evidence to shove in his face, and now I have it. This site is for everyone who needs to record the data behind their favourite backyard activity. I hope you enjoy shoving it in your friends' faces as much as I do. Cheers."
+            </blockquote>
+            <div className="flex items-center gap-2">
+              <span className="font-ui font-bold text-sm" style={{ color: 'var(--color-text-primary)' }}>Andrew McKay</span>
+              <span className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>· Founder, Cornhole249</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Bottom CTA ───────────────────────────────────────────── */}
       <section
         className="mb-16 px-8 py-12 rounded-[20px] text-center"
