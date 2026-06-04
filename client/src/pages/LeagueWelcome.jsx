@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { leaguePath } from '../contexts/LeagueContext';
+import InviteKit from '../components/InviteKit';
 
 const WHAT_NEXT = {
   recurring: [
@@ -34,8 +35,6 @@ export default function LeagueWelcome() {
   const leagueName = league?.name ?? slug ?? 'Your League';
   const isPublic = league?.is_public ?? false;
 
-  const [copied, setCopied] = useState(false);
-
   const inviteLink = inviteToken
     ? `${window.location.origin}/join?t=${encodeURIComponent(inviteToken)}`
     : isPublic
@@ -43,26 +42,6 @@ export default function LeagueWelcome() {
     : joinCode
     ? `${window.location.origin}/join/${joinCode}`
     : null;
-
-  const handleCopy = async () => {
-    if (!inviteLink) return;
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      // fallback: select text
-    }
-  };
-
-  const handleShare = async () => {
-    if (!inviteLink) return;
-    if (navigator.share) {
-      await navigator.share({ title: `Join ${leagueName}`, url: inviteLink }).catch(() => {});
-    } else {
-      handleCopy();
-    }
-  };
 
   const nextCards = WHAT_NEXT[useCase] || WHAT_NEXT.default;
   const go = (subpath) => navigate(leaguePath(slug, subpath));
@@ -85,33 +64,19 @@ export default function LeagueWelcome() {
       {/* Invite kit */}
       {inviteLink && (
         <div className="card p-6">
-          <h2 className="font-display text-xl mb-3" style={{ color: 'var(--color-text-primary)' }}>
+          <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             🔗 Invite your crew
           </h2>
-          <div
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl border font-ui text-sm mb-3 break-all"
-            style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-          >
-            <span className="flex-1 truncate">{inviteLink}</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleCopy} className="btn btn-primary flex-1 text-sm py-2">
-              {copied ? '✓ Copied!' : '📋 Copy link'}
-            </button>
-            <button onClick={handleShare} className="btn btn-ghost flex-1 text-sm py-2">
-              Share
-            </button>
-          </div>
-          {isPublic && (
-            <p className="mt-2 text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-              Players who visit this link can request to join. You'll approve them in league settings.
-            </p>
-          )}
-          {inviteToken && (
-            <p className="mt-2 text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-              This link is valid for 30 days. Generate a new one anytime in league settings.
-            </p>
-          )}
+          <InviteKit
+            joinLink={inviteLink}
+            joinCode={null}
+            leagueName={leagueName}
+          />
+          <p className="mt-4 text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+            {isPublic
+              ? 'Players who visit this link can request to join. You\'ll approve them in league settings.'
+              : 'Anyone with this link auto-joins. Share it anytime from league settings.'}
+          </p>
         </div>
       )}
 

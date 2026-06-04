@@ -53,7 +53,8 @@ export default function UseCase() {
     }
 
     if (selected === 'exploring') {
-      navigate(leaguePath(slug, ''), { replace: true });
+      // Send them to the live Cornhole249 demo league so they can browse a real league
+      navigate('/', { replace: true });
       return;
     }
 
