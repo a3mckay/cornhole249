@@ -37,7 +37,7 @@ This file is both the spec **and** Claude's operating manual for building from i
 | Auth | Email + password + Google SSO | PIN-only is too weak for paying customers; keep PIN as optional fast-login for shared devices |
 | Pricing currency | CAD initially | Aligns with initial Canadian audience; revisit when going international |
 | OG image rendering | `satori` + `@resvg/resvg-js` | No headless browser, ~50ms renders, works on Railway |
-| Email provider | Resend | Free 3k/mo, modern DX |
+| Email provider | Gmail SMTP via Nodemailer | Switched from Resend pre-launch; credentials in Railway (`GMAIL_USER`, `GMAIL_APP_PASS`) |
 | Hosting | Railway | Existing setup; supports Postgres, branch deploys, wildcard SSL |
 | Analytics | PostHog (free tier) | Funnel + retention + product analytics in one |
 | Error monitoring | Sentry (free tier) | Catches what tests miss |
@@ -560,6 +560,55 @@ The "Cornhole249" watermark on shared images is intentionally **not** a Pro perk
 **Open questions:**
 - Should comped Pro leagues see any indicator inside their own UI that they're on a granted plan? (Recommendation: no — they should feel like normal Pro customers. Internal audit log is sufficient.)
 - If a granted-Pro league later signs up for paid Pro themselves, does the override get cleared? (Recommendation: yes — paid plan supersedes; clear override automatically on subscription creation.)
+
+#### 5.5 Downgrade: grace period & player cap enforcement
+
+**Why:** When a Pro league cancels its subscription and has more than 8 members, we can't silently strip access — that destroys trust. A grace period gives the admin a window to resolve it gracefully. If they don't act, we fall back to a deterministic default (oldest 8 members) rather than leaving the league in an undefined state.
+
+**The full design (locked decisions):**
+
+| Decision | Choice |
+|---|---|
+| Grace period length | 7 days from subscription cancellation |
+| Behaviour during grace period | League operates normally — all players can log games and comment. Pro features (Stats, Tournaments, etc.) are locked immediately. |
+| Admin selection window | Admin can choose which 8 players stay active **only during the grace period**. Once the grace period lapses, the choice is frozen and cannot be changed by the admin. |
+| Default if admin doesn't act | First 8 members by chronological join date (`league_memberships.joined_at ASC`) are kept active. The rest are frozen automatically when `grace_period_ends_at` passes. |
+| Frozen player access | Can browse the league (view standings, history, profiles). **Cannot** log games, comment, or be selected as a participant in new games. |
+| Frozen player in game creation UI | Appears greyed out and unselectable in the player picker. |
+| Frozen player in-app message | Persistent banner when browsing the league: "Your access to [League] has been limited. Ask the league owner to re-upgrade to Pro to restore your access." |
+| Data preservation | All historical games, comments, and stats for frozen players are preserved and visible. Nothing is deleted. |
+| Permanence | Once a player is frozen, they stay frozen until Pro is restored. Admins cannot unfreeze individual players on the free plan. No toggling allowed. |
+| Restoration | Upgrading back to Pro (any plan) instantly unfreezes all members. |
+| Frozen players buying Pro | Deferred. For now, the frozen player message should direct them to ask the league owner to re-upgrade. |
+
+**Email notifications:**
+
+| Trigger | Recipient | Content |
+|---|---|---|
+| Subscription cancelled (grace starts) | League owner | "Your Pro subscription has ended. You have 7 days — until [date] — to choose which 8 players keep full access to [League]. If you don't choose, we'll automatically keep your first 8 members. [Choose now →]" |
+| 1 day before grace period ends (only if admin hasn't resolved) | League owner | "Tomorrow, [League]'s player cap kicks in. Choose your 8 now to decide who stays — or we'll automatically keep your first 8 by join date. [Choose now →]" |
+
+**In scope:**
+- New column: `leagues.grace_period_ends_at` (TIMESTAMPTZ, nullable) — set when subscription cancels if `member_count > 8`
+- New column: `league_memberships.frozen_at` (TIMESTAMPTZ, nullable) — set when a member is frozen; null = active
+- Webhook `customer.subscription.deleted`: if member count > 8, set `grace_period_ends_at = NOW() + 7 days` and send grace-start email. If ≤ 8 members, no action needed.
+- Cron job (daily): find leagues where `grace_period_ends_at < NOW()` and `plan = 'free'` and still have >8 active members → freeze all members beyond the oldest 8 by `joined_at`
+- Cron job (daily): find leagues where `grace_period_ends_at` is tomorrow and admin hasn't resolved → send warning email
+- League Settings admin UI: during the grace period only, show a "Manage player access" panel listing all members with checkboxes (max 8 selectable). Submitting this choice immediately freezes the unchecked players and clears `grace_period_ends_at`. Once submitted (or after expiry), panel is hidden — no further changes allowed.
+- All game-logging routes: check `league_memberships.frozen_at IS NULL` for each participant; reject frozen members with 403
+- Comments / trash-talk routes: same frozen check
+- Game creation client: query membership list; render frozen players greyed out with `disabled` and a tooltip "Access limited"
+- Frozen member sees persistent banner when visiting any page under `/l/:slug/`
+
+**Out of scope (v1):**
+- Frozen players purchasing Pro on behalf of the league
+- Admin choosing to freeze fewer than the full excess (e.g. keeping 6 instead of 8) — always fills to 8
+- Per-player override (unfreeze one person without full Pro upgrade)
+
+**Open questions (to resolve before building):**
+- Should the League Settings "manage player access" panel show during the grace period even if the league has exactly 8 members (i.e. no action needed)? Recommendation: hide it — only show when member count > 8.
+- If a frozen player is later approved in a different league, does their frozen status in this league affect anything? No — `frozen_at` is per `league_membership` row, fully scoped to one league.
+- Day-before warning email: if the admin resolves it at 11pm the night before, does the email still send? Recommendation: run the cron check before midnight and skip if already resolved.
 
 ---
 
