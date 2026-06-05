@@ -15,7 +15,7 @@ const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStripe, PRICES } = require('../lib/stripe');
 const { effectivePlan } = require('../lib/plan');
-const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail } = require('../lib/email');
+const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail, sendGraceStartEmail } = require('../lib/email');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
@@ -298,6 +298,21 @@ router.post('/webhook', async (req, res) => {
         const leagueId = parseInt(sub.metadata?.league_id);
         if (!leagueId) break;
 
+        // Idempotency guard — check current state before acting
+        const league = await db
+          .selectFrom('leagues')
+          .select(['grace_period_ends_at', 'slug', 'name'])
+          .where('id', '=', leagueId)
+          .executeTakeFirst();
+
+        // Count active (non-frozen) members
+        const { rows: memberRows } = await sql`
+          SELECT COUNT(*) AS n FROM league_memberships
+          WHERE league_id = ${leagueId} AND frozen_at IS NULL
+        `.execute(db);
+        const memberCount = parseInt(memberRows[0].n);
+
+        // Always clear Stripe fields and flip to free
         await db
           .updateTable('leagues')
           .set({
@@ -309,7 +324,40 @@ router.post('/webhook', async (req, res) => {
           .where('id', '=', leagueId)
           .execute();
 
-        console.log(`[Billing] League ${leagueId} subscription cancelled → free`);
+        if (memberCount > 8 && !league?.grace_period_ends_at) {
+          // Start grace period — owner has 7 days to choose which 8 stay
+          const graceEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+          await db
+            .updateTable('leagues')
+            .set({ grace_period_ends_at: graceEndsAt })
+            .where('id', '=', leagueId)
+            .execute();
+
+          // Email the owner
+          const { rows: ownerRows } = await sql`
+            SELECT u.email, u.display_name
+            FROM league_memberships lm
+            JOIN users u ON u.id = lm.user_id
+            WHERE lm.league_id = ${leagueId} AND lm.role = 'owner' AND u.email IS NOT NULL
+            LIMIT 1
+          `.execute(db);
+
+          if (ownerRows[0]) {
+            const leagueUrl = `${APP_URL}/l/${league.slug}`;
+            await sendGraceStartEmail({
+              to: ownerRows[0].email,
+              userName: ownerRows[0].display_name,
+              leagueName: league.name,
+              leagueUrl,
+              graceEndsAt,
+              memberCount,
+            }).catch((e) => console.error('[Billing] Grace start email failed:', e.message));
+          }
+
+          console.log(`[Billing] League ${leagueId} subscription cancelled → grace period starts (${memberCount} members)`);
+        } else {
+          console.log(`[Billing] League ${leagueId} subscription cancelled → free (${memberCount} members, no grace needed)`);
+        }
         break;
       }
 

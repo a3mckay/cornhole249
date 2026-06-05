@@ -48,6 +48,17 @@ router.post('/', requireAuth, async (req, res) => {
     if (!body || !body.trim()) return res.status(400).json({ error: 'Post body required' });
     if (body.length > 280) return res.status(400).json({ error: 'Post too long (max 280 chars)' });
 
+    // Frozen members cannot post
+    const membership = await db
+      .selectFrom('league_memberships')
+      .select(['frozen_at'])
+      .where('league_id', '=', req.leagueId)
+      .where('user_id', '=', req.session.userId)
+      .executeTakeFirst();
+    if (membership?.frozen_at) {
+      return res.status(403).json({ error: 'Your access to this league is limited. Ask the league owner to re-upgrade to Pro.' });
+    }
+
     const inserted = await db
       .insertInto('trash_talk')
       .values({ user_id: req.session.userId, body: body.trim(), league_id: req.leagueId })

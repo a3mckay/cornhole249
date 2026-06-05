@@ -316,6 +316,86 @@ async function sendWeekendPassExpiredEmail({ to, userName, leagueName, leagueUrl
   });
 }
 
+/**
+ * Sent immediately when a Pro subscription cancels and the league has >8 members.
+ * Gives the owner 7 days to choose which players stay.
+ */
+async function sendGraceStartEmail({ to, userName, leagueName, leagueUrl, graceEndsAt, memberCount }) {
+  const deadlineStr = new Date(graceEndsAt).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
+  await sendEmail({
+    to,
+    subject: `Action required: choose your 8 players for ${leagueName}`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        Your Pro subscription for <strong>${leagueName}</strong> has ended.
+        Your league currently has <strong>${memberCount} members</strong>, but the free plan supports up to 8.
+      </p>
+      <p style="font-family:sans-serif">
+        You have until <strong>${deadlineStr}</strong> to choose which 8 players keep full access.
+        If you don't choose, we'll automatically keep your first 8 members by join date — the rest will have read-only access.
+      </p>
+      <table style="font-family:sans-serif;border-collapse:collapse;width:100%;max-width:400px">
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings" style="display:inline-block;padding:10px 20px;background:#3A6B35;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Manage Player Access →
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0 6px">
+            <a href="${leagueUrl}/settings?plan=pro_monthly" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Re-upgrade to Pro — CAD $9/mo
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="font-family:sans-serif;color:#888;font-size:12px;margin-top:16px">
+        All game history and stats are preserved. Upgrading back to Pro instantly restores full access for everyone.
+      </p>
+    `,
+  });
+}
+
+/**
+ * Sent the day before a grace period expires if the owner hasn't resolved it.
+ */
+async function sendGraceWarningEmail({ to, userName, leagueName, leagueUrl, graceEndsAt }) {
+  const deadlineStr = new Date(graceEndsAt).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
+  await sendEmail({
+    to,
+    subject: `Last chance: choose your 8 players for ${leagueName} by tomorrow`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        Tomorrow (<strong>${deadlineStr}</strong>), the player cap for <strong>${leagueName}</strong> kicks in.
+        If you haven't chosen your 8 players yet, we'll automatically keep your first 8 members by join date —
+        everyone else will lose the ability to log games or comment.
+      </p>
+      <table style="font-family:sans-serif;border-collapse:collapse;width:100%;max-width:400px">
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings" style="display:inline-block;padding:10px 20px;background:#3A6B35;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Choose My 8 Players →
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0 6px">
+            <a href="${leagueUrl}/settings?plan=pro_monthly" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Re-upgrade to Pro — CAD $9/mo
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="font-family:sans-serif;color:#888;font-size:12px;margin-top:16px">
+        Upgrading back to Pro instantly restores full access for all members.
+      </p>
+    `,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -326,4 +406,6 @@ module.exports = {
   sendWeekendPassWelcomeEmail,
   sendWeekendPassWarningEmail,
   sendWeekendPassExpiredEmail,
+  sendGraceStartEmail,
+  sendGraceWarningEmail,
 };

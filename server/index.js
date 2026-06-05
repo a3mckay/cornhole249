@@ -518,7 +518,7 @@ app.use(errorHandler);
       const cron = require('node-cron');
       const { runBackup, BACKUP_DIR } = require('./lib/backup');
       const { getDb, sql } = require('./db');
-      const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail } = require('./lib/email');
+      const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail, sendGraceWarningEmail } = require('./lib/email');
 
       // 03:00 UTC every day
       cron.schedule('0 3 * * *', async () => {
@@ -597,10 +597,91 @@ app.use(errorHandler);
         } catch (e) {
           console.error('[Cron] Weekend pass expiry query failed:', e.message);
         }
+
+        // ── Downgrade grace: freeze excess members after grace expires ─────────
+        try {
+          const { rows: graceExpired } = await sql`
+            SELECT l.id, l.slug, l.name
+            FROM leagues l
+            WHERE l.grace_period_ends_at IS NOT NULL
+              AND l.grace_period_ends_at < NOW()
+              AND l.plan = 'free'
+          `.execute(db);
+
+          for (const league of graceExpired) {
+            try {
+              // Oldest 8 by joined_at are kept; NULLS LAST so unknown join dates freeze first
+              const { rows: activeMembers } = await sql`
+                SELECT user_id, joined_at
+                FROM league_memberships
+                WHERE league_id = ${league.id} AND frozen_at IS NULL
+                ORDER BY joined_at ASC NULLS LAST
+              `.execute(db);
+
+              const toFreeze = activeMembers.slice(8);
+              for (const member of toFreeze) {
+                await sql`
+                  UPDATE league_memberships
+                  SET frozen_at = NOW()
+                  WHERE league_id = ${league.id} AND user_id = ${member.user_id}
+                `.execute(db);
+                console.log(`[Cron] Froze user_id=${member.user_id} in league ${league.id} (joined_at=${member.joined_at})`);
+              }
+
+              // Clear grace period marker
+              await sql`
+                UPDATE leagues SET grace_period_ends_at = NULL WHERE id = ${league.id}
+              `.execute(db);
+
+              console.log(`[Cron] Grace period resolved for league ${league.id}: ${Math.min(activeMembers.length, 8)} active, ${toFreeze.length} frozen`);
+            } catch (err) {
+              console.error(`[Cron] Grace freeze failed for league ${league.id}:`, err.message);
+            }
+          }
+        } catch (e) {
+          console.error('[Cron] Grace freeze query failed:', e.message);
+        }
+
+        // ── Downgrade grace: day-before warning (if unresolved) ───────────────
+        try {
+          const { rows: warningSoon } = await sql`
+            SELECT l.id, l.slug, l.name, l.grace_period_ends_at,
+                   u.email, u.display_name
+            FROM leagues l
+            JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+            JOIN users u ON u.id = lm.user_id
+            WHERE l.grace_period_ends_at IS NOT NULL
+              AND l.grace_period_ends_at > NOW()
+              AND l.grace_period_ends_at <= NOW() + INTERVAL '24 hours'
+              AND u.email IS NOT NULL
+              AND (
+                SELECT COUNT(*) FROM league_memberships
+                WHERE league_id = l.id AND frozen_at IS NULL
+              ) > 8
+          `.execute(db);
+
+          for (const row of warningSoon) {
+            try {
+              const leagueUrl = `${baseUrl}/l/${row.slug}`;
+              await sendGraceWarningEmail({
+                to: row.email,
+                userName: row.display_name,
+                leagueName: row.name,
+                leagueUrl,
+                graceEndsAt: row.grace_period_ends_at,
+              });
+              console.log(`[Cron] Grace warning email sent → league ${row.id}`);
+            } catch (err) {
+              console.error(`[Cron] Grace warning email failed for league ${row.id}:`, err.message);
+            }
+          }
+        } catch (e) {
+          console.error('[Cron] Grace warning query failed:', e.message);
+        }
       });
 
       console.log(`[Backup] Daily backup scheduled at 03:00 UTC → ${BACKUP_DIR}`);
-      console.log('[Cron] Weekend pass warning + expiry scheduled at 03:00 UTC');
+      console.log('[Cron] Weekend pass warning + expiry + grace period scheduled at 03:00 UTC');
     }
 
     if (require.main === module) {

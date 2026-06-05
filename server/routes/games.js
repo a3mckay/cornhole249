@@ -167,6 +167,21 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'A player cannot be on both teams' });
     }
 
+    // Reject frozen participants — their access to this league is limited
+    const allParticipantIds = [...t1Ids, ...t2Ids];
+    const frozenMembers = await db
+      .selectFrom('league_memberships as lm')
+      .innerJoin('users as u', 'u.id', 'lm.user_id')
+      .select(['u.display_name'])
+      .where('lm.league_id', '=', req.leagueId)
+      .where('lm.user_id', 'in', allParticipantIds)
+      .where('lm.frozen_at', 'is not', null)
+      .execute();
+    if (frozenMembers.length > 0) {
+      const names = frozenMembers.map((m) => m.display_name).join(', ');
+      return res.status(403).json({ error: `${names} cannot participate — their access to this league is limited.` });
+    }
+
     const t1Score = team1[0]?.score ?? 0;
     const t2Score = team2[0]?.score ?? 0;
 
