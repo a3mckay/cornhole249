@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Outlet, useParams, Link } from 'react-router-dom';
 import { setCurrentLeague, leaguesApi } from '../api';
+import { useAuth } from '../hooks/useAuth';
 
 const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false });
 
@@ -22,6 +23,7 @@ const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'f
 export function LeagueProvider({ slug: slugProp }) {
   const params = useParams();
   const slug = slugProp ?? params.slug ?? 'cornhole249';
+  const { leagues } = useAuth();
 
   // Set synchronously so child components use the correct slug on their first render.
   // useEffect runs after children mount, so any API calls in children would use a stale slug.
@@ -31,6 +33,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const [leagueId, setLeagueId] = useState(slug === 'cornhole249' ? 1 : null);
   const [plan, setPlan] = useState(slug === 'cornhole249' ? 'pro' : 'free');
   const [expiresAt, setExpiresAt] = useState(null);
+  const [graceEndsAt, setGraceEndsAt] = useState(null);
   const [leagueName, setLeagueName] = useState(slug === 'cornhole249' ? 'Cornhole249' : null);
   const [tagline, setTagline] = useState(null);
   const [createdAt, setCreatedAt] = useState(null);
@@ -47,14 +50,19 @@ export function LeagueProvider({ slug: slugProp }) {
           setLeagueId(league?.id ?? null);
           setPlan(league?.plan_override || league?.plan || 'free');
           setExpiresAt(league?.expires_at ?? null);
+          setGraceEndsAt(league?.grace_period_ends_at ?? null);
         }
       })
       .catch(() => {
         if (slug !== 'cornhole249') {
-          setLeagueId(null); setPlan('free'); setExpiresAt(null);
+          setLeagueId(null); setPlan('free'); setExpiresAt(null); setGraceEndsAt(null);
         }
       });
   }, [slug]);
+
+  // Current user's frozen status in this league (from useAuth's /leagues/mine data)
+  const myMembership = leagues?.find((l) => l.slug === slug);
+  const isFrozen = !!myMembership?.frozen_at;
 
   // Weekend pass expiry banner (shown when ≤ 3 days remaining)
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -65,7 +73,18 @@ export function LeagueProvider({ slug: slugProp }) {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
 
   return (
-    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, leagueName, tagline, createdAt, userPendingRequest }}>
+    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest }}>
+      {isFrozen && (
+        <div
+          className="px-4 py-2.5 text-sm font-ui flex items-center gap-3"
+          style={{ background: '#FEE2E2', borderBottom: '1px solid #FECACA', color: '#991B1B' }}
+        >
+          <span>🔒</span>
+          <span>
+            Your access to <strong>{leagueName}</strong> is limited. Ask the league owner to re-upgrade to Pro to restore full access.
+          </span>
+        </div>
+      )}
       {showBanner && (
         <div
           className="px-4 py-2.5 text-sm font-ui flex items-center justify-between gap-4"

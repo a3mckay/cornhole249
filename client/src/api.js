@@ -181,6 +181,8 @@ export const leaguesApi = {
   getJoinRequests: (slug) => api.get(`/leagues/${slug}/join-requests`).then((r) => r.data),
   reviewJoinRequest: (slug, id, action) =>
     api.patch(`/leagues/${slug}/join-requests/${id}`, { action }).then((r) => r.data),
+  // Downgrade grace period — admin manually chooses which 8 members keep access
+  graceResolve: (slug, data) => api.post(`/leagues/${slug}/grace-resolve`, data).then((r) => r.data),
 };
 
 // Join / invite landing

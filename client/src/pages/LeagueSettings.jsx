@@ -53,6 +53,11 @@ export default function LeagueSettings() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [exportLoading, setExportLoading] = useState(null);
 
+  // Grace period — manage player access
+  const [graceKeep, setGraceKeep] = useState(null); // Set of user IDs to keep; null = not yet initialised
+  const [graceSaving, setGraceSaving] = useState(false);
+  const [graceError, setGraceError] = useState('');
+
   // Billing redirect banner state.
   // Persisted via sessionStorage so it survives the page reload that happens
   // once the webhook has confirmed the plan change.
@@ -108,6 +113,44 @@ export default function LeagueSettings() {
       // silent fail
     } finally {
       setExportLoading(null);
+    }
+  };
+
+  // Initialise grace keep-set when members load and grace period is active
+  const graceEndsAtRaw = league?.grace_period_ends_at;
+  const isGraceActive = graceEndsAtRaw && new Date(graceEndsAtRaw) > new Date();
+  const activeMembers = members.filter((m) => !m.frozen_at);
+  const showGracePanel = isGraceActive && activeMembers.length > 8;
+
+  useEffect(() => {
+    if (showGracePanel && graceKeep === null) {
+      // Pre-select the oldest 8 by joined_at (matches what the cron would do automatically)
+      const sorted = [...activeMembers].sort((a, b) => {
+        if (!a.joined_at) return 1;
+        if (!b.joined_at) return -1;
+        return new Date(a.joined_at) - new Date(b.joined_at);
+      });
+      setGraceKeep(new Set(sorted.slice(0, 8).map((m) => m.id)));
+    }
+  }, [showGracePanel, members]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleGraceResolve = async () => {
+    if (!graceKeep) return;
+    setGraceSaving(true);
+    setGraceError('');
+    try {
+      await leaguesApi.graceResolve(slug, { keepUserIds: [...graceKeep] });
+      await load();
+      setGraceKeep(null);
+    } catch (e) {
+      if (e.response?.status === 409) {
+        setGraceError('The grace period has already ended — player access was set automatically.');
+        await load();
+      } else {
+        setGraceError(e.response?.data?.error || 'Failed to save. Please try again.');
+      }
+    } finally {
+      setGraceSaving(false);
     }
   };
 
@@ -505,6 +548,100 @@ export default function LeagueSettings() {
           </div>
         )}
       </div>
+
+      {/* Grace period — manage player access */}
+      {showGracePanel && (
+        <div className="card p-6" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
+          <div className="flex items-start gap-3 mb-4">
+            <span className="text-2xl flex-shrink-0">⚠️</span>
+            <div>
+              <h2 className="font-display text-xl" style={{ color: '#92400E' }}>
+                Manage Player Access
+              </h2>
+              <p className="font-ui text-sm mt-1" style={{ color: '#92400E' }}>
+                Your league downgraded to Free, which has an 8-player cap.{' '}
+                Choose who keeps access — you have until{' '}
+                <strong>
+                  {new Date(graceEndsAtRaw).toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}
+                </strong>
+                . Unselected players will be frozen and unable to participate.
+              </p>
+            </div>
+          </div>
+
+          <p className="font-ui text-xs mb-3 font-semibold" style={{ color: '#78350F' }}>
+            Select up to 8 players to keep ({graceKeep?.size ?? 0} / 8 selected)
+          </p>
+
+          <div className="flex flex-col gap-2 mb-4">
+            {activeMembers.map((m) => {
+              const checked = graceKeep?.has(m.id) ?? false;
+              const atLimit = (graceKeep?.size ?? 0) >= 8;
+              const isDisabled = !checked && atLimit;
+              return (
+                <label
+                  key={m.id}
+                  className="flex items-center gap-3 p-3 rounded-xl border transition-colors"
+                  style={{
+                    borderColor: checked ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: checked ? 'rgba(58,107,53,0.06)' : 'var(--color-bg)',
+                    opacity: isDisabled ? 0.4 : 1,
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={isDisabled}
+                    onChange={(e) => {
+                      setGraceKeep((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(m.id);
+                        else next.delete(m.id);
+                        return next;
+                      });
+                    }}
+                    className="w-4 h-4 flex-shrink-0"
+                  />
+                  <img
+                    src={m.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.display_name}`}
+                    alt={m.display_name}
+                    className="w-7 h-7 rounded-full flex-shrink-0"
+                    onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${m.display_name}`; }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                      {m.display_name} {m.id === user?.id && <span className="opacity-50">(you)</span>}
+                    </div>
+                    {m.email && (
+                      <div className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>{m.email}</div>
+                    )}
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {graceError && (
+            <p className="text-sm font-ui p-2.5 rounded-xl mb-3 text-center" style={{ background: '#FEE2E2', color: '#991B1B' }}>
+              {graceError}
+            </p>
+          )}
+
+          <button
+            onClick={handleGraceResolve}
+            disabled={graceSaving || !graceKeep || graceKeep.size === 0}
+            className="btn btn-primary w-full py-2.5 font-semibold disabled:opacity-50"
+          >
+            {graceSaving
+              ? 'Saving…'
+              : `Confirm — keep ${graceKeep?.size ?? 0} player${graceKeep?.size === 1 ? '' : 's'}`}
+          </button>
+          <p className="font-ui text-xs mt-3 text-center" style={{ color: '#78350F' }}>
+            If you don't choose by the deadline, the {Math.min(8, activeMembers.length)} oldest members keep access automatically.
+          </p>
+        </div>
+      )}
 
       {/* League info */}
       <div className="card p-6">

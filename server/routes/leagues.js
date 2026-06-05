@@ -24,7 +24,7 @@ router.get('/mine', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const { rows } = await sql`
-      SELECT l.*, lm.role,
+      SELECT l.*, lm.role, lm.frozen_at,
         CASE WHEN lm.role IN ('owner', 'admin') THEN
           (SELECT COUNT(*) FROM join_requests jr WHERE jr.league_id = l.id AND jr.status = 'pending')
         ELSE 0 END AS pending_requests_count
@@ -323,7 +323,7 @@ router.get('/:slug/members', requireAuth, async (req, res) => {
     }
 
     const { rows } = await sql`
-      SELECT u.id, u.display_name, u.nickname, u.avatar_url, u.email, lm.role, lm.joined_at
+      SELECT u.id, u.display_name, u.nickname, u.avatar_url, u.email, lm.role, lm.joined_at, lm.frozen_at
       FROM league_memberships lm
       JOIN users u ON u.id = lm.user_id
       WHERE lm.league_id = ${league.id}
@@ -368,6 +368,63 @@ router.delete('/:slug/members/:userId', requireAuth, async (req, res) => {
       .where('user_id', '=', targetId)
       .execute();
 
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/leagues/:slug/grace-resolve — admin manually chooses which 8 members keep access
+router.post('/:slug/grace-resolve', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`
+      SELECT id, grace_period_ends_at FROM leagues WHERE slug = ${req.params.slug}
+    `.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    // Must be owner or admin
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    // Grace period must still be active — 409 if cron already ran
+    if (!league.grace_period_ends_at || new Date(league.grace_period_ends_at) < new Date()) {
+      return res.status(409).json({ error: 'The grace period has already ended — player access has been set automatically.' });
+    }
+
+    const { keepUserIds } = req.body;
+    if (!Array.isArray(keepUserIds) || keepUserIds.length > 8) {
+      return res.status(400).json({ error: 'keepUserIds must be an array of up to 8 user IDs.' });
+    }
+
+    const keepSet = new Set(keepUserIds.map(Number));
+
+    // Freeze every active member NOT in keepUserIds
+    const { rows: activeMembers } = await sql`
+      SELECT user_id FROM league_memberships
+      WHERE league_id = ${league.id} AND frozen_at IS NULL
+    `.execute(db);
+
+    for (const m of activeMembers) {
+      if (!keepSet.has(m.user_id)) {
+        await sql`
+          UPDATE league_memberships SET frozen_at = NOW()
+          WHERE league_id = ${league.id} AND user_id = ${m.user_id}
+        `.execute(db);
+        console.log(`[GraceResolve] Froze user_id=${m.user_id} in league ${league.id}`);
+      }
+    }
+
+    // Clear grace period marker
+    await sql`UPDATE leagues SET grace_period_ends_at = NULL WHERE id = ${league.id}`.execute(db);
+
+    console.log(`[GraceResolve] League ${league.id} resolved: kept ${keepSet.size}, frozen ${activeMembers.length - keepSet.size}`);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

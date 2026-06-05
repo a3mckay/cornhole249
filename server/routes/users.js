@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
     const db = getDb();
     const { rows } = await sql`
       SELECT u.id, u.display_name, u.nickname, u.avatar_url, u.is_admin, u.elo_rating, u.handedness,
-             (u.pin IS NOT NULL)::int as has_pin
+             (u.pin IS NOT NULL)::int as has_pin, lm.frozen_at
       FROM users u
       JOIN league_memberships lm ON lm.user_id = u.id AND lm.league_id = ${req.leagueId}
       ORDER BY u.display_name
