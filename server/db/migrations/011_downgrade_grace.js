@@ -10,7 +10,9 @@
  *                                   active access after a downgrade); null = active.
  */
 
-async function up(db, sql) {
+const { sql } = require('kysely');
+
+async function up(db) {
   await sql`
     ALTER TABLE leagues
     ADD COLUMN IF NOT EXISTS grace_period_ends_at TIMESTAMPTZ
