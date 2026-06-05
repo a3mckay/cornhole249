@@ -274,6 +274,7 @@ const trashTalkRouter  = require('./routes/trashtalk');
 const tournamentsRouterL = require('./routes/tournaments');
 const commentsRouter   = require('./routes/comments');
 const joinRouterL      = require('./routes/join');
+const exportRouter     = require('./routes/export');
 
 // Like mountLeague but also requires a Pro plan (used for Stats, which is Pro-only).
 function mountLeaguePro(path, router) {
@@ -289,7 +290,8 @@ function mountLeaguePro(path, router) {
 mountLeague('games',        gamesRouter);
 mountLeague('standings',    standingsRouter);
 mountLeaguePro('stats',     statsRouter);     // Pro-gated — Stats page
-mountLeague('odds',         oddsRouter);
+mountLeaguePro('odds',      oddsRouter);
+mountLeaguePro('export',    exportRouter);
 mountLeague('venues',       venuesRouter);
 mountLeague('users',        usersRouter);
 mountLeague('achievements', achievementsRouter);

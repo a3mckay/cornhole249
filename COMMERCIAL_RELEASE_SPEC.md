@@ -532,13 +532,54 @@ Each one is a small feature to build. List here so they're not forgotten:
 - **Stats page** (currently shipping for free — gate it server-side)
 - **Custom rules**: form to define point values, win condition, positioning rules — stored on `leagues.custom_rules_json`
 - **Theme customisation**: header colour, accent colour, league logo upload — stored on `leagues.theme_json`
-- **CSV export**: button on Standings, Games, Stats pages; server route generates CSV
+- **CSV export**: admin-only section in League Settings; server routes generate CSV per data type (standings, games, players, stats) — ✅ DONE
+- **Matchup Odds**: Pro-gated server-side via `mountLeaguePro`; client shows UpgradeModal on 403 — ✅ DONE
 
 The "Cornhole249" watermark on shared images is intentionally **not** a Pro perk — it remains on all cards regardless of plan, as a permanent brand-visibility surface.
 
 **Open questions:**
 - League logo upload: bytes stored where? Railway volume + URL, or S3-compatible? (Recommendation: Railway volume initially; migrate to object storage if it gets large.)
 - Custom rules complexity: how flexible? Just scores + win condition, or full rule book editor? (Recommendation: form-based with named fields, not free text — keeps it sanitised and structured.)
+
+---
+
+#### 5.6 Custom Rules — required work, needs design before building
+
+⚠️ **Needs more thought before implementation.**
+
+**Status:** The DB columns (`rules`, `custom_rules_json`) exist. The settings UI currently offers Hamilton and ACA only — no Custom option. "Custom rules" is advertised as a Pro perk on the marketing page but is not yet built or gated.
+
+**What needs to be decided:**
+- What fields does "Custom" expose? Candidates: target score, win-by margin, cancellation scoring (yes/no), bag-in-hole points, bag-on-board points. Full rule book editor is out of scope — keep it form-based.
+- How does the game log / scoring logic consume `custom_rules_json`? The scoring engine needs to know the win condition to determine `is_winner`.
+- What happens on downgrade? Custom rules data is preserved in `custom_rules_json`; league falls back to displaying "custom (locked)" with an upgrade prompt.
+
+**Rough build plan (once decisions are made):**
+1. Add a 3rd "Custom" tile to the Scoring Rules selector in LeagueSettings — Pro-gated (shows UpgradeModal if free)
+2. When "Custom" is selected, expand a form with the agreed fields
+3. Save to `custom_rules_json` via `PATCH /api/leagues/:slug`; gate the endpoint for `rules = 'custom'` with `requirePro`
+4. Consume `custom_rules_json` in the game creation / score submission logic to determine the winner correctly
+
+---
+
+#### 5.7 Custom Theme / Branding — required work, needs design before building
+
+⚠️ **Needs more thought before implementation.**
+
+**Status:** The DB column (`theme_json`) exists. Nothing reads or applies it. Theme/branding is advertised as a Pro perk in the spec but is not yet built, gated, or on the marketing page (intentionally omitted until built).
+
+**What needs to be decided:**
+- Scope of v1: primary colour picker only, or also accent colour + league logo?
+- Logo upload: file storage strategy (Railway volume vs S3-compatible object storage). Logo adds meaningful infrastructure complexity — consider deferring to v2 and shipping colour-only first.
+- How is the theme applied? Options: (a) load `theme_json` into `LeagueContext` and override CSS custom properties on a wrapper element; (b) inline styles on the league shell. Option (a) is cleaner and least invasive.
+- What resets on downgrade? Theme data preserved in `theme_json`; league silently reverts to default colours until upgraded again.
+
+**Rough build plan (once decisions are made):**
+1. Add a "🎨 League Theme" card to LeagueSettings — Pro-gated
+2. Colour picker for primary colour (and optionally accent); save to `theme_json` via `PATCH /api/leagues/:slug`; gate with `requirePro`
+3. Load `theme_json` from the league API response into `LeagueContext`
+4. Apply as CSS variable overrides on the league page wrapper
+5. (If logo is in scope) File upload endpoint → storage → URL saved in `theme_json`
 
 #### 5.4 Superadmin Pro grants
 

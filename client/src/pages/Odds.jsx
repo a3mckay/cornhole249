@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { usersApi, oddsApi } from '../api';
 import OddsBar from '../components/OddsBar';
+import UpgradeModal from '../components/UpgradeModal';
+import { useLeague } from '../contexts/LeagueContext';
 
 export default function Odds() {
+  const { leagueId } = useLeague();
   const [players, setPlayers] = useState([]);
   const [gameType, setGameType] = useState('1v1');
   const [t1p1, setT1p1] = useState('');
@@ -12,6 +15,7 @@ export default function Odds() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [proGated, setProGated] = useState(false);
 
   useEffect(() => { usersApi.list().then(setPlayers); }, []);
 
@@ -45,6 +49,7 @@ export default function Odds() {
       const data = await oddsApi.calculate({ type: gameType, team1, team2 });
       setResult(data);
     } catch (e) {
+      if (e.response?.data?.upgrade) { setProGated(true); return; }
       setError(e.response?.data?.error || 'Calculation failed');
     } finally {
       setLoading(false);
@@ -73,6 +78,19 @@ export default function Odds() {
       </select>
     );
   };
+
+  if (proGated) {
+    return (
+      <div className="max-w-sm mx-auto mt-16 text-center">
+        <UpgradeModal open leagueId={leagueId} feature="Matchup Odds" onClose={() => {}} />
+        <div className="text-4xl mb-3">🎲</div>
+        <h1 className="font-display text-2xl mb-2" style={{ color: 'var(--color-text-primary)' }}>Matchup Odds is a Pro feature</h1>
+        <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+          Upgrade this league to unlock win probability calculations.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-xl mx-auto">

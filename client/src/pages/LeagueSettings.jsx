@@ -51,6 +51,7 @@ export default function LeagueSettings() {
   const [portalLoading, setPortalLoading] = useState(false);
   const [renewLoading, setRenewLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [exportLoading, setExportLoading] = useState(null);
 
   // Billing redirect banner state.
   // Persisted via sessionStorage so it survives the page reload that happens
@@ -81,6 +82,32 @@ export default function LeagueSettings() {
       window.location.href = url;
     } catch {
       setRenewLoading(false);
+    }
+  };
+
+  const handleExport = async (type) => {
+    setExportLoading(type);
+    try {
+      const res = await fetch(`/api/l/${slug}/export/${type}`, { credentials: 'include' });
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        if (data.upgrade) setShowUpgrade(true);
+        return;
+      }
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${type}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (_) {
+      // silent fail
+    } finally {
+      setExportLoading(null);
     }
   };
 
@@ -747,6 +774,39 @@ export default function LeagueSettings() {
           })}
         </div>
       </div>
+
+      {/* Data Export — admin only, Pro-gated */}
+      {canManage && (
+        <div className="card p-6">
+          <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+            📥 Data Export
+          </h2>
+          <p className="font-ui text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+            Download league data as CSV. Available on Pro plans.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { type: 'standings', label: '🏆 Standings', desc: 'Rank, W/L, Win%' },
+              { type: 'games',     label: '📋 Games',     desc: 'Full game log' },
+              { type: 'players',   label: '👥 Players',   desc: 'Roster + contact' },
+              { type: 'stats',     label: '📊 Stats',     desc: 'Per-player summary' },
+            ].map(({ type, label, desc }) => (
+              <button
+                key={type}
+                onClick={() => handleExport(type)}
+                disabled={exportLoading === type}
+                className="flex flex-col items-start p-4 rounded-xl border text-left transition-colors hover:bg-amber-50 disabled:opacity-50"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                  {exportLoading === type ? 'Exporting…' : label}
+                </span>
+                <span className="font-ui text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

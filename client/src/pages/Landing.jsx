@@ -239,6 +239,7 @@ export default function Landing() {
               'Unlimited players',
               'Tournaments',
               'Full stats page',
+              'Matchup Odds',
               'Custom rules',
               'CSV export',
             ]}
@@ -254,6 +255,7 @@ export default function Landing() {
               'Unlimited players',
               'Tournaments',
               'Full stats page',
+              'Matchup Odds',
               'Custom rules',
               'CSV export',
             ]}
