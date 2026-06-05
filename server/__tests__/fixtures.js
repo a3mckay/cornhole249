@@ -15,12 +15,22 @@ const SCHEMA_SQL = `
     slug TEXT UNIQUE NOT NULL,
     owner_user_id INTEGER,
     plan TEXT NOT NULL DEFAULT 'free',
+    plan_override TEXT,
+    plan_override_reason TEXT,
     is_public INTEGER NOT NULL DEFAULT 1,
     rules TEXT NOT NULL DEFAULT 'hamilton',
     custom_rules_json TEXT,
     theme_json TEXT,
+    tagline TEXT,
+    invite_token TEXT,
+    invite_token_expires_at TEXT,
     expires_at TEXT,
+    pass_warning_sent_at TEXT,
     use_case TEXT,
+    grace_period_ends_at TEXT,
+    stripe_subscription_id TEXT,
+    stripe_price_id TEXT,
+    stripe_current_period_end TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   INSERT OR IGNORE INTO leagues (id, slug, name, plan) VALUES (1, 'cornhole249', 'Cornhole249', 'pro');
@@ -30,8 +40,20 @@ const SCHEMA_SQL = `
     league_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     role TEXT NOT NULL DEFAULT 'player',
+    joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+    frozen_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(league_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS plan_override_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    league_id INTEGER NOT NULL,
+    changed_by_user_id INTEGER,
+    from_plan TEXT,
+    to_plan TEXT,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS users (

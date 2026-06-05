@@ -23,6 +23,7 @@ const MIGRATIONS = [
   { name: '008_invite_tokens',                  file: './migrations/008_invite_tokens' },
   { name: '009_league_id_indexes',              file: './migrations/009_league_id_indexes' },
   { name: '010_pass_warning_sent_at',           file: './migrations/010_pass_warning_sent_at' },
+  { name: '011_downgrade_grace',               file: './migrations/011_downgrade_grace' },
 ];
 
 async function run(db) {
