@@ -3,9 +3,17 @@ import { Routes, Route, Navigate, Link, useLocation, useSearchParams } from 'rea
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { LeagueProvider } from './contexts/LeagueContext';
 import { authApi } from './api';
+import { pageview } from './lib/analytics';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import QRShare from './components/QRShare';
+
+/** Fires a PostHog $pageview on every route change. Must be rendered inside <BrowserRouter>. */
+function PostHogPageView() {
+  const location = useLocation();
+  useEffect(() => { pageview(); }, [location.pathname]);
+  return null;
+}
 
 // ── Eagerly loaded — shown on every visit or the very first navigation ────────
 import Home      from './pages/Home';
@@ -169,6 +177,7 @@ export default function App() {
 
   return (
     <AuthProvider>
+      <PostHogPageView />
       <ReferralCapture />
       <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
         <EmailVerificationBanner />
