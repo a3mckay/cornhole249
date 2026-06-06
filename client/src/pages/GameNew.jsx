@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gamesApi, venuesApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { capture } from '../lib/analytics';
 
 function PlayerSelect({ players, value, onChange, exclude, label }) {
   // Convert all IDs to numbers for a type-safe comparison
@@ -170,6 +171,7 @@ export default function GameNew({ onAchievement }) {
         team2,
       });
 
+      capture('game_logged', { game_type: gameType });
       navigate(`/games/${game.id}`);
     } catch (err) {
       setErrors([err.response?.data?.error || 'Failed to submit game']);

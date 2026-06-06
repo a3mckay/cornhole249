@@ -23,8 +23,9 @@
  *   leagueId    number — which league to upgrade
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { billingApi } from '../api';
+import { capture } from '../lib/analytics';
 
 const PRO_PERKS = [
   { icon: '📊', label: 'Stats & analytics' },
@@ -35,6 +36,10 @@ const PRO_PERKS = [
 
 export default function UpgradeModal({ open, onClose, feature, leagueId }) {
   const [loading, setLoading] = useState(null); // 'monthly' | 'yearly' | 'weekend'
+
+  useEffect(() => {
+    if (open) capture('upgrade_modal_viewed', { trigger: feature || 'generic' });
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 

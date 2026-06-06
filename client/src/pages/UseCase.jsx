@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { leaguesApi } from '../api';
 import { leaguePath } from '../contexts/LeagueContext';
+import { capture } from '../lib/analytics';
 
 const USE_CASES = [
   {
@@ -46,6 +47,7 @@ export default function UseCase() {
     setLoading(true);
     try {
       await leaguesApi.update(slug, { use_case: selected });
+      capture('league_created', { use_case: selected, slug });
     } catch (_) {
       // Non-fatal — proceed regardless
     } finally {

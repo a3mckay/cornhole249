@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { capture } from '../lib/analytics';
 
 function PricingCard({ badge, name, price, period, note, features, cta, ctaTo, highlight }) {
   return (
@@ -95,6 +96,7 @@ function FAQ() {
 }
 
 export default function Landing() {
+  useEffect(() => { capture('landing_page_viewed'); }, []);
   return (
     <div className="max-w-4xl mx-auto">
       {/* ── Hero ─────────────────────────────────────────────────── */}

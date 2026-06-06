@@ -16,6 +16,7 @@ const { requireAuth } = require('../middleware/auth');
 const { getStripe, PRICES } = require('../lib/stripe');
 const { effectivePlan } = require('../lib/plan');
 const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail, sendGraceStartEmail } = require('../lib/email');
+const { capture: analyticsCapture } = require('../lib/analytics');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
@@ -225,6 +226,16 @@ router.post('/webhook', async (req, res) => {
 
           activatedPlan = 'weekend_pass';
           console.log(`[Billing] League ${leagueId} → Weekend Pass (expires ${weekendPassExpiresAt})`);
+        }
+
+        // Analytics — fire server-side event for revenue tracking
+        if (activatedPlan && session.metadata?.user_id) {
+          const userId = session.metadata.user_id;
+          if (activatedPlan === 'weekend_pass') {
+            analyticsCapture(userId, 'weekend_pass_purchased', { league_id: leagueId });
+          } else {
+            analyticsCapture(userId, 'subscription_created', { plan, league_id: leagueId });
+          }
         }
 
         // Send welcome email — fire-and-forget, don't block the webhook response

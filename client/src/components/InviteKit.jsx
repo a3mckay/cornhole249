@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
+import { capture } from '../lib/analytics';
 
 /**
  * InviteKit — reusable invite-link component.
@@ -19,6 +20,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
     navigator.clipboard.writeText(joinLink).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      capture('invite_sent', { channel: 'link' });
       onShare?.();
     });
   };
@@ -29,6 +31,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
         title: `Join ${leagueName} on Cornhole249`,
         url: joinLink,
       }).catch(() => {});
+      capture('invite_sent', { channel: 'native_share' });
     } else {
       handleCopy();
     }
@@ -54,6 +57,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
     a.href = url;
     a.download = `${leagueName.replace(/\s+/g, '-').toLowerCase()}-invite-qr.png`;
     a.click();
+    capture('invite_sent', { channel: 'qr' });
     onShare?.();
   };
 
@@ -86,7 +90,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
       <div className="flex gap-2">
         <a
           href={smsHref}
-          onClick={() => onShare?.()}
+          onClick={() => { capture('invite_sent', { channel: 'sms' }); onShare?.(); }}
           className="btn btn-secondary flex-1 text-center"
           style={{ textDecoration: 'none' }}
         >
@@ -94,7 +98,7 @@ export default function InviteKit({ joinLink, joinCode, leagueName = 'our league
         </a>
         <a
           href={emailHref}
-          onClick={() => onShare?.()}
+          onClick={() => { capture('invite_sent', { channel: 'email' }); onShare?.(); }}
           className="btn btn-secondary flex-1 text-center"
           style={{ textDecoration: 'none' }}
         >

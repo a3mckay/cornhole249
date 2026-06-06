@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { authApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { capture } from '../lib/analytics';
 
 /** Read the referral token from the 30-day cookie set by ReferralCapture. */
 function readRefCookie() {
@@ -27,6 +28,8 @@ export default function Register() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => { capture('signup_started'); }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!displayName.trim() || !email.trim() || !password) {
@@ -49,7 +52,8 @@ export default function Register() {
         ...(refToken ? { ref_token: refToken } : {}),
       });
       clearRefCookie();
-      await refreshUser();
+      const me = await refreshUser();
+      capture('signup_completed', { referred: !!refToken });
       const returnTo = searchParams.get('returnTo');
       // New users with no specific destination go straight to league creation
       navigate(returnTo || '/leagues/new');

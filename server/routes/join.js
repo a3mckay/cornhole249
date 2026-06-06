@@ -3,6 +3,7 @@ const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { leaguePreview } = require('../lib/leaguePreview');
+const { capture: analyticsCapture } = require('../lib/analytics');
 
 // ── Token-based invite (private leagues) ────────────────────────────────────
 
@@ -88,6 +89,8 @@ router.post('/', requireAuth, async (req, res) => {
       .values({ league_id: league.id, user_id: req.session.userId, role: 'player' })
       .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
       .execute();
+
+    analyticsCapture(req.session.userId, 'invite_accepted', { league_id: league.id, slug: league.slug });
 
     res.json({ ok: true, slug: league.slug });
   } catch (e) {

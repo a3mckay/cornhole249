@@ -1,5 +1,6 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { authApi, usersApi, leaguesApi } from '../api';
+import { identify, reset } from '../lib/analytics';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +20,7 @@ export function AuthProvider({ children }) {
     ]).then(([me, myLeagues]) => {
       setUser(me);
       setLeagues(me ? myLeagues : []);
+      if (me) identify(me.id);
     }).finally(() => setLoading(false));
 
     usersApi.list().catch(() => []).then(setAllUsers);
@@ -27,6 +29,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const u = await authApi.login(email, password);
     setUser(u);
+    identify(u.id);
     leaguesApi.mine().catch(() => []).then(setLeagues);
     usersApi.list().catch(() => []).then(setAllUsers);
     return u;
@@ -34,6 +37,7 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     await authApi.logout();
+    reset();
     setUser(null);
     setLeagues([]);
   };
