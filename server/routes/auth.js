@@ -2,8 +2,20 @@ const express = require('express');
 const router = express.Router();
 const { randomBytes } = require('crypto');
 const bcrypt = require('bcrypt');
+const rateLimit = require('express-rate-limit');
 const { getDb, sql } = require('../db');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../lib/email');
+
+// Rate limit: 20 attempts per IP per 15 minutes on sensitive auth endpoints.
+// app.set('trust proxy', 1) is set in index.js so req.ip reflects the real client IP.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again in 15 minutes.' },
+  skip: () => process.env.NODE_ENV === 'test', // don't rate-limit in test runs
+});
 
 const BCRYPT_ROUNDS = 12;
 const SALT = '$2b$12$'; // marker — actual salt generated at runtime
@@ -66,7 +78,7 @@ router.get('/me', async (req, res) => {
 // The legacy path keeps existing Cornhole249 users functional until they
 // complete the claim-account migration.
 
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const db = getDb();
     const { email, password, user_id, pin } = req.body;
@@ -394,7 +406,7 @@ router.post('/resend-verification', async (req, res) => {
 
 // ── POST /auth/forgot-password ───────────────────────────────────────────────
 
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });

@@ -14,6 +14,15 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     integrations: [Sentry.browserTracingIntegration()],
     // Capture 10% of requests for performance traces (free tier friendly)
     tracesSampleRate: 0.1,
+    beforeSend(event) {
+      // Strip PII from Sentry user context
+      if (event.user) {
+        delete event.user.email;
+        delete event.user.username;
+        delete event.user.ip_address;
+      }
+      return event;
+    },
   });
 }
 

@@ -17,5 +17,19 @@ if (process.env.SENTRY_DSN) {
     tracesSampleRate: 0.1,
     // Don't send errors in test runs
     enabled: process.env.NODE_ENV !== 'test',
+    beforeSend(event) {
+      // Strip request body — may contain email, password, or other PII
+      if (event.request) {
+        delete event.request.data;
+        delete event.request.cookies;
+      }
+      // Strip PII from Sentry user context
+      if (event.user) {
+        delete event.user.email;
+        delete event.user.username;
+        delete event.user.ip_address;
+      }
+      return event;
+    },
   });
 }
