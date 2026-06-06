@@ -81,10 +81,26 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 shadow-md" style={{ backgroundColor: 'var(--color-navbar)' }}>
       <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-3">
 
-        {/* Logo */}
-        <Link to="/" className="font-display text-2xl text-amber-100 tracking-wide hover:text-amber-200 transition-colors flex-shrink-0">
-          Cornhole249
-        </Link>
+        {/* Logo / League name */}
+        {currentSlug !== 'cornhole249' && currentLeague?.theme_json?.logo_path ? (
+          <Link
+            to={leagueHome(currentSlug)}
+            className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
+          >
+            <img
+              src={`/uploads${currentLeague.theme_json.logo_path}`}
+              alt={currentLeague?.name || currentSlug}
+              className="h-8 w-8 rounded-lg object-contain bg-white/10"
+            />
+            <span className="font-display text-lg text-amber-100 hidden sm:inline">
+              {currentLeague?.name || currentSlug}
+            </span>
+          </Link>
+        ) : (
+          <Link to="/" className="font-display text-2xl text-amber-100 tracking-wide hover:text-amber-200 transition-colors flex-shrink-0">
+            Cornhole249
+          </Link>
+        )}
 
         {/* Share button — next to logo, mobile only */}
         <div className="relative flex-shrink-0 lg:hidden">

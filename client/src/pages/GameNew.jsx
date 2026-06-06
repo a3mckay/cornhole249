@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gamesApi, venuesApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { useLeague } from '../contexts/LeagueContext';
 import { capture } from '../lib/analytics';
 
 function PlayerSelect({ players, value, onChange, exclude, label }) {
@@ -28,6 +29,7 @@ function PlayerSelect({ players, value, onChange, exclude, label }) {
 
 export default function GameNew({ onAchievement }) {
   const { user } = useAuth();
+  const { leagueRules, customRules } = useLeague();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
@@ -305,6 +307,25 @@ export default function GameNew({ onAchievement }) {
                 style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-secondary)' }}
               />
             </div>
+
+            {/* Custom rules reminder */}
+            {leagueRules === 'custom' && customRules && (
+              <div
+                className="mb-3 p-3 rounded-xl text-sm font-ui"
+                style={{ background: 'rgba(58,107,53,0.07)', border: '1px solid rgba(58,107,53,0.2)', color: 'var(--color-text-secondary)' }}
+              >
+                <div className="font-semibold mb-1" style={{ color: 'var(--color-primary)' }}>📋 Custom Rules</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
+                  <span>🎯 Hole = {customRules.hole_points} pts</span>
+                  <span>🟫 Board = {customRules.board_points} pts</span>
+                  <span>🏁 Win at {customRules.target_score}{customRules.win_by > 1 ? ` (by ${customRules.win_by})` : ''}</span>
+                  <span>{customRules.cancellation ? '↔ Cancellation on' : '➕ Count-all'}</span>
+                  {customRules.first_throw !== 'random' && (
+                    <span>🎲 First throw: {customRules.first_throw === 'last_winner' ? 'last winner' : 'home team'}</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {hasDuplicates && (
               <div className="text-sm font-ui p-2 rounded-lg mb-3" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>

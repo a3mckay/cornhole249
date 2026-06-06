@@ -17,6 +17,12 @@ const PORT = process.env.PORT || 3001;
 app.set('trust proxy', 1);
 app.use(compression());
 
+// ── Uploaded assets (logos, etc.) ────────────────────────────────────────────
+// Served at /uploads/* — backed by a Railway persistent volume mounted at /uploads.
+// Falls back to /tmp/uploads in development (files not preserved across restarts).
+const UPLOADS_DIR = process.env.UPLOADS_DIR || '/uploads';
+app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d', immutable: false }));
+
 // In production: redirect bare domain → www, and HTTP → HTTPS
 if (process.env.NODE_ENV === 'production') {
   app.use((req, res, next) => {

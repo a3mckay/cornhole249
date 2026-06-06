@@ -1,9 +1,21 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { Outlet, useParams, Link } from 'react-router-dom';
 import { setCurrentLeague, leaguesApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 
-const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false });
+// Default custom rules (Hamilton-equivalent)
+export const DEFAULT_CUSTOM_RULES = {
+  target_score: 21,
+  win_by: 1,
+  cancellation: true,
+  hole_points: 3,
+  board_points: 1,
+  first_throw: 'random',
+  bag_color: 'captains_pick',
+  tiebreaker: 'tie_stands',
+};
+
+const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false, leagueRules: 'hamilton', customRules: null, theme: null });
 
 /**
  * React Router v6 layout route component.
@@ -38,6 +50,12 @@ export function LeagueProvider({ slug: slugProp }) {
   const [tagline, setTagline] = useState(null);
   const [createdAt, setCreatedAt] = useState(null);
   const [userPendingRequest, setUserPendingRequest] = useState(false);
+  const [leagueRules, setLeagueRules] = useState('hamilton');
+  const [customRules, setCustomRules] = useState(null);
+  const [theme, setTheme] = useState(null);
+
+  // Track which CSS variable overrides we've applied so we can clean them up on unmount / slug change
+  const appliedThemeRef = useRef(null);
 
   useEffect(() => {
     leaguesApi.get(slug)
@@ -46,6 +64,9 @@ export function LeagueProvider({ slug: slugProp }) {
         setTagline(league?.tagline ?? null);
         setCreatedAt(league?.created_at ?? null);
         setUserPendingRequest(league?.user_pending_request ?? false);
+        setLeagueRules(league?.rules || 'hamilton');
+        setCustomRules(league?.custom_rules_json || null);
+        setTheme(league?.theme_json || null);
         if (slug !== 'cornhole249') {
           setLeagueId(league?.id ?? null);
           setPlan(league?.plan_override || league?.plan || 'free');
@@ -57,8 +78,45 @@ export function LeagueProvider({ slug: slugProp }) {
         if (slug !== 'cornhole249') {
           setLeagueId(null); setPlan('free'); setExpiresAt(null); setGraceEndsAt(null);
         }
+        setLeagueRules('hamilton');
+        setCustomRules(null);
+        setTheme(null);
       });
   }, [slug]);
+
+  // Apply / remove CSS variable overrides from theme_json
+  useEffect(() => {
+    const root = document.documentElement;
+
+    // Clear any previously applied overrides
+    if (appliedThemeRef.current) {
+      for (const prop of appliedThemeRef.current) {
+        root.style.removeProperty(prop);
+      }
+      appliedThemeRef.current = null;
+    }
+
+    if (!theme) return;
+
+    const applied = [];
+    if (theme.primary_color) {
+      root.style.setProperty('--color-primary', theme.primary_color);
+      applied.push('--color-primary');
+    }
+    if (theme.accent_color) {
+      root.style.setProperty('--color-secondary', theme.accent_color);
+      applied.push('--color-secondary');
+    }
+    appliedThemeRef.current = applied.length ? applied : null;
+
+    // Cleanup on unmount or theme/slug change
+    return () => {
+      for (const prop of applied) {
+        root.style.removeProperty(prop);
+      }
+      appliedThemeRef.current = null;
+    };
+  }, [theme]);
 
   // Current user's frozen status in this league (from useAuth's /leagues/mine data)
   const myMembership = leagues?.find((l) => l.slug === slug);
@@ -73,7 +131,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
 
   return (
-    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest }}>
+    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest, leagueRules, customRules, theme }}>
       {isFrozen && (
         <div
           className="px-4 py-2.5 text-sm font-ui flex items-center gap-3"

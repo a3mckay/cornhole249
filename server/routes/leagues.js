@@ -1,9 +1,36 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { isPro } = require('../lib/plan');
 const { leaguePreview } = require('../lib/leaguePreview');
 const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
+
+// ── Logo upload (multer) ─────────────────────────────────────────────────────
+const UPLOADS_DIR = process.env.UPLOADS_DIR || '/uploads';
+const LOGOS_DIR = path.join(UPLOADS_DIR, 'logos');
+
+// Ensure logos directory exists at startup
+try { fs.mkdirSync(LOGOS_DIR, { recursive: true }); } catch (_) {}
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, LOGOS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '') || '.jpg';
+    cb(null, `${req.params.slug}${ext}`);
+  },
+});
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|gif|webp|svg\+xml)$/.test(file.mimetype)) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 const FREE_LEAGUE_OWNER_CAP = 2;
 
@@ -171,16 +198,33 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Owner or admin role required' });
     }
 
-    const { name, is_public, rules, use_case, tagline } = req.body;
+    const { name, is_public, rules, use_case, tagline, custom_rules_json, theme_json } = req.body;
     const updates = {};
     if (name !== undefined) {
       if (!name.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
       updates.name = name.trim();
     }
     if (is_public !== undefined) updates.is_public = is_public ? 1 : 0;
-    if (rules !== undefined) updates.rules = rules;
+    if (rules !== undefined) {
+      if (rules === 'custom' && !isPro(league)) {
+        return res.status(403).json({ error: 'Custom rules require a Pro plan', upgrade: true });
+      }
+      updates.rules = rules;
+    }
     if (use_case !== undefined) updates.use_case = use_case;
     if (tagline !== undefined) updates.tagline = tagline?.trim() || null;
+    if (custom_rules_json !== undefined) {
+      if (!isPro(league)) {
+        return res.status(403).json({ error: 'Custom rules require a Pro plan', upgrade: true });
+      }
+      updates.custom_rules_json = custom_rules_json ? JSON.stringify(custom_rules_json) : null;
+    }
+    if (theme_json !== undefined) {
+      if (!isPro(league)) {
+        return res.status(403).json({ error: 'Custom theme requires a Pro plan', upgrade: true });
+      }
+      updates.theme_json = theme_json ? JSON.stringify(theme_json) : null;
+    }
 
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update' });
 
@@ -192,6 +236,80 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       .executeTakeFirstOrThrow();
 
     res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Logo upload ──────────────────────────────────────────────────────────────
+
+// POST /api/leagues/:slug/logo — upload league logo (Pro only, owner/admin)
+router.post('/:slug/logo', requireAuth, logoUpload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT * FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+    if (!isPro(league)) {
+      return res.status(403).json({ error: 'Custom theme requires a Pro plan', upgrade: true });
+    }
+
+    // Update theme_json with the logo_path, preserving other theme fields
+    const existing = league.theme_json || {};
+    const logoPath = `/logos/${path.basename(req.file.filename)}`;
+    const updated = await db
+      .updateTable('leagues')
+      .set({ theme_json: JSON.stringify({ ...existing, logo_path: logoPath }) })
+      .where('id', '=', league.id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    res.json({ logo_path: logoPath, league: updated });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/leagues/:slug/logo — remove league logo (Pro only, owner/admin)
+router.delete('/:slug/logo', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT * FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    // Remove logo file if it exists
+    const existing = league.theme_json || {};
+    if (existing.logo_path) {
+      const filePath = path.join(UPLOADS_DIR, existing.logo_path);
+      try { fs.unlinkSync(filePath); } catch (_) {}
+    }
+
+    const { logo_path: _removed, ...rest } = existing;
+    const updated = await db
+      .updateTable('leagues')
+      .set({ theme_json: Object.keys(rest).length ? JSON.stringify(rest) : null })
+      .where('id', '=', league.id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+
+    res.json({ ok: true, league: updated });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

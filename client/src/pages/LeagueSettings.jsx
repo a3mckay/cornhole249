@@ -39,8 +39,31 @@ export default function LeagueSettings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  // Custom rules form state
+  const DEFAULT_CUSTOM_RULES = {
+    target_score: 21,
+    win_by: 1,
+    cancellation: true,
+    hole_points: 3,
+    board_points: 1,
+    first_throw: 'random',
+    bag_color: 'captains_pick',
+    tiebreaker: 'tie_stands',
+  };
+  const [customRules, setCustomRules] = useState(DEFAULT_CUSTOM_RULES);
+
+  // Custom theme state
+  const [themeColor, setThemeColor] = useState('#3A6B35');
+  const [themeAccent, setThemeAccent] = useState('#D48B2D');
+  const [logoUrl, setLogoUrl] = useState(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState('');
+  const [themeSaving, setThemeSaving] = useState(false);
+  const [themeSaveSuccess, setThemeSaveSuccess] = useState(false);
+
   // Invite token (private leagues)
   const [inviteToken, setInviteToken] = useState(null);
+  const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState(null); // eslint-disable-line no-unused-vars
 
   // Member removal
   const [removingId, setRemovingId] = useState(null);
@@ -242,6 +265,16 @@ export default function LeagueSettings() {
       setTagline(leagueData.tagline || '');
       setIsPublic(!!leagueData.is_public);
       setRules(leagueData.rules || 'hamilton');
+      // Custom rules
+      if (leagueData.custom_rules_json) {
+        setCustomRules({ ...DEFAULT_CUSTOM_RULES, ...leagueData.custom_rules_json });
+      }
+      // Custom theme
+      if (leagueData.theme_json) {
+        setThemeColor(leagueData.theme_json.primary_color || '#3A6B35');
+        setThemeAccent(leagueData.theme_json.accent_color || '#D48B2D');
+        setLogoUrl(leagueData.theme_json.logo_path ? `/uploads${leagueData.theme_json.logo_path}` : null);
+      }
 
       // Private league: load or generate stable invite token
       if (!leagueData.is_public) {
@@ -275,16 +308,61 @@ export default function LeagueSettings() {
     if (!name.trim()) { setSaveError('League name is required'); return; }
     setSaving(true); setSaveError(''); setSaveSuccess(false);
     try {
-      const updated = await leaguesApi.update(slug, { name: name.trim(), tagline: tagline.trim(), is_public: isPublic, rules });
+      const payload = { name: name.trim(), tagline: tagline.trim(), is_public: isPublic, rules };
+      if (rules === 'custom') payload.custom_rules_json = customRules;
+      const updated = await leaguesApi.update(slug, payload);
       setLeague(updated);
       setName(updated.name);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
       await refreshUser(); // refresh leagues list in case name changed
     } catch (e) {
+      if (e.response?.data?.upgrade) setShowUpgrade(true);
       setSaveError(e.response?.data?.error || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleThemeSave = async () => {
+    setThemeSaving(true);
+    setThemeSaveSuccess(false);
+    try {
+      const theme_json = { primary_color: themeColor, accent_color: themeAccent };
+      if (logoUrl && !logoUrl.startsWith('/uploads')) {
+        // logo_path already saved separately by upload handler — preserve existing
+      }
+      await leaguesApi.update(slug, { theme_json });
+      setThemeSaveSuccess(true);
+      setTimeout(() => setThemeSaveSuccess(false), 2500);
+    } catch (e) {
+      if (e.response?.data?.upgrade) setShowUpgrade(true);
+    } finally {
+      setThemeSaving(false);
+    }
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    setLogoError('');
+    try {
+      const result = await leaguesApi.uploadLogo(slug, file);
+      setLogoUrl(`/uploads${result.logo_path}?t=${Date.now()}`);
+    } catch (err) {
+      setLogoError(err.response?.data?.error || 'Upload failed');
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    try {
+      await leaguesApi.deleteLogo(slug);
+      setLogoUrl(null);
+    } catch {
+      // Silent fail
     }
   };
 
@@ -708,19 +786,24 @@ export default function LeagueSettings() {
             <label className="block text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
               Scoring Rules
             </label>
-            <div className="flex gap-3">
+            <div className="flex gap-2 flex-wrap">
               {[
                 { value: 'hamilton', label: 'Hamilton', desc: 'Best-of, max 10 pts' },
                 { value: 'aca', label: 'ACA', desc: 'Standard 21 pts' },
-              ].map(({ value, label, desc }) => (
+                { value: 'custom', label: 'Custom ⭐', desc: 'Your own rules', pro: true },
+              ].map(({ value, label, desc, pro }) => (
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setRules(value)}
-                  className="flex-1 flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-left transition-all"
+                  onClick={() => {
+                    if (pro && plan === 'free') { setShowUpgrade(true); return; }
+                    setRules(value);
+                  }}
+                  className="flex-1 min-w-[90px] flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-left transition-all"
                   style={{
                     borderColor: rules === value ? 'var(--color-primary)' : 'var(--color-border)',
                     background: rules === value ? 'rgba(58,107,53,0.07)' : 'var(--color-bg)',
+                    opacity: pro && plan === 'free' ? 0.6 : 1,
                   }}
                 >
                   <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
@@ -728,6 +811,138 @@ export default function LeagueSettings() {
                 </button>
               ))}
             </div>
+
+            {/* Custom rules form — shown when Custom is selected and league is Pro */}
+            {rules === 'custom' && plan !== 'free' && (
+              <div className="mt-4 p-4 rounded-xl flex flex-col gap-3" style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}>
+                <p className="text-xs font-ui font-semibold uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>
+                  Custom Rule Details
+                </p>
+
+                {/* Target score + win by */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Target Score
+                    </label>
+                    <input
+                      type="number" min="1" max="99"
+                      value={customRules.target_score}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, target_score: parseInt(e.target.value) || 21 }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm text-center"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Win By
+                    </label>
+                    <input
+                      type="number" min="1" max="10"
+                      value={customRules.win_by}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, win_by: parseInt(e.target.value) || 1 }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm text-center"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Point values */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Hole Points (🎯)
+                    </label>
+                    <input
+                      type="number" min="1" max="10"
+                      value={customRules.hole_points}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, hole_points: parseInt(e.target.value) || 3 }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm text-center"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Board Points (🟫)
+                    </label>
+                    <input
+                      type="number" min="0" max="10"
+                      value={customRules.board_points}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, board_points: parseInt(e.target.value) || 1 }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm text-center"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Cancellation toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-ui font-semibold" style={{ color: 'var(--color-text-primary)' }}>Cancellation Scoring</div>
+                    <div className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Points cancel between teams each round</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCustomRules((r) => ({ ...r, cancellation: !r.cancellation }))}
+                    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                    style={{ background: customRules.cancellation ? 'var(--color-primary)' : 'var(--color-border)' }}
+                  >
+                    <span
+                      className="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                      style={{ transform: customRules.cancellation ? 'translateX(22px)' : 'translateX(2px)' }}
+                    />
+                  </button>
+                </div>
+
+                {/* Ceremonial rules */}
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Who Throws First
+                    </label>
+                    <select
+                      value={customRules.first_throw}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, first_throw: e.target.value }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    >
+                      <option value="random">Random / Coin flip</option>
+                      <option value="last_winner">Last game winner</option>
+                      <option value="home_team">Home team</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Bag Colour Choice
+                    </label>
+                    <select
+                      value={customRules.bag_color}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, bag_color: e.target.value }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    >
+                      <option value="captains_pick">Captains choose</option>
+                      <option value="coin_flip">Coin flip</option>
+                      <option value="home_team">Home team picks</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Tiebreaker
+                    </label>
+                    <select
+                      value={customRules.tiebreaker}
+                      onChange={(e) => setCustomRules((r) => ({ ...r, tiebreaker: e.target.value }))}
+                      className="w-full px-2 py-1.5 rounded-lg border font-ui text-sm"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    >
+                      <option value="tie_stands">Tie stands (no tiebreaker)</option>
+                      <option value="extra_round">Extra round (sudden death)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {saveError && (
@@ -744,6 +959,133 @@ export default function LeagueSettings() {
             {saving ? 'Saving…' : saveSuccess ? '✓ Saved!' : 'Save Changes'}
           </button>
         </form>
+      </div>
+
+      {/* ── Custom Theme ─────────────────────────────────────────────────────── */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
+            🎨 Custom Theme
+          </h2>
+          {plan === 'free' && (
+            <button
+              onClick={() => setShowUpgrade(true)}
+              className="text-xs font-ui font-semibold px-2.5 py-1 rounded-full"
+              style={{ background: 'rgba(58,107,53,0.1)', color: 'var(--color-primary)', border: '1px solid rgba(58,107,53,0.25)' }}
+            >
+              ⭐ Pro
+            </button>
+          )}
+        </div>
+
+        {plan === 'free' ? (
+          <div className="text-center py-6">
+            <p className="font-ui text-sm mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Set your league colours and logo with Pro.
+            </p>
+            <button onClick={() => setShowUpgrade(true)} className="btn btn-primary text-sm px-4 py-2">
+              Upgrade to Pro →
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {/* Colour pickers */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-ui font-semibold mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Primary Colour
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={themeColor}
+                    onChange={(e) => setThemeColor(e.target.value)}
+                    className="w-10 h-10 rounded-lg border cursor-pointer"
+                    style={{ borderColor: 'var(--color-border)', padding: '2px' }}
+                  />
+                  <span className="font-ui text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                    {themeColor.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-ui font-semibold mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Accent Colour
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={themeAccent}
+                    onChange={(e) => setThemeAccent(e.target.value)}
+                    className="w-10 h-10 rounded-lg border cursor-pointer"
+                    style={{ borderColor: 'var(--color-border)', padding: '2px' }}
+                  />
+                  <span className="font-ui text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                    {themeAccent.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Logo upload */}
+            <div>
+              <label className="block text-xs font-ui font-semibold mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                League Logo <span className="font-normal opacity-60">(PNG, JPG, SVG — max 2 MB)</span>
+              </label>
+              <div className="flex items-center gap-3">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt="League logo"
+                    className="w-16 h-16 rounded-xl object-contain flex-shrink-0"
+                    style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg)' }}
+                  />
+                ) : (
+                  <div
+                    className="w-16 h-16 rounded-xl flex-shrink-0 flex items-center justify-center text-2xl"
+                    style={{ border: '2px dashed var(--color-border)', background: 'var(--color-bg)' }}
+                  >
+                    🏆
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <label className="btn btn-ghost text-sm px-3 py-1.5 cursor-pointer font-semibold" style={{ borderColor: 'var(--color-border)' }}>
+                    {logoUploading ? 'Uploading…' : 'Upload Logo'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={logoUploading}
+                      onChange={handleLogoUpload}
+                    />
+                  </label>
+                  {logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleLogoDelete}
+                      className="text-xs font-ui text-center"
+                      style={{ color: 'var(--color-danger)' }}
+                    >
+                      Remove logo
+                    </button>
+                  )}
+                </div>
+              </div>
+              {logoError && (
+                <p className="mt-1 text-xs font-ui" style={{ color: 'var(--color-danger)' }}>{logoError}</p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleThemeSave}
+              disabled={themeSaving}
+              className="btn btn-primary py-2.5 font-semibold disabled:opacity-50"
+            >
+              {themeSaving ? 'Saving…' : themeSaveSuccess ? '✓ Saved!' : 'Save Theme'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Invite — private league: stable token link */}

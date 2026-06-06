@@ -183,6 +183,13 @@ export const leaguesApi = {
     api.patch(`/leagues/${slug}/join-requests/${id}`, { action }).then((r) => r.data),
   // Downgrade grace period — admin manually chooses which 8 members keep access
   graceResolve: (slug, data) => api.post(`/leagues/${slug}/grace-resolve`, data).then((r) => r.data),
+  // Logo upload / delete
+  uploadLogo: (slug, file) => {
+    const form = new FormData();
+    form.append('logo', file);
+    return api.post(`/leagues/${slug}/logo`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
+  },
+  deleteLogo: (slug) => api.delete(`/leagues/${slug}/logo`).then((r) => r.data),
 };
 
 // Join / invite landing

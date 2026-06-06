@@ -195,6 +195,31 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Games cannot end in a tie' });
     }
 
+    // ── Custom rules validation ──────────────────────────────────────────────
+    // Fetch league to check custom rules if applicable.
+    const { rows: leagueRows } = await sql`
+      SELECT rules, custom_rules_json FROM leagues WHERE id = ${req.leagueId}
+    `.execute(db);
+    const leagueRules = leagueRows[0]?.rules;
+    const customRules = leagueRows[0]?.custom_rules_json;
+
+    if (leagueRules === 'custom' && customRules) {
+      const target = customRules.target_score;
+      const winBy  = customRules.win_by ?? 1;
+      const winner = Math.max(t1Score, t2Score);
+      const loser  = Math.min(t1Score, t2Score);
+      if (target && winner < target) {
+        return res.status(400).json({
+          error: `Winning score must be at least ${target} (custom rules)`,
+        });
+      }
+      if (winBy > 1 && (winner - loser) < winBy) {
+        return res.status(400).json({
+          error: `Win by ${winBy} required (custom rules)`,
+        });
+      }
+    }
+
     const gameDate = played_at ? new Date(played_at) : new Date();
     const gameSeason = season || gameDate.getFullYear();
     const isTeam1Winner = t1Score > t2Score;
