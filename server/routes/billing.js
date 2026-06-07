@@ -15,7 +15,7 @@ const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStripe, PRICES } = require('../lib/stripe');
-const { effectivePlan } = require('../lib/plan');
+const { effectivePlan, hasVenuePlan } = require('../lib/plan');
 const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail, sendGraceStartEmail } = require('../lib/email');
 const { capture: analyticsCapture } = require('../lib/analytics');
 
@@ -210,52 +210,79 @@ router.post('/webhook', async (req, res) => {
       // ── Checkout completed (subscription or one-time) ─────────────────────
       case 'checkout.session.completed': {
         const session = event.data.object;
-        const leagueId = parseInt(session.metadata?.league_id);
         const plan = session.metadata?.plan;
-        if (!leagueId || !plan) break;
+        if (!plan) break;
 
-        let activatedPlan = null;
-        let weekendPassExpiresAt = null;
-
+        // ── Venue plan: user-level subscription ───────────────────────────
         if (session.mode === 'subscription' && plan === 'venue_yearly') {
-          // Venue plan: subscription lives on the user, not a league
           const userId = parseInt(session.metadata?.user_id);
           if (!userId) break;
 
-          const subscriptionId = session.subscription;
           const stripe = getStripe();
-          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          const sub = await stripe.subscriptions.retrieve(session.subscription);
           const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
 
           await db
             .updateTable('users')
             .set({
               venue_plan: 'venue',
-              venue_stripe_subscription_id: subscriptionId,
+              venue_stripe_subscription_id: session.subscription,
               venue_stripe_period_end: periodEnd,
             })
             .where('id', '=', userId)
             .execute();
 
-          activatedPlan = 'venue';
-          console.log(`[Billing] User ${userId} → Venue plan (sub ${subscriptionId})`);
+          console.log(`[Billing] User ${userId} → Venue plan (sub ${session.subscription})`);
+          analyticsCapture(String(userId), 'venue_subscription_created', { user_id: userId });
 
-          if (session.metadata?.user_id) {
-            analyticsCapture(session.metadata.user_id, 'venue_subscription_created', { user_id: userId });
+          // Cancel any active per-league Pro subscriptions and credit unused time.
+          // We do this AFTER activating the venue plan so that the subscription.deleted
+          // webhooks for these leagues see the owner already has a venue plan and skip
+          // any grace period logic.
+          const { rows: proLeagues } = await sql`
+            SELECT l.id, l.stripe_subscription_id
+            FROM leagues l
+            JOIN league_memberships lm ON lm.league_id = l.id
+            WHERE lm.user_id = ${userId}
+              AND lm.role = 'owner'
+              AND l.stripe_subscription_id IS NOT NULL
+              AND l.plan = 'pro'
+          `.execute(db);
+
+          for (const proLeague of proLeagues) {
+            try {
+              await stripe.subscriptions.cancel(proLeague.stripe_subscription_id, { prorate: true });
+              await db
+                .updateTable('leagues')
+                .set({ plan: 'free', stripe_subscription_id: null, stripe_price_id: null, stripe_current_period_end: null })
+                .where('id', '=', proLeague.id)
+                .execute();
+              console.log(`[Billing] Cancelled per-league Pro sub for league ${proLeague.id} (venue upgrade, prorated credit applied)`);
+            } catch (err) {
+              console.error(`[Billing] Failed to cancel league ${proLeague.id} sub during venue upgrade:`, err.message);
+            }
           }
+
           break;
-        } else if (session.mode === 'subscription') {
-          // subscription_id is on the session for subscriptions
-          const subscriptionId = session.subscription;
+        }
+
+        // ── League-level plans ────────────────────────────────────────────
+        const leagueId = parseInt(session.metadata?.league_id);
+        if (!leagueId) break;
+
+        let activatedPlan = null;
+        let weekendPassExpiresAt = null;
+
+        if (session.mode === 'subscription') {
           const stripe = getStripe();
-          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          const sub = await stripe.subscriptions.retrieve(session.subscription);
           const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
 
           await db
             .updateTable('leagues')
             .set({
               plan: 'pro',
-              stripe_subscription_id: subscriptionId,
+              stripe_subscription_id: session.subscription,
               stripe_price_id: sub.items.data[0]?.price.id || null,
               stripe_current_period_end: periodEnd,
             })
@@ -263,9 +290,8 @@ router.post('/webhook', async (req, res) => {
             .execute();
 
           activatedPlan = 'pro';
-          console.log(`[Billing] League ${leagueId} → Pro (sub ${subscriptionId})`);
+          console.log(`[Billing] League ${leagueId} → Pro (sub ${session.subscription})`);
         } else if (session.mode === 'payment' && plan === 'weekend_pass') {
-          // Weekend pass: set plan + expires_at = now + 7 days
           weekendPassExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
           await db
             .updateTable('leagues')
@@ -280,7 +306,7 @@ router.post('/webhook', async (req, res) => {
           console.log(`[Billing] League ${leagueId} → Weekend Pass (expires ${weekendPassExpiresAt})`);
         }
 
-        // Analytics — fire server-side event for revenue tracking
+        // Analytics
         if (activatedPlan && session.metadata?.user_id) {
           const userId = session.metadata.user_id;
           if (activatedPlan === 'weekend_pass') {
@@ -290,12 +316,12 @@ router.post('/webhook', async (req, res) => {
           }
         }
 
-        // Send welcome email — fire-and-forget, don't block the webhook response
+        // Welcome email — fire-and-forget
         if (activatedPlan && session.metadata?.user_id) {
           (async () => {
             try {
               const baseUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
-              const [user, league] = await Promise.all([
+              const [emailUser, league] = await Promise.all([
                 db.selectFrom('users')
                   .select(['email', 'display_name'])
                   .where('id', '=', parseInt(session.metadata.user_id))
@@ -305,20 +331,20 @@ router.post('/webhook', async (req, res) => {
                   .where('id', '=', leagueId)
                   .executeTakeFirst(),
               ]);
-              if (!user?.email || !league) return;
+              if (!emailUser?.email || !league) return;
               const leagueUrl = `${baseUrl}${league.slug === 'cornhole249' ? '' : `/l/${league.slug}`}`;
               if (activatedPlan === 'weekend_pass') {
                 await sendWeekendPassWelcomeEmail({
-                  to: user.email,
-                  userName: user.display_name,
+                  to: emailUser.email,
+                  userName: emailUser.display_name,
                   leagueName: league.name,
                   leagueUrl,
                   expiresAt: weekendPassExpiresAt,
                 });
               } else {
                 await sendProWelcomeEmail({
-                  to: user.email,
-                  userName: user.display_name,
+                  to: emailUser.email,
+                  userName: emailUser.display_name,
                   leagueName: league.name,
                   leagueUrl,
                 });
@@ -374,22 +400,74 @@ router.post('/webhook', async (req, res) => {
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
 
+        // ── Venue subscription cancelled ──────────────────────────────────
         if (sub.metadata?.plan === 'venue_yearly') {
           const userId = parseInt(sub.metadata?.user_id);
           if (!userId) break;
+
           await db
             .updateTable('users')
-            .set({
-              venue_plan: null,
-              venue_stripe_subscription_id: null,
-              venue_stripe_period_end: null,
-            })
+            .set({ venue_plan: null, venue_stripe_subscription_id: null, venue_stripe_period_end: null })
             .where('id', '=', userId)
             .execute();
-          console.log(`[Billing] User ${userId} venue subscription cancelled → removed`);
+
+          console.log(`[Billing] User ${userId} venue subscription cancelled`);
+
+          // Fetch the owner's contact info once for all grace period emails
+          const venueOwner = await db
+            .selectFrom('users')
+            .select(['email', 'display_name'])
+            .where('id', '=', userId)
+            .executeTakeFirst();
+
+          // Check every owned league — any with >8 members and no individual Pro
+          // subscription now needs a grace period since the venue plan no longer covers them
+          const { rows: ownedLeagues } = await sql`
+            SELECT l.id, l.name, l.slug, l.stripe_subscription_id, l.plan, l.grace_period_ends_at
+            FROM leagues l
+            JOIN league_memberships lm ON lm.league_id = l.id
+            WHERE lm.user_id = ${userId} AND lm.role = 'owner'
+          `.execute(db);
+
+          for (const ownedLeague of ownedLeagues) {
+            // League has its own active Pro subscription — still covered
+            if (ownedLeague.stripe_subscription_id && ownedLeague.plan === 'pro') continue;
+            // Already in a grace period
+            if (ownedLeague.grace_period_ends_at) continue;
+
+            const { rows: mRows } = await sql`
+              SELECT COUNT(*) AS n FROM league_memberships
+              WHERE league_id = ${ownedLeague.id} AND frozen_at IS NULL
+            `.execute(db);
+            const memberCount = parseInt(mRows[0].n);
+
+            if (memberCount <= 8) continue;
+
+            const graceEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+            await db
+              .updateTable('leagues')
+              .set({ grace_period_ends_at: graceEndsAt })
+              .where('id', '=', ownedLeague.id)
+              .execute();
+
+            if (venueOwner?.email) {
+              sendGraceStartEmail({
+                to: venueOwner.email,
+                userName: venueOwner.display_name,
+                leagueName: ownedLeague.name,
+                leagueUrl: `${APP_URL}/l/${ownedLeague.slug}`,
+                graceEndsAt,
+                memberCount,
+              }).catch((e) => console.error('[Billing] Grace start email failed:', e.message));
+            }
+
+            console.log(`[Billing] League ${ownedLeague.id} → grace period (venue cancelled, ${memberCount} members)`);
+          }
+
           break;
         }
 
+        // ── Per-league subscription cancelled ─────────────────────────────
         const leagueId = parseInt(sub.metadata?.league_id);
         if (!leagueId) break;
 
@@ -400,6 +478,28 @@ router.post('/webhook', async (req, res) => {
           .where('id', '=', leagueId)
           .executeTakeFirst();
 
+        // Always clear Stripe fields and flip to free
+        await db
+          .updateTable('leagues')
+          .set({ plan: 'free', stripe_subscription_id: null, stripe_price_id: null, stripe_current_period_end: null })
+          .where('id', '=', leagueId)
+          .execute();
+
+        // If the league owner upgraded to Venue (which triggers cancellation of their
+        // per-league subs), they still have coverage — no grace period needed
+        const { rows: ownerVenueRows } = await sql`
+          SELECT u.venue_plan, u.venue_stripe_subscription_id, u.venue_stripe_period_end
+          FROM league_memberships lm
+          JOIN users u ON u.id = lm.user_id
+          WHERE lm.league_id = ${leagueId} AND lm.role = 'owner'
+          LIMIT 1
+        `.execute(db);
+
+        if (hasVenuePlan(ownerVenueRows[0])) {
+          console.log(`[Billing] League ${leagueId} sub cancelled — owner has venue plan, no grace period needed`);
+          break;
+        }
+
         // Count active (non-frozen) members
         const { rows: memberRows } = await sql`
           SELECT COUNT(*) AS n FROM league_memberships
@@ -407,20 +507,7 @@ router.post('/webhook', async (req, res) => {
         `.execute(db);
         const memberCount = parseInt(memberRows[0].n);
 
-        // Always clear Stripe fields and flip to free
-        await db
-          .updateTable('leagues')
-          .set({
-            plan: 'free',
-            stripe_subscription_id: null,
-            stripe_price_id: null,
-            stripe_current_period_end: null,
-          })
-          .where('id', '=', leagueId)
-          .execute();
-
         if (memberCount > 8 && !league?.grace_period_ends_at) {
-          // Start grace period — owner has 7 days to choose which 8 stay
           const graceEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
           await db
             .updateTable('leagues')
@@ -428,7 +515,6 @@ router.post('/webhook', async (req, res) => {
             .where('id', '=', leagueId)
             .execute();
 
-          // Email the owner
           const { rows: ownerRows } = await sql`
             SELECT u.email, u.display_name
             FROM league_memberships lm
@@ -438,12 +524,11 @@ router.post('/webhook', async (req, res) => {
           `.execute(db);
 
           if (ownerRows[0]) {
-            const leagueUrl = `${APP_URL}/l/${league.slug}`;
             await sendGraceStartEmail({
               to: ownerRows[0].email,
               userName: ownerRows[0].display_name,
               leagueName: league.name,
-              leagueUrl,
+              leagueUrl: `${APP_URL}/l/${league.slug}`,
               graceEndsAt,
               memberCount,
             }).catch((e) => console.error('[Billing] Grace start email failed:', e.message));
