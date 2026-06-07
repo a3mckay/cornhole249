@@ -51,9 +51,10 @@ const Terms   = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Refunds = lazy(() => import('./pages/Refunds'));
 const Cookies = lazy(() => import('./pages/Cookies'));
-const Help        = lazy(() => import('./pages/Help'));
-const HelpArticle = lazy(() => import('./pages/HelpArticle'));
-const HelpContact = lazy(() => import('./pages/HelpContact'));
+const Help               = lazy(() => import('./pages/Help'));
+const HelpArticle        = lazy(() => import('./pages/HelpArticle'));
+const HelpContact        = lazy(() => import('./pages/HelpContact'));
+const DigestUnsubscribe  = lazy(() => import('./pages/DigestUnsubscribe'));
 
 // Fallback shown while a lazy chunk is downloading
 function PageSkeleton() {
@@ -251,6 +252,7 @@ export default function App() {
             <Route path="/help" element={<PageWrapper><Help /></PageWrapper>} />
             <Route path="/help/contact" element={<PageWrapper><HelpContact /></PageWrapper>} />
             <Route path="/help/:slug" element={<PageWrapper><HelpArticle /></PageWrapper>} />
+            <Route path="/unsubscribe" element={<PageWrapper><DigestUnsubscribe /></PageWrapper>} />
           </Routes>
         </main>
 

@@ -244,6 +244,7 @@ export default function Landing() {
               'Matchup Odds',
               'Custom rules',
               'CSV export',
+              'Weekly digest email',
             ]}
             cta="Go Pro yearly"
             ctaTo="/leagues/new"
@@ -260,6 +261,7 @@ export default function Landing() {
               'Matchup Odds',
               'Custom rules',
               'CSV export',
+              'Weekly digest email',
             ]}
             cta="Go Pro monthly"
             ctaTo="/leagues/new"
