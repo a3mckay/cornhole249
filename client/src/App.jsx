@@ -50,6 +50,9 @@ const Terms   = lazy(() => import('./pages/Terms'));
 const Privacy = lazy(() => import('./pages/Privacy'));
 const Refunds = lazy(() => import('./pages/Refunds'));
 const Cookies = lazy(() => import('./pages/Cookies'));
+const Help        = lazy(() => import('./pages/Help'));
+const HelpArticle = lazy(() => import('./pages/HelpArticle'));
+const HelpContact = lazy(() => import('./pages/HelpContact'));
 
 // Fallback shown while a lazy chunk is downloading
 function PageSkeleton() {
@@ -243,11 +246,18 @@ export default function App() {
             <Route path="/privacy" element={<PageWrapper><Privacy /></PageWrapper>} />
             <Route path="/refunds" element={<PageWrapper><Refunds /></PageWrapper>} />
             <Route path="/cookies" element={<PageWrapper><Cookies /></PageWrapper>} />
+            <Route path="/help" element={<PageWrapper><Help /></PageWrapper>} />
+            <Route path="/help/contact" element={<PageWrapper><HelpContact /></PageWrapper>} />
+            <Route path="/help/:slug" element={<PageWrapper><HelpArticle /></PageWrapper>} />
           </Routes>
         </main>
 
-        {/* Privacy footer */}
-        <footer className="text-center py-4 pb-24 lg:pb-4">
+        {/* Footer */}
+        <footer className="text-center py-4 pb-24 lg:pb-4 flex items-center justify-center gap-4">
+          <Link to="/help" className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>
+            Help
+          </Link>
+          <span className="text-xs" style={{ color: 'var(--color-text-secondary)', opacity: 0.3 }}>·</span>
           <Link to="/privacy" className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)', opacity: 0.6 }}>
             Privacy Policy
           </Link>

@@ -247,6 +247,7 @@ app.use('/api/join', require('./routes/join'));
 
 // League CRUD (no slug — operates on the collection)
 app.use('/api/leagues', require('./routes/leagues'));
+app.use('/api/help',   require('./routes/help'));
 
 // ── League-scoped routes: /api/l/:slug/... ──────────────────────────────────
 const { leagueMiddleware, requireLeagueAccess } = require('./middleware/leagueAccess');

@@ -408,4 +408,34 @@ module.exports = {
   sendWeekendPassExpiredEmail,
   sendGraceStartEmail,
   sendGraceWarningEmail,
+  sendContactEmail,
 };
+
+/**
+ * Contact form submission — forwards to Andrew's inbox with Reply-To set to the user's email.
+ */
+async function sendContactEmail({ replyTo, subject, body, userId }) {
+  const CONTACT_TO = process.env.CONTACT_EMAIL || process.env.GMAIL_USER;
+  if (!CONTACT_TO || !process.env.GMAIL_USER) {
+    console.log(`[Email] Contact form would send: subject="${subject}" reply_to="${replyTo}"`);
+    return;
+  }
+  const userLine = userId ? `<p style="color:#666;font-size:12px;margin:0 0 16px">Submitted by user ID ${userId}</p>` : '';
+  const safeBody = body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  await getTransporter().sendMail({
+    from: `Cornhole249 <${process.env.GMAIL_USER}>`,
+    to: CONTACT_TO,
+    replyTo: replyTo,
+    subject: `[Cornhole249 Contact] ${subject}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <h2 style="margin:0 0 4px;font-size:18px">New contact form submission</h2>
+        ${userLine}
+        <p style="margin:0 0 8px"><strong>Subject:</strong> ${subject}</p>
+        <p style="margin:0 0 8px"><strong>Reply-to:</strong> <a href="mailto:${replyTo}">${replyTo}</a></p>
+        <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb" />
+        <div style="white-space:pre-wrap;font-size:14px;line-height:1.6">${safeBody}</div>
+      </div>
+    `,
+  });
+}
