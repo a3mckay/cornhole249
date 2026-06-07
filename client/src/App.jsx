@@ -7,6 +7,7 @@ import { pageview } from './lib/analytics';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import QRShare from './components/QRShare';
+import InstallBanner from './components/InstallBanner';
 
 /** Fires a PostHog $pageview on every route change. Must be rendered inside <BrowserRouter>. */
 function PostHogPageView() {
@@ -186,6 +187,7 @@ export default function App() {
         <EmailVerificationBanner />
         <MigrationBanner />
         <Navbar />
+        <InstallBanner />
         <main className="max-w-7xl mx-auto px-4 py-6 pb-24 lg:pb-6">
           <Routes>
             {/* ── Cornhole249 root (unchanged URLs) ────────────────────── */}

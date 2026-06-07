@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import UpgradeModal from '../components/UpgradeModal';
 import InviteKit from '../components/InviteKit';
+import { useInstallPrompt } from '../hooks/useInstallPrompt';
 
 const ROLE_BADGE = {
   owner: { label: 'Owner', bg: '#FEF3C7', color: '#92400E' },
@@ -68,6 +69,9 @@ export default function LeagueSettings() {
   // Member removal
   const [removingId, setRemovingId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
+
+  // PWA install prompt
+  const { canInstall, isIos, isStandalone, promptInstall } = useInstallPrompt();
 
   // Billing
   const { leagueId, plan } = useLeague();
@@ -1286,6 +1290,48 @@ export default function LeagueSettings() {
           </div>
         </div>
       )}
+
+      {/* ── Install App ────────────────────────────────────────────────────── */}
+      <div
+        className="rounded-2xl p-6"
+        style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}
+      >
+        <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          📱 Install App
+        </h2>
+        {isStandalone ? (
+          <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            ✅ You're already using the installed app — you're all set.
+          </p>
+        ) : canInstall ? (
+          <>
+            <p className="font-ui text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+              Install Cornhole249 on this device for quick access from your home screen. Works offline too.
+            </p>
+            <button
+              onClick={promptInstall}
+              className="btn btn-primary text-sm px-4 py-2"
+            >
+              Install App
+            </button>
+          </>
+        ) : isIos ? (
+          <>
+            <p className="font-ui text-sm mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+              Add Cornhole249 to your home screen for quick access:
+            </p>
+            <ol className="font-ui text-sm list-decimal list-inside space-y-1" style={{ color: 'var(--color-text-secondary)' }}>
+              <li>Tap the <strong>Share</strong> button ⬆️ in Safari's toolbar</li>
+              <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+              <li>Tap <strong>Add</strong> to confirm</li>
+            </ol>
+          </>
+        ) : (
+          <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            Open Cornhole249 in Chrome or Edge on Android or desktop to install it as an app.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
