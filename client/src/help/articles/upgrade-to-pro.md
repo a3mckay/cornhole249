@@ -15,9 +15,9 @@ Only the league owner or an admin can manage billing.
 
 | Plan | Price | Best for |
 |------|-------|----------|
-| Pro Monthly | $X/mo | Ongoing leagues |
-| Pro Yearly | $X/yr | Best value, ~2 months free |
-| Weekend Pass | $X one-time | 7 days of Pro for events/tournaments |
+| Pro Monthly | $9/mo | Ongoing leagues |
+| Pro Yearly | $80/yr | Best value — save $28 vs monthly |
+| Weekend Pass | $12 one-time | 7 days of Pro for events/tournaments |
 
 ## What's included in Pro?
 
