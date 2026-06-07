@@ -5,7 +5,8 @@
  * POST /api/billing/portal         — create a Customer Portal session (auth required)
  * POST /api/billing/webhook        — Stripe webhook (raw body, signature-verified)
  *
- * Checkout body: { leagueId, plan: 'pro_monthly' | 'pro_yearly' | 'weekend_pass' }
+ * Checkout body: { leagueId, plan: 'pro_monthly' | 'pro_yearly' | 'weekend_pass' | 'venue_yearly' }
+ *   venue_yearly does not require leagueId — it is a user-level subscription.
  * Portal body:   { leagueId }
  */
 
@@ -28,12 +29,60 @@ router.post('/checkout', requireAuth, async (req, res) => {
   }
   try {
     const { leagueId, plan } = req.body;
-    if (!leagueId || !plan) return res.status(400).json({ error: 'leagueId and plan required' });
+    if (!plan) return res.status(400).json({ error: 'plan required' });
 
     const priceId = PRICES[plan]?.();
     if (!priceId) return res.status(400).json({ error: `Unknown plan: ${plan}` });
 
     const db = getDb();
+
+    const user = await db
+      .selectFrom('users')
+      .select(['id', 'email', 'display_name', 'stripe_customer_id', 'venue_plan', 'venue_stripe_subscription_id'])
+      .where('id', '=', req.session.userId)
+      .executeTakeFirst();
+
+    const stripe = getStripe();
+
+    // Get or create Stripe customer
+    let customerId = user.stripe_customer_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email || undefined,
+        name: user.display_name,
+        metadata: { user_id: String(user.id) },
+      });
+      customerId = customer.id;
+      await db
+        .updateTable('users')
+        .set({ stripe_customer_id: customerId })
+        .where('id', '=', user.id)
+        .execute();
+    }
+
+    // ── Venue plan: account-level subscription, no leagueId needed ──────────
+    if (plan === 'venue_yearly') {
+      if (user.venue_plan === 'venue' && user.venue_stripe_subscription_id) {
+        return res.status(400).json({ error: 'Account is already on the Venue plan' });
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: 'subscription',
+        line_items: [{ price: priceId, quantity: 1 }],
+        success_url: `${APP_URL}/?venue=success`,
+        cancel_url: `${APP_URL}/`,
+        metadata: { user_id: String(user.id), plan: 'venue_yearly' },
+        subscription_data: {
+          metadata: { user_id: String(user.id), plan: 'venue_yearly' },
+        },
+        allow_promotion_codes: true,
+      });
+      return res.json({ url: session.url });
+    }
+
+    // ── League-level plans: require leagueId ─────────────────────────────────
+    if (!leagueId) return res.status(400).json({ error: 'leagueId required' });
 
     // Verify the requesting user is the league owner or admin
     const membership = await db
@@ -58,30 +107,6 @@ router.post('/checkout', requireAuth, async (req, res) => {
     // Don't let them checkout if already Pro (unless it's a Weekend Pass upgrade)
     if (plan !== 'weekend_pass' && effectivePlan(league) === 'pro') {
       return res.status(400).json({ error: 'League is already on Pro' });
-    }
-
-    const user = await db
-      .selectFrom('users')
-      .select(['id', 'email', 'display_name', 'stripe_customer_id'])
-      .where('id', '=', req.session.userId)
-      .executeTakeFirst();
-
-    const stripe = getStripe();
-
-    // Get or create Stripe customer
-    let customerId = user.stripe_customer_id;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email || undefined,
-        name: user.display_name,
-        metadata: { user_id: String(user.id) },
-      });
-      customerId = customer.id;
-      await db
-        .updateTable('users')
-        .set({ stripe_customer_id: customerId })
-        .where('id', '=', user.id)
-        .execute();
     }
 
     const isSubscription = plan !== 'weekend_pass';
@@ -192,7 +217,34 @@ router.post('/webhook', async (req, res) => {
         let activatedPlan = null;
         let weekendPassExpiresAt = null;
 
-        if (session.mode === 'subscription') {
+        if (session.mode === 'subscription' && plan === 'venue_yearly') {
+          // Venue plan: subscription lives on the user, not a league
+          const userId = parseInt(session.metadata?.user_id);
+          if (!userId) break;
+
+          const subscriptionId = session.subscription;
+          const stripe = getStripe();
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+
+          await db
+            .updateTable('users')
+            .set({
+              venue_plan: 'venue',
+              venue_stripe_subscription_id: subscriptionId,
+              venue_stripe_period_end: periodEnd,
+            })
+            .where('id', '=', userId)
+            .execute();
+
+          activatedPlan = 'venue';
+          console.log(`[Billing] User ${userId} → Venue plan (sub ${subscriptionId})`);
+
+          if (session.metadata?.user_id) {
+            analyticsCapture(session.metadata.user_id, 'venue_subscription_created', { user_id: userId });
+          }
+          break;
+        } else if (session.mode === 'subscription') {
           // subscription_id is on the session for subscriptions
           const subscriptionId = session.subscription;
           const stripe = getStripe();
@@ -283,11 +335,26 @@ router.post('/webhook', async (req, res) => {
       // ── Subscription updated (plan change, renewal) ───────────────────────
       case 'customer.subscription.updated': {
         const sub = event.data.object;
-        const leagueId = parseInt(sub.metadata?.league_id);
-        if (!leagueId) break;
-
         const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
         const isActive = ['active', 'trialing'].includes(sub.status);
+
+        if (sub.metadata?.plan === 'venue_yearly') {
+          const userId = parseInt(sub.metadata?.user_id);
+          if (!userId) break;
+          await db
+            .updateTable('users')
+            .set({
+              venue_plan: isActive ? 'venue' : null,
+              venue_stripe_period_end: periodEnd,
+            })
+            .where('id', '=', userId)
+            .execute();
+          console.log(`[Billing] User ${userId} venue subscription updated → ${isActive ? 'venue' : 'none'}`);
+          break;
+        }
+
+        const leagueId = parseInt(sub.metadata?.league_id);
+        if (!leagueId) break;
 
         await db
           .updateTable('leagues')
@@ -306,6 +373,23 @@ router.post('/webhook', async (req, res) => {
       // ── Subscription cancelled ────────────────────────────────────────────
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
+
+        if (sub.metadata?.plan === 'venue_yearly') {
+          const userId = parseInt(sub.metadata?.user_id);
+          if (!userId) break;
+          await db
+            .updateTable('users')
+            .set({
+              venue_plan: null,
+              venue_stripe_subscription_id: null,
+              venue_stripe_period_end: null,
+            })
+            .where('id', '=', userId)
+            .execute();
+          console.log(`[Billing] User ${userId} venue subscription cancelled → removed`);
+          break;
+        }
+
         const leagueId = parseInt(sub.metadata?.league_id);
         if (!leagueId) break;
 

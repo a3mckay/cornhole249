@@ -50,4 +50,18 @@ function isPro(league) {
   return plan === 'pro' || plan === 'weekend_pass';
 }
 
-module.exports = { effectivePlan, isPro };
+/**
+ * Returns true if the user has an active Venue plan subscription.
+ * Pass a `users` row with: venue_plan, venue_stripe_subscription_id, venue_stripe_period_end
+ */
+function hasVenuePlan(user) {
+  if (!user?.venue_plan || user.venue_plan !== 'venue') return false;
+  if (!user.venue_stripe_subscription_id) return false;
+  if (user.venue_stripe_period_end) {
+    const end = new Date(user.venue_stripe_period_end);
+    if (end < new Date()) return false;
+  }
+  return true;
+}
+
+module.exports = { effectivePlan, isPro, hasVenuePlan };
