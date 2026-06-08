@@ -38,6 +38,9 @@ export default function PlayerProfile() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Data export state
+  const [exportingData, setExportingData] = useState(false);
+
   const isOwn = currentUser?.id === parseInt(id);
   const isAdmin = !!currentUser?.is_admin;
   const canEdit = isOwn || isAdmin;
@@ -144,6 +147,17 @@ export default function PlayerProfile() {
       alert(err.response?.data?.error || 'Failed to delete account');
       setDeleting(false);
       setDeleteConfirm(false);
+    }
+  };
+
+  const handleDownloadMyData = async () => {
+    setExportingData(true);
+    try {
+      await authApi.downloadMyData();
+    } catch (err) {
+      alert('Failed to export data. Please try again.');
+    } finally {
+      setExportingData(false);
     }
   };
 
@@ -307,7 +321,22 @@ export default function PlayerProfile() {
               </div>
 
               {isOwn && (
-                <div className="mt-4 pt-4 border-t" style={{ borderColor: '#FCA5A5' }}>
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
+                  <p className="text-xs font-ui font-semibold mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    Privacy
+                  </p>
+                  <button
+                    onClick={handleDownloadMyData}
+                    disabled={exportingData}
+                    className="btn btn-ghost text-sm w-full disabled:opacity-60"
+                  >
+                    {exportingData ? 'Preparing download…' : '📥 Download my data'}
+                  </button>
+                </div>
+              )}
+
+              {isOwn && (
+                <div className="mt-3 pt-4 border-t" style={{ borderColor: '#FCA5A5' }}>
                   <p className="text-xs font-ui font-semibold mb-2" style={{ color: 'var(--color-danger)' }}>
                     Danger Zone
                   </p>

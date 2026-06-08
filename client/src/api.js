@@ -57,6 +57,21 @@ export const authApi = {
 
   deleteAccount: () => axios.delete('/auth/account', { withCredentials: true }).then((r) => r.data),
 
+  // PIPEDA right of access — triggers a JSON download of all stored personal data
+  downloadMyData: async () => {
+    const res = await fetch('/api/auth/my-data', { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to export data');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cornhole249-my-data.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   // Email verification
   verifyEmail: (token) =>
     axios.get(`/auth/verify-email/${token}`, { withCredentials: true }).then((r) => r.data),
