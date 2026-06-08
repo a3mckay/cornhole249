@@ -24,6 +24,10 @@
  *                    e.g. "Hamilton, ON, Canada"
  */
 
+// Force IPv4 DNS resolution — Railway containers lack IPv6 routing and
+// Nodemailer's smtp.gmail.com lookup otherwise resolves to an IPv6 address.
+require('dns').setDefaultResultOrder('ipv4first');
+
 require('../instrument'); // Sentry init + dotenv
 const { getDb, runMigrations, sql } = require('../db');
 const { isPro }               = require('../lib/plan');
