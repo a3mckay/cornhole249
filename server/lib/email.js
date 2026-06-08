@@ -446,10 +446,13 @@ module.exports = {
  * @param {object} opts.league         — { id, slug, name }
  * @param {object[]} opts.games        — assembled game objects (see digest.js)
  * @param {object} opts.highlights     — { streakLeader, biggestMargin, topPlayer, topWins }
- * @param {object[]} opts.standings    — [ { rank, name, wins, losses, gp, win_pct } ]
+ * @param {object[]} opts.standings1v1 — top-5 1v1 standings [ { rank, name, wins, losses, gp, win_pct } ]
+ * @param {object[]} opts.standings2v2 — top-5 2v2 standings
+ * @param {string|null} opts.preheader — LLM-generated inbox preview (~90 chars), or null
+ * @param {string|null} opts.intro     — LLM-generated intro paragraph, or null
  * @param {string} opts.weekLabel      — "Jun 2 – Jun 8"
  */
-async function sendDigestEmail({ to, name, userId, league, games, highlights, standings, weekLabel }) {
+async function sendDigestEmail({ to, name, userId, league, games, highlights, standings1v1, standings2v2, preheader, intro, weekLabel }) {
   const { makeUnsubscribeToken } = require('../routes/digest');
   const token     = makeUnsubscribeToken(userId);
   const unsubUrl  = `${APP_URL}/unsubscribe?uid=${userId}&token=${token}`;
@@ -479,7 +482,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
         <td style="padding:8px 0;border-bottom:1px solid #e8e0d0;font-family:sans-serif;font-size:14px;color:#3c2a1e">
           <strong>${playerLabel(winTeam)}</strong>
           <span style="color:#3a6b35;font-weight:700;margin:0 6px">${winScore}</span>
-          <span style="color:#888">–</span>
+          <span style="color:#888">&#8211;</span>
           <span style="color:#a06040;font-weight:700;margin:0 6px">${loseScore}</span>
           ${playerLabel(loseTeam)}
         </td>
@@ -498,6 +501,21 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
         <td style="padding:6px 8px;font-family:sans-serif;font-size:14px;color:#a06040;text-align:center">${s.losses}</td>
         <td style="padding:6px 8px;font-family:sans-serif;font-size:13px;color:#888;text-align:center">${s.win_pct}%</td>
       </tr>`;
+  }
+
+  function standingsTable(rows) {
+    if (!rows || !rows.length) return '<p style="font-family:sans-serif;font-size:13px;color:#888;margin:0">No games recorded yet.</p>';
+    return `
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <tr style="background:#f5efe0">
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">#</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:left">Player</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">W</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">L</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">Win%</th>
+        </tr>
+        ${rows.map(standingRow).join('')}
+      </table>`;
   }
 
   // ── Highlights ─────────────────────────────────────────────────────────────
@@ -525,7 +543,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     highlightRows += `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #e8e0d0;font-family:sans-serif;font-size:14px;color:#3c2a1e">
-          🎯 Biggest win: <strong>${winName}</strong> won ${biggestMargin.winScore}–${biggestMargin.loseScore} (${fmtDate(biggestMargin.played_at)})
+          💥 Biggest win: <strong>${winName}</strong> won ${biggestMargin.winScore}&#8211;${biggestMargin.loseScore} (${fmtDate(biggestMargin.played_at)})
         </td>
       </tr>`;
   }
@@ -544,10 +562,18 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
   const overflowCount = games.length - shownGames.length;
   const gamesHtml = shownGames.map(gameRow).join('');
   const overflowRow = overflowCount > 0
-    ? `<tr><td colspan="2" style="padding:8px 0;font-family:sans-serif;font-size:13px;color:#888">+ ${overflowCount} more game${overflowCount !== 1 ? 's' : ''} — <a href="${leagueUrl}/games" style="color:#3a6b35">view all</a></td></tr>`
+    ? `<tr><td colspan="2" style="padding:8px 0;font-family:sans-serif;font-size:13px;color:#888">+ ${overflowCount} more game${overflowCount !== 1 ? 's' : ''} &#8212; <a href="${leagueUrl}/games" style="color:#3a6b35">view all</a></td></tr>`
     : '';
 
-  const standingsHtml = standings.map(standingRow).join('');
+  // ── Preheader (hidden inbox preview text) ─────────────────────────────────
+  const preheaderHtml = preheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#fff">${preheader}&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;</div>`
+    : '';
+
+  // ── Intro paragraph ────────────────────────────────────────────────────────
+  const introHtml = intro
+    ? `<p style="margin:0 0 24px;font-family:sans-serif;font-size:15px;color:#3c2a1e;line-height:1.5">${intro}</p>`
+    : '';
 
   // ── Email body ─────────────────────────────────────────────────────────────
   const html = `
@@ -555,6 +581,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5efe0">
+${preheaderHtml}
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5efe0">
 <tr><td align="center" style="padding:24px 16px">
 
@@ -563,9 +590,13 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
 
     <!-- Header -->
     <tr>
-      <td style="background:#4a3728;padding:28px 28px 20px;text-align:center">
-        <p style="margin:0 0 4px;font-family:sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,0.6);letter-spacing:0.05em;text-transform:uppercase">Weekly Digest</p>
-        <h1 style="margin:0 0 4px;font-family:Georgia,serif;font-size:26px;color:#fff;font-weight:normal">${league.name}</h1>
+      <td style="background:#3a6b35;padding:6px 28px;text-align:center">
+        <p style="margin:0;font-family:sans-serif;font-size:11px;font-weight:700;color:rgba(255,255,255,0.75);letter-spacing:0.12em;text-transform:uppercase">Weekly Digest</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#4a3728;padding:20px 28px 22px;text-align:center">
+        <h1 style="margin:0 0 4px;font-family:Georgia,serif;font-size:28px;color:#fff;font-weight:normal">${league.name}</h1>
         <p style="margin:0;font-family:sans-serif;font-size:13px;color:rgba(255,255,255,0.55)">${weekLabel}</p>
       </td>
     </tr>
@@ -573,9 +604,11 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     <!-- Body -->
     <tr><td style="padding:28px">
 
+      ${introHtml}
+
       <!-- Games -->
       <h2 style="margin:0 0 12px;font-family:Georgia,serif;font-size:18px;color:#3c2a1e;font-weight:normal">
-        🎳 This Week's Games <span style="font-family:sans-serif;font-size:13px;color:#888;font-weight:400">(${games.length})</span>
+        🎯 This Week&#8217;s Games <span style="font-family:sans-serif;font-size:13px;color:#888;font-weight:400">(${games.length})</span>
       </h2>
       <table width="100%" cellpadding="0" cellspacing="0">
         ${gamesHtml}
@@ -592,26 +625,30 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
       </table>
       ` : ''}
 
-      <!-- Standings -->
-      <h2 style="margin:28px 0 12px;font-family:Georgia,serif;font-size:18px;color:#3c2a1e;font-weight:normal">
+      <!-- Standings: 1v1 -->
+      <h2 style="margin:28px 0 4px;font-family:Georgia,serif;font-size:18px;color:#3c2a1e;font-weight:normal">
         🏆 Standings
       </h2>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-        <tr style="background:#f5efe0">
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">#</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:left">Player</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">W</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">L</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">Win%</th>
-        </tr>
-        ${standingsHtml}
-      </table>
+      <p style="margin:0 0 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#888;letter-spacing:0.08em;text-transform:uppercase">1v1</p>
+      ${standingsTable(standings1v1)}
+      <p style="margin:8px 0 0;font-family:sans-serif;font-size:13px">
+        <a href="${leagueUrl}/standings" style="color:#3a6b35;text-decoration:none;font-weight:600">View full standings &#8594;</a>
+      </p>
+
+      ${(standings2v2 && standings2v2.length) ? `
+      <!-- Standings: 2v2 -->
+      <p style="margin:20px 0 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#888;letter-spacing:0.08em;text-transform:uppercase">2v2</p>
+      ${standingsTable(standings2v2)}
+      <p style="margin:8px 0 0;font-family:sans-serif;font-size:13px">
+        <a href="${leagueUrl}/standings" style="color:#3a6b35;text-decoration:none;font-weight:600">View full standings &#8594;</a>
+      </p>
+      ` : ''}
 
       <!-- CTA -->
-      <div style="margin-top:28px;text-align:center">
+      <div style="margin-top:32px;text-align:center">
         <a href="${leagueUrl}"
-           style="display:inline-block;padding:12px 28px;background:#3a6b35;color:#fff;font-family:sans-serif;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px">
-          Jump into ${league.name} →
+           style="display:inline-block;padding:13px 28px;background:#3a6b35;color:#fff;font-family:sans-serif;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;line-height:1">
+          Jump into ${league.name} &#8594;
         </a>
       </div>
 
@@ -621,11 +658,11 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     <tr>
       <td style="background:#f5efe0;padding:20px 28px;border-top:1px solid #e8e0d0;text-align:center">
         <p style="margin:0 0 6px;font-family:sans-serif;font-size:12px;color:#888">
-          You're receiving this because you're a member of <strong>${league.name}</strong> on Cornhole249.
+          You&#8217;re receiving this because you&#8217;re a member of <strong>${league.name}</strong> on Cornhole249.
         </p>
         <p style="margin:0;font-family:sans-serif;font-size:12px;color:#aaa">
           <a href="${unsubUrl}" style="color:#888;text-decoration:underline">Unsubscribe</a>
-          ${address ? ` &nbsp;·&nbsp; ${address}` : ''}
+          ${address ? ` &nbsp;&middot;&nbsp; ${address}` : ''}
         </p>
       </td>
     </tr>
@@ -639,7 +676,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
 
   await sendEmail({
     to,
-    subject: `Cornhole249 Weekly — ${league.name} · ${weekLabel}`,
+    subject: `${league.name} · Weekly Digest · ${weekLabel}`,
     html,
   });
 }
