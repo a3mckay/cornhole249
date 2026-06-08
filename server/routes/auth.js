@@ -56,7 +56,7 @@ router.get('/me', async (req, res) => {
       .select([
         'id', 'display_name', 'nickname', 'avatar_url', 'is_admin',
         'elo_rating', 'ref_token', 'email', 'email_verified_at',
-        'google_id',
+        'google_id', 'digest_unsubscribed_at',
       ])
       .where('id', '=', req.session.userId)
       .executeTakeFirst();

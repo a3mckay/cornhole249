@@ -70,6 +70,11 @@ export const authApi = {
     axios.post('/auth/reset-password', { token, password }, { withCredentials: true }).then((r) => r.data),
 };
 
+// Digest preferences
+export const digestApi = {
+  resubscribe: () => api.post('/digest/resubscribe').then((r) => r.data),
+};
+
 // Users
 export const usersApi = {
   list: () => api.get(`${leagueBase()}/users`).then((r) => r.data),

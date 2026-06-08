@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { leaguesApi, billingApi } from '../api';
+import { leaguesApi, billingApi, digestApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import UpgradeModal from '../components/UpgradeModal';
@@ -72,6 +72,9 @@ export default function LeagueSettings() {
 
   // PWA install prompt
   const { canInstall, isIos, isStandalone, promptInstall } = useInstallPrompt();
+
+  // Digest resubscribe
+  const [resubscribing, setResubscribing] = useState(false);
 
   // Billing
   const { leagueId, plan } = useLeague();
@@ -1290,6 +1293,47 @@ export default function LeagueSettings() {
           </div>
         </div>
       )}
+
+      {/* ── Email Preferences ─────────────────────────────────────────────── */}
+      <div
+        className="rounded-2xl p-6"
+        style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}
+      >
+        <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          📧 Email Preferences
+        </h2>
+        <p className="font-ui text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Weekly digest emails recap the week's games, standings, and highlights. Sent every Monday morning.
+        </p>
+        {user?.digest_unsubscribed_at ? (
+          <div className="flex items-center gap-4">
+            <span className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              You've unsubscribed from weekly digest emails.
+            </span>
+            <button
+              onClick={async () => {
+                setResubscribing(true);
+                try {
+                  await digestApi.resubscribe();
+                  await refreshUser();
+                } catch {
+                  // silent fail — not critical
+                } finally {
+                  setResubscribing(false);
+                }
+              }}
+              disabled={resubscribing}
+              className="btn btn-primary text-sm px-4 py-2 disabled:opacity-50 flex-shrink-0"
+            >
+              {resubscribing ? 'Saving…' : 'Re-subscribe'}
+            </button>
+          </div>
+        ) : (
+          <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            ✅ You're subscribed. Use the unsubscribe link in any digest email to opt out.
+          </p>
+        )}
+      </div>
 
       {/* ── Install App ────────────────────────────────────────────────────── */}
       <div
