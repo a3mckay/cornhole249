@@ -18,6 +18,16 @@ const { google } = require('googleapis');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
+/**
+ * Encode a mail header value that may contain non-ASCII characters.
+ * Plain ASCII passes through unchanged; anything else is wrapped in
+ * RFC 2047 UTF-8/Base64 encoding so mail clients display it correctly.
+ */
+function encodeHeader(value) {
+  if (/^[\x00-\x7F]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
+}
+
 function getGmailClient() {
   const auth = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
@@ -43,9 +53,9 @@ async function sendEmail({ to, subject, html, replyTo }) {
 
   const from = `Cornhole249 <${process.env.GMAIL_USER}>`;
   const headerLines = [
-    `From: ${from}`,
+    `From: ${encodeHeader(from)}`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeHeader(subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=UTF-8',
     ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
