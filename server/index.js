@@ -1,3 +1,7 @@
+// Force IPv4 DNS resolution — Railway containers lack IPv6 routing, which
+// causes Nodemailer SMTP connections (smtp.gmail.com) to fail with ENETUNREACH.
+require('dns').setDefaultResultOrder('ipv4first');
+
 // Sentry must be initialised before any other require so it can instrument Node internals.
 // instrument.js also calls dotenv.config() so we don't need to repeat it here.
 require('./instrument');
