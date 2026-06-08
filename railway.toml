@@ -6,7 +6,7 @@ builder = "nixpacks"
 buildCommand = "npm install --include=dev && cd client && npm install --include=dev && cd .. && npm run build"
 
 [deploy]
-startCommand = "node server/index.js"
+startCommand = "node server/start.js"
 healthcheckPath = "/api/standings"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
