@@ -17,18 +17,37 @@
  */
 
 const nodemailer = require('nodemailer');
+const dns = require('dns');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
 let _transporter = null;
 
-function getTransporter() {
+/**
+ * Resolve smtp.gmail.com to an IPv4 address explicitly.
+ * Railway containers lack IPv6 routing; passing a raw IPv4 address bypasses
+ * all Nodemailer / Node.js DNS resolution and avoids ENETUNREACH errors.
+ * tls.servername is set so the TLS handshake uses the correct SNI hostname.
+ */
+async function getTransporter() {
   if (!_transporter) {
+    const smtpHost = await new Promise((resolve) => {
+      dns.lookup('smtp.gmail.com', { family: 4 }, (err, address) => {
+        if (err) {
+          console.warn('[Email] IPv4 DNS lookup failed, falling back to hostname:', err.message);
+          resolve('smtp.gmail.com');
+        } else {
+          console.log('[Email] Resolved smtp.gmail.com →', address);
+          resolve(address);
+        }
+      });
+    });
+
     _transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: smtpHost,
       port: 587,
-      secure: false,      // STARTTLS (port 587) — Railway blocks port 465 (SMTPS)
-      family: 4,          // force IPv4 — Railway containers lack IPv6 routing
+      secure: false,                          // STARTTLS on port 587
+      tls: { servername: 'smtp.gmail.com' },  // SNI must match cert hostname, not the IP
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASS,
@@ -43,7 +62,8 @@ async function sendEmail({ to, subject, html }) {
     console.log(`[Email] Would send subject="${subject}" (GMAIL_USER not configured — recipient suppressed)`);
     return;
   }
-  await getTransporter().sendMail({
+  const transporter = await getTransporter();
+  await transporter.sendMail({
     from: `Cornhole249 <${process.env.GMAIL_USER}>`,
     to,
     subject,
