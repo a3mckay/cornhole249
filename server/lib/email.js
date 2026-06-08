@@ -464,7 +464,9 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     new Date(d).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' });
 
   function playerLabel(team) {
-    return team.map((p) => p.nickname || p.display_name).join(' & ');
+    return team.map((p) =>
+      p.nickname ? `${p.display_name} &#8220;${p.nickname}&#8221;` : p.display_name
+    ).join(' &amp; ');
   }
 
   function gameRow(game) {
@@ -595,9 +597,13 @@ ${preheaderHtml}
       </td>
     </tr>
     <tr>
-      <td style="background:#4a3728;padding:20px 28px 22px;text-align:center">
+      <td style="background:#4a3728;padding:20px 28px 20px;text-align:center">
         <h1 style="margin:0 0 4px;font-family:Georgia,serif;font-size:28px;color:#fff;font-weight:normal">${league.name}</h1>
         <p style="margin:0;font-family:sans-serif;font-size:13px;color:rgba(255,255,255,0.55)">${weekLabel}</p>
+        <!-- String lights -->
+        <p style="margin:16px 0 0;font-size:0;line-height:16px;text-align:center">
+          <span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#e74c3c;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#f1c40f;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#2ecc71;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#3498db;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#9b59b6;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#e74c3c;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#f1c40f;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#2ecc71;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#3498db;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span>
+        </p>
       </td>
     </tr>
 
@@ -640,17 +646,19 @@ ${preheaderHtml}
       <p style="margin:20px 0 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#888;letter-spacing:0.08em;text-transform:uppercase">2v2</p>
       ${standingsTable(standings2v2)}
       <p style="margin:8px 0 0;font-family:sans-serif;font-size:13px">
-        <a href="${leagueUrl}/standings" style="color:#3a6b35;text-decoration:none;font-weight:600">View full standings &#8594;</a>
+        <a href="${leagueUrl}/standings?type=2v2" style="color:#3a6b35;text-decoration:none;font-weight:600">View full standings &#8594;</a>
       </p>
       ` : ''}
 
       <!-- CTA -->
-      <div style="margin-top:32px;text-align:center">
-        <a href="${leagueUrl}"
-           style="display:inline-block;padding:13px 28px;background:#3a6b35;color:#fff;font-family:sans-serif;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;line-height:1">
-          Jump into ${league.name} &#8594;
-        </a>
-      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px">
+        <tr><td style="border-top:1px solid #e8e0d0;padding-top:28px;text-align:center">
+          <a href="${leagueUrl}"
+             style="display:inline-block;padding:13px 28px 12px;background:#3a6b35;color:#fff;font-family:sans-serif;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;line-height:1;white-space:nowrap">
+            Jump into ${league.name}&nbsp;&#10095;
+          </a>
+        </td></tr>
+      </table>
 
     </td></tr>
 

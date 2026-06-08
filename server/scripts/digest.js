@@ -81,8 +81,8 @@ Highlights:
 ${contextStr}
 
 Write two things:
-1. PREHEADER: A punchy ~90-character inbox preview line. Competitive, fun tone. No emoji. No "Weekly Digest" — that's already in the subject. Just make people want to open it.
-2. INTRO: One or two short sentences (max 40 words total). Energetic, trash-talk-friendly. Can use 1-2 emojis. Reference a specific highlight if available.
+1. PREHEADER: A punchy ~90-character inbox preview line. Competitive, fun tone. No emoji. No "Weekly Digest". Use just the nickname portion of any name given (e.g. "The Inevitable", not 'Andrew "The Inevitable"').
+2. INTRO: One or two short sentences (max 40 words total). Energetic, trash-talk-friendly. Can use 1-2 emojis. Reference a specific highlight. Use the FULL name format provided (e.g., Andrew "The Inevitable").
 
 Reply in this exact format (nothing else):
 PREHEADER: <text>
@@ -179,8 +179,15 @@ async function processLeague(league, db, label) {
 
   // ── 3. Highlights ─────────────────────────────────────────────────────────
   const playerWins  = new Map(); // uid → wins this week
-  const playerNames = new Map(); // uid → display name
+  const playerNames = new Map(); // uid → { display_name, nickname }
   let biggestMargin = null;
+
+  // Returns "Display Name" or 'Display Name "Nickname"' for use in email copy
+  function fullLabel(uid) {
+    const p = playerNames.get(uid);
+    if (!p) return 'Unknown';
+    return p.nickname ? `${p.display_name} “${p.nickname}”` : p.display_name;
+  }
 
   for (const game of games) {
     const t1 = game.teams[1] || [];
@@ -190,7 +197,7 @@ async function processLeague(league, db, label) {
     // Track names and weekly wins
     for (const team of [t1, t2]) {
       for (const p of team) {
-        playerNames.set(p.user_id, p.nickname || p.display_name);
+        playerNames.set(p.user_id, { display_name: p.display_name, nickname: p.nickname });
         if (!playerWins.has(p.user_id)) playerWins.set(p.user_id, 0);
         if (p.is_winner) playerWins.set(p.user_id, playerWins.get(p.user_id) + 1);
       }
@@ -220,7 +227,7 @@ async function processLeague(league, db, label) {
   for (const [uid, wins] of playerWins) {
     if (wins > topWins) {
       topWins   = wins;
-      topPlayer = { user_id: uid, name: playerNames.get(uid), wins };
+      topPlayer = { user_id: uid, name: fullLabel(uid), wins };
     }
   }
 
@@ -231,7 +238,7 @@ async function processLeague(league, db, label) {
     const streak = await getActiveStreak(uid, league.id, db);
     if (streak > maxStreak) {
       maxStreak    = streak;
-      streakLeader = { user_id: uid, name: playerNames.get(uid), streak };
+      streakLeader = { user_id: uid, name: fullLabel(uid), streak };
     }
   }
 
