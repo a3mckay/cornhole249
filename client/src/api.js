@@ -207,12 +207,15 @@ export const joinApi = {
 
 // Billing (Stripe Checkout + Customer Portal)
 export const billingApi = {
+  // Returns { venue: boolean } — whether the authenticated user has an active Venue Plan
+  status: () =>
+    api.get('/billing/status').then((r) => r.data),
   // Redirects to Stripe Checkout — call then window.location.href = data.url
   checkout: (leagueId, plan) =>
     api.post('/billing/checkout', { leagueId, plan }).then((r) => r.data),
-  // Redirects to Stripe Customer Portal
+  // Redirects to Stripe Customer Portal — omit leagueId for venue-plan sessions
   portal: (leagueId) =>
-    api.post('/billing/portal', { leagueId }).then((r) => r.data),
+    api.post('/billing/portal', leagueId ? { leagueId } : {}).then((r) => r.data),
 };
 
 // Admin — billing/plan grants

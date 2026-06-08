@@ -1,13 +1,14 @@
 /**
  * Billing routes — Stripe Checkout, Customer Portal, Webhooks.
  *
+ * GET  /api/billing/status          — returns current user's venue plan status (auth required)
  * POST /api/billing/checkout       — create a Checkout session (auth required)
  * POST /api/billing/portal         — create a Customer Portal session (auth required)
  * POST /api/billing/webhook        — Stripe webhook (raw body, signature-verified)
  *
  * Checkout body: { leagueId, plan: 'pro_monthly' | 'pro_yearly' | 'weekend_pass' | 'venue_yearly' }
  *   venue_yearly does not require leagueId — it is a user-level subscription.
- * Portal body:   { leagueId }
+ * Portal body:   { leagueId? }  — omit leagueId for venue-plan portal sessions
  */
 
 const express = require('express');
@@ -20,6 +21,22 @@ const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail, sendGraceStartEmail } 
 const { capture: analyticsCapture } = require('../lib/analytics');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+
+// ── GET /api/billing/status ──────────────────────────────────────────────────
+// Returns whether the authenticated user has an active Venue Plan.
+router.get('/status', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const user = await db
+      .selectFrom('users')
+      .select(['venue_plan', 'venue_stripe_subscription_id', 'venue_stripe_period_end'])
+      .where('id', '=', req.session.userId)
+      .executeTakeFirst();
+    res.json({ venue: hasVenuePlan(user) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ── POST /api/billing/checkout ───────────────────────────────────────────────
 
@@ -147,7 +164,6 @@ router.post('/portal', requireAuth, async (req, res) => {
   }
   try {
     const { leagueId } = req.body;
-    if (!leagueId) return res.status(400).json({ error: 'leagueId required' });
 
     const db = getDb();
     const user = await db
@@ -160,14 +176,16 @@ router.post('/portal', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'No billing account found' });
     }
 
-    const league = await db
-      .selectFrom('leagues')
-      .select(['slug'])
-      .where('id', '=', parseInt(leagueId))
-      .executeTakeFirst();
-
-    const slug = league?.slug || '';
-    const returnUrl = `${APP_URL}${slug === 'cornhole249' ? '' : `/l/${slug}`}/settings`;
+    let returnUrl = APP_URL;
+    if (leagueId) {
+      const league = await db
+        .selectFrom('leagues')
+        .select(['slug'])
+        .where('id', '=', parseInt(leagueId))
+        .executeTakeFirst();
+      const slug = league?.slug || '';
+      returnUrl = `${APP_URL}${slug === 'cornhole249' ? '' : `/l/${slug}`}/settings`;
+    }
 
     const stripe = getStripe();
     const portalSession = await stripe.billingPortal.sessions.create({

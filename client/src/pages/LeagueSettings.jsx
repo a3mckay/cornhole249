@@ -82,6 +82,7 @@ export default function LeagueSettings() {
   const [renewLoading, setRenewLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [exportLoading, setExportLoading] = useState(null);
+  const [venueActive, setVenueActive] = useState(false);
 
   // Grace period — manage player access
   const [graceKeep, setGraceKeep] = useState(null); // Set of user IDs to keep; null = not yet initialised
@@ -104,6 +105,16 @@ export default function LeagueSettings() {
     setPortalLoading(true);
     try {
       const { url } = await billingApi.portal(leagueId);
+      window.location.href = url;
+    } catch {
+      setPortalLoading(false);
+    }
+  };
+
+  const handleVenuePortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { url } = await billingApi.portal(null); // account-level, no leagueId
       window.location.href = url;
     } catch {
       setPortalLoading(false);
@@ -266,6 +277,7 @@ export default function LeagueSettings() {
         leaguesApi.get(slug),
         leaguesApi.members(slug),
       ]);
+      billingApi.status().then((s) => setVenueActive(!!s.venue)).catch(() => {});
       setLeague(leagueData);
       setMembers(membersData);
       setName(leagueData.name);
@@ -528,10 +540,32 @@ export default function LeagueSettings() {
       {/* Billing */}
       <div className="card p-6">
         <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
-          {plan === 'free' ? '⭐ Plan' : '🌟 Plan'}
+          {plan === 'free' && !venueActive ? '⭐ Plan' : '🌟 Plan'}
         </h2>
 
-        {plan === 'weekend_pass' ? (
+        {venueActive ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-xs font-ui font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+                style={{ background: 'rgba(58,107,53,0.12)', border: '1px solid rgba(58,107,53,0.3)', color: 'var(--color-primary)' }}
+              >
+                Venue Plan
+              </span>
+              <span className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+                All your leagues are covered
+              </span>
+            </div>
+            <button
+              onClick={handleVenuePortal}
+              disabled={portalLoading}
+              className="btn text-sm px-4 py-2 disabled:opacity-50"
+              style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+            >
+              {portalLoading ? 'Redirecting…' : 'Manage Venue subscription'}
+            </button>
+          </div>
+        ) : plan === 'weekend_pass' ? (
           <div className="flex flex-col gap-4">
             {/* Status row */}
             <div className="flex items-center gap-3">
@@ -803,14 +837,14 @@ export default function LeagueSettings() {
                   key={value}
                   type="button"
                   onClick={() => {
-                    if (pro && plan === 'free') { setShowUpgrade(true); return; }
+                    if (pro && plan === 'free' && !venueActive) { setShowUpgrade(true); return; }
                     setRules(value);
                   }}
                   className="flex-1 min-w-[90px] flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-left transition-all"
                   style={{
                     borderColor: rules === value ? 'var(--color-primary)' : 'var(--color-border)',
                     background: rules === value ? 'rgba(58,107,53,0.07)' : 'var(--color-bg)',
-                    opacity: pro && plan === 'free' ? 0.6 : 1,
+                    opacity: pro && plan === 'free' && !venueActive ? 0.6 : 1,
                   }}
                 >
                   <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
@@ -974,7 +1008,7 @@ export default function LeagueSettings() {
           <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
             🎨 Custom Theme
           </h2>
-          {plan === 'free' && (
+          {plan === 'free' && !venueActive && (
             <button
               onClick={() => setShowUpgrade(true)}
               className="text-xs font-ui font-semibold px-2.5 py-1 rounded-full"
@@ -985,7 +1019,7 @@ export default function LeagueSettings() {
           )}
         </div>
 
-        {plan === 'free' ? (
+        {plan === 'free' && !venueActive ? (
           <div className="text-center py-6">
             <p className="font-ui text-sm mb-3" style={{ color: 'var(--color-text-secondary)' }}>
               Set your league colours and logo with Pro.
