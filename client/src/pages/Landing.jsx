@@ -69,6 +69,10 @@ const FAQS = [
     q: 'How do I cancel my subscription?',
     a: 'Cancel any time from your league settings. Your Pro access stays active until the end of the billing period. No questions, no friction.',
   },
+  {
+    q: 'What is the Venue plan?',
+    a: "The Venue plan is a single CAD $199/yr subscription that covers every league on your account — no per-league fees. It's designed for bars, rec centres, and organizers who run multiple league nights and don't want to pay separately for each one.",
+  },
 ];
 
 function FAQ() {
@@ -207,7 +211,7 @@ export default function Landing() {
       </section>
 
       {/* ── Pricing ──────────────────────────────────────────────── */}
-      <section className="mb-16 px-4" id="pricing">
+      <section className="mb-10 px-4" id="pricing">
         <h2 className="font-display text-3xl text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
           Simple, honest pricing
         </h2>
@@ -282,6 +286,86 @@ export default function Landing() {
             cta="Buy a pass"
             ctaTo="/leagues/new"
           />
+        </div>
+      </section>
+
+      {/* ── Venue pricing ────────────────────────────────────────── */}
+      <section className="mb-16 px-4" id="venue">
+        <div
+          className="rounded-[20px] p-8"
+          style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', boxShadow: '4px 4px 0 var(--color-border)' }}
+        >
+          <div className="flex flex-col md:flex-row gap-8 items-start">
+            {/* Left: copy */}
+            <div className="flex-1">
+              <div
+                className="inline-block px-3 py-1 rounded-full text-xs font-ui font-bold mb-4"
+                style={{ background: 'rgba(58,107,53,0.1)', color: 'var(--color-primary)' }}
+              >
+                For establishments
+              </div>
+              <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-text-primary)' }}>
+                Running league nights at your venue?
+              </h2>
+              <p className="font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                One flat yearly subscription covers every league you run — no per-league fees, no surprises.
+                Perfect for bars, recreation centres, and community organizations that host multiple league nights.
+              </p>
+              <ul className="flex flex-col gap-2 mb-6">
+                {[
+                  { icon: '🍺', text: 'Bars & pubs running weekly cornhole nights' },
+                  { icon: '🏢', text: 'Recreation centres with multiple groups' },
+                  { icon: '🌐', text: 'Community orgs managing several leagues at once' },
+                ].map(({ icon, text }) => (
+                  <li key={text} className="flex items-center gap-3 font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                    <span>{icon}</span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Right: plan card */}
+            <div
+              className="w-full md:w-72 flex-shrink-0 rounded-[16px] p-6 flex flex-col"
+              style={{ background: 'var(--color-bg)', border: '2px solid var(--color-primary)' }}
+            >
+              <div
+                className="text-xs font-ui font-bold px-3 py-1 rounded-full self-start mb-3"
+                style={{ background: 'var(--color-primary)', color: '#fff' }}
+              >
+                Venue
+              </div>
+              <div className="mb-1">
+                <span className="font-display text-4xl" style={{ color: 'var(--color-text-primary)' }}>CAD $199</span>
+                <span className="font-ui text-sm ml-1" style={{ color: 'var(--color-text-secondary)' }}>/ year</span>
+              </div>
+              <p className="font-ui text-xs mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                One account, unlimited leagues
+              </p>
+              <ul className="flex flex-col gap-2 mb-6 flex-1">
+                {[
+                  'Unlimited leagues',
+                  'Unlimited players per league',
+                  'Everything in Pro',
+                  'Tournaments & brackets',
+                  'Full stats & CSV export',
+                  'Single subscription for all leagues',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                    <span className="mt-0.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }}>✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Link to="/leagues/new" className="btn btn-primary w-full text-center">
+                Get Venue Plan →
+              </Link>
+              <p className="text-xs font-ui text-center mt-3" style={{ color: 'var(--color-text-secondary)' }}>
+                CAD. Cancel anytime. Taxes may apply.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 

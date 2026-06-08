@@ -12,6 +12,7 @@
  *   STRIPE_PRICE_PRO_MONTHLY    — price_...
  *   STRIPE_PRICE_PRO_YEARLY     — price_...
  *   STRIPE_PRICE_WEEKEND_PASS   — price_...
+ *   STRIPE_PRICE_VENUE_YEARLY   — price_... (account-level, covers all leagues)
  */
 
 const Stripe = require('stripe');
@@ -31,9 +32,10 @@ function getStripe() {
 }
 
 const PRICES = {
-  pro_monthly:  () => process.env.STRIPE_PRICE_PRO_MONTHLY,
-  pro_yearly:   () => process.env.STRIPE_PRICE_PRO_YEARLY,
-  weekend_pass: () => process.env.STRIPE_PRICE_WEEKEND_PASS,
+  pro_monthly:   () => process.env.STRIPE_PRICE_PRO_MONTHLY,
+  pro_yearly:    () => process.env.STRIPE_PRICE_PRO_YEARLY,
+  weekend_pass:  () => process.env.STRIPE_PRICE_WEEKEND_PASS,
+  venue_yearly:  () => process.env.STRIPE_PRICE_VENUE_YEARLY,
 };
 
 module.exports = { getStripe, PRICES };

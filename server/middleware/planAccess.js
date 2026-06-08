@@ -11,7 +11,7 @@
  */
 
 const { getDb } = require('../db');
-const { effectivePlan, isPro } = require('../lib/plan');
+const { effectivePlan, isPro, hasVenuePlan } = require('../lib/plan');
 
 async function requirePro(req, res, next) {
   // Site-wide superadmin always passes
@@ -24,11 +24,23 @@ async function requirePro(req, res, next) {
 
   try {
     const db = getDb();
-    const league = await db
-      .selectFrom('leagues')
-      .select(['plan', 'plan_override', 'stripe_subscription_id', 'stripe_current_period_end', 'expires_at'])
-      .where('id', '=', leagueId)
-      .executeTakeFirst();
+    const [league, owner] = await Promise.all([
+      db
+        .selectFrom('leagues')
+        .select(['plan', 'plan_override', 'stripe_subscription_id', 'stripe_current_period_end', 'expires_at'])
+        .where('id', '=', leagueId)
+        .executeTakeFirst(),
+      db
+        .selectFrom('league_memberships')
+        .innerJoin('users', 'users.id', 'league_memberships.user_id')
+        .select(['users.venue_plan', 'users.venue_stripe_subscription_id', 'users.venue_stripe_period_end'])
+        .where('league_memberships.league_id', '=', leagueId)
+        .where('league_memberships.role', '=', 'owner')
+        .executeTakeFirst(),
+    ]);
+
+    // Venue plan on the owner grants Pro access to all their leagues
+    if (hasVenuePlan(owner)) return next();
 
     // Check weekend pass expiry
     if (league?.plan === 'weekend_pass' && league.expires_at) {
