@@ -37,7 +37,7 @@ This file is both the spec **and** Claude's operating manual for building from i
 | Auth | Email + password + Google SSO | PIN-only is too weak for paying customers; keep PIN as optional fast-login for shared devices |
 | Pricing currency | CAD initially | Aligns with initial Canadian audience; revisit when going international |
 | OG image rendering | `satori` + `@resvg/resvg-js` | No headless browser, ~50ms renders, works on Railway |
-| Email provider | Gmail SMTP via Nodemailer | Switched from Resend pre-launch; credentials in Railway (`GMAIL_USER`, `GMAIL_APP_PASS`) |
+| Email provider | Gmail HTTP API via `googleapis` | Railway blocks all SMTP ports; switched to OAuth2 over HTTPS (port 443). Credentials in Railway: `GMAIL_USER`, `GMAIL_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Hosting | Railway | Existing setup; supports Postgres, branch deploys, wildcard SSL |
 | Analytics | PostHog (free tier) | Funnel + retention + product analytics in one |
 | Error monitoring | Sentry (free tier) | Catches what tests miss |
@@ -81,6 +81,7 @@ This file is both the spec **and** Claude's operating manual for building from i
 | **Pro Monthly** | **CAD $9/mo** | Unlimited leagues, unlimited players, tournaments, Stats page, custom rules, custom theme/branding, CSV export |
 | **Pro Yearly** | **CAD $80/yr** (saves ~26%) | Same as Pro Monthly |
 | **Weekend Pass** | **CAD $12 one-time** | 7 days of full Pro access. Designed for bachelor parties, beer festivals, one-off events. Auto-converts to free after 7 days (no surprise rebill). |
+| **Venue Plan** | **CAD $199/yr** | Account-level subscription — one payment covers all leagues owned by that user. Designed for bars, rec centres, and establishments running multiple league nights. Per-league Pro features fully unlocked across all owned leagues. |
 
 **Note:** The "Cornhole249" watermark appears on all shared OG images regardless of plan — it's a permanent organic-growth surface, not a paid removal.
 
@@ -650,6 +651,74 @@ The "Cornhole249" watermark on shared images is intentionally **not** a Pro perk
 - Should the League Settings "manage player access" panel show during the grace period even if the league has exactly 8 members (i.e. no action needed)? Recommendation: hide it — only show when member count > 8.
 - If a frozen player is later approved in a different league, does their frozen status in this league affect anything? No — `frozen_at` is per `league_membership` row, fully scoped to one league.
 - Day-before warning email: if the admin resolves it at 11pm the night before, does the email still send? Recommendation: run the cron check before midnight and skip if already resolved.
+
+---
+
+#### 5.8 Venue Plan
+
+**Why:** Bars, rec centres, and establishments run multiple league nights under one roof. Per-league Pro pricing is punishing for them — $80/yr × 5 leagues = $400. A single $199/yr account-level plan is a better fit and a stronger upsell to commercial customers.
+
+**Status:** Backend complete and merged to `main`. Migration, plan logic, `planAccess.js`, Stripe webhook handling, and a landing page section are all live. Four items remain before customers can purchase:
+
+---
+
+##### 5.8.1 Create the Stripe product *(manual, ~2 min)*
+
+**Status: ⬜ Not done**
+
+Go to Stripe Dashboard → Products → Add Product:
+- **Name**: Venue Plan
+- **Price**: CAD $199.00, recurring, yearly
+- Copy the generated price ID and add it to Railway (both services):
+  ```
+  STRIPE_PRICE_VENUE_YEARLY=price_1Ab...
+  ```
+
+---
+
+##### 5.8.2 Venue checkout entry point *(frontend, ~1–2 hours)*
+
+**Status: ⬜ Not done**
+
+The "Get Venue Plan →" button on `client/src/pages/Landing.jsx` currently links to `/leagues/new` as a placeholder.
+
+**API is ready:** `POST /api/billing/checkout` with `{ plan: 'venue_yearly' }` (no `leagueId` needed). Returns `{ url }` → redirect to Stripe Checkout. Requires auth; returns 401 if not logged in.
+
+**In scope:**
+- Convert the CTA into a button that:
+  1. If logged in → POST to `/api/billing/checkout`, redirect to Stripe URL
+  2. If not logged in → redirect to `/login?next=venue`, then after login trigger checkout
+- Handle `?venue=success` return URL from Stripe → show success toast/banner
+- Optionally: add "Running multiple leagues? See Venue Plan →" link at the bottom of `UpgradeModal.jsx`
+
+**Relevant files:**
+- `client/src/pages/Landing.jsx` — CTA button to wire up
+- `client/src/components/UpgradeModal.jsx` — optional Venue Plan link
+- `client/src/api.js` — `billingApi.checkout` already works; call with `(null, 'venue_yearly')` or make `leagueId` optional
+
+---
+
+##### 5.8.3 Venue billing status in LeagueSettings *(frontend + one new endpoint, ~1 hour)*
+
+**Status: ⬜ Not done**
+
+Venue customers visiting any of their league settings pages currently see the standard "Upgrade to Pro" section — confusing since they're already covered.
+
+**In scope:**
+- New endpoint: `GET /api/billing/status` — returns user's current plan info (venue plan active, per-league plan for the current league, etc.)
+- In `client/src/pages/LeagueSettings.jsx`: fetch billing status and show "Covered by Venue Plan" instead of the upgrade prompt when venue plan is active
+
+---
+
+##### 5.8.4 Venue welcome email *(backend, ~30 min)*
+
+**Status: ⬜ Not done**
+
+No welcome email fires when a Venue checkout completes. The per-league Pro flow sends `sendProWelcomeEmail` — Venue needs an equivalent.
+
+**In scope:**
+- Add `sendVenueWelcomeEmail` to `server/lib/email.js` (similar to `sendProWelcomeEmail` but without a league name — covers all owned leagues)
+- Call it from `server/routes/billing.js` inside the `checkout.session.completed` handler, in the `plan === 'venue_yearly'` branch (around line 236)
 
 ---
 

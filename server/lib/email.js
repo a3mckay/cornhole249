@@ -218,6 +218,36 @@ async function sendProWelcomeEmail({ to, userName, leagueName, leagueUrl }) {
 }
 
 /**
+ * Welcome email for a new Venue Plan subscription (account-level, covers all owned leagues).
+ */
+async function sendVenueWelcomeEmail({ to, userName }) {
+  const APP_URL_LOCAL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+  await sendEmail({
+    to,
+    subject: '🎉 Welcome to the Venue Plan — every league you own is covered',
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        You're now on the Cornhole249 <strong>Venue Plan</strong>.
+        Every league you own is fully unlocked — no per-league fees, no surprises.
+      </p>
+      <ul style="font-family:sans-serif;padding-left:1.2em;line-height:1.8">
+        <li>🏟️ All your leagues covered under one subscription</li>
+        <li>📊 Full stats &amp; analytics on every league</li>
+        <li>🏆 Tournament brackets, unlimited players, CSV export</li>
+        <li>♾️ Create as many new leagues as you need</li>
+      </ul>
+      <p style="font-family:sans-serif">
+        <a href="${APP_URL_LOCAL}/leagues/new" style="color:#3A6B35;font-weight:bold">Create a new league →</a>
+      </p>
+      <p style="font-family:sans-serif;color:#888;font-size:12px">
+        Manage or cancel your Venue Plan subscription any time from your league settings.
+      </p>
+    `,
+  });
+}
+
+/**
  * Welcome email for a Weekend Pass purchase.
  */
 async function sendWeekendPassWelcomeEmail({ to, userName, leagueName, leagueUrl, expiresAt }) {
@@ -427,6 +457,7 @@ module.exports = {
   sendJoinApprovedEmail,
   sendJoinDeniedEmail,
   sendProWelcomeEmail,
+  sendVenueWelcomeEmail,
   sendWeekendPassWelcomeEmail,
   sendWeekendPassWarningEmail,
   sendWeekendPassExpiredEmail,

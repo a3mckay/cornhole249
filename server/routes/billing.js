@@ -17,7 +17,7 @@ const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getStripe, PRICES } = require('../lib/stripe');
 const { effectivePlan, hasVenuePlan } = require('../lib/plan');
-const { sendProWelcomeEmail, sendWeekendPassWelcomeEmail, sendGraceStartEmail } = require('../lib/email');
+const { sendProWelcomeEmail, sendVenueWelcomeEmail, sendWeekendPassWelcomeEmail, sendGraceStartEmail } = require('../lib/email');
 const { capture: analyticsCapture } = require('../lib/analytics');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -252,6 +252,22 @@ router.post('/webhook', async (req, res) => {
 
           console.log(`[Billing] User ${userId} → Venue plan (sub ${session.subscription})`);
           analyticsCapture(String(userId), 'venue_subscription_created', { user_id: userId });
+
+          // Send welcome email (non-fatal)
+          ;(async () => {
+            try {
+              const emailUser = await db
+                .selectFrom('users')
+                .select(['email', 'display_name'])
+                .where('id', '=', userId)
+                .executeTakeFirst();
+              if (emailUser?.email) {
+                await sendVenueWelcomeEmail({ to: emailUser.email, userName: emailUser.display_name });
+              }
+            } catch (err) {
+              console.error('[Billing] Venue welcome email failed:', err);
+            }
+          })();
 
           // Cancel any active per-league Pro subscriptions and credit unused time.
           // We do this AFTER activating the venue plan so that the subscription.deleted
