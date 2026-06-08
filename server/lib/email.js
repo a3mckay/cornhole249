@@ -26,8 +26,8 @@ function getTransporter() {
   if (!_transporter) {
     _transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false,      // STARTTLS (port 587) — Railway blocks port 465 (SMTPS)
       family: 4,          // force IPv4 — Railway containers lack IPv6 routing
       auth: {
         user: process.env.GMAIL_USER,
