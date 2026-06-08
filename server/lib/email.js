@@ -25,7 +25,10 @@ let _transporter = null;
 function getTransporter() {
   if (!_transporter) {
     _transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      family: 4,          // force IPv4 — Railway containers lack IPv6 routing
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASS,
