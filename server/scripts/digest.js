@@ -201,7 +201,7 @@ async function processLeague(league, db, label) {
   // ── 5. Eligible recipients ────────────────────────────────────────────────
   const { rows: members } = await sql`
     SELECT u.id, u.email, u.display_name, u.nickname
-    FROM league_members lm
+    FROM league_memberships lm
     JOIN users u ON lm.user_id = u.id
     WHERE lm.league_id = ${league.id}
       AND u.email IS NOT NULL
