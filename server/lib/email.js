@@ -1,73 +1,64 @@
 /**
- * Email sending via Nodemailer (Gmail SMTP).
+ * Email sending via Gmail HTTP API (googleapis).
+ *
+ * Uses OAuth2 — no SMTP, no port-blocking issues on Railway.
  *
  * Required env vars:
- *   GMAIL_USER      — the Gmail address to send from (e.g. noreply.cornhole249@gmail.com)
- *   GMAIL_APP_PASS  — a Gmail App Password (not your regular password)
- *                     Generate one at: myaccount.google.com/apppasswords
- *   APP_URL         — public base URL for links (e.g. https://www.cornhole249.com)
+ *   GMAIL_USER            — the Gmail address to send from (e.g. noreply.cornhole249@gmail.com)
+ *   GMAIL_REFRESH_TOKEN   — long-lived OAuth2 refresh token for that account
+ *   GOOGLE_CLIENT_ID      — OAuth2 client ID (same one used for Google login)
+ *   GOOGLE_CLIENT_SECRET  — OAuth2 client secret
+ *   APP_URL               — public base URL for links (e.g. https://www.cornhole249.com)
  *
- * If GMAIL_USER is not set, emails are logged to the console instead
- * (safe for local dev without credentials).
- *
- * To create a Gmail App Password:
- *   1. Go to myaccount.google.com → Security → 2-Step Verification (must be enabled)
- *   2. Search for "App passwords" → create one named "Cornhole249"
- *   3. Copy the 16-char password — that's GMAIL_APP_PASS
+ * If GMAIL_USER or GMAIL_REFRESH_TOKEN is not set, emails are logged to the
+ * console instead (safe for local dev without credentials).
  */
 
-const nodemailer = require('nodemailer');
-const dns = require('dns');
+const { google } = require('googleapis');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
-let _transporter = null;
-
-/**
- * Resolve smtp.gmail.com to an IPv4 address explicitly.
- * Railway containers lack IPv6 routing; passing a raw IPv4 address bypasses
- * all Nodemailer / Node.js DNS resolution and avoids ENETUNREACH errors.
- * tls.servername is set so the TLS handshake uses the correct SNI hostname.
- */
-async function getTransporter() {
-  if (!_transporter) {
-    const smtpHost = await new Promise((resolve) => {
-      dns.lookup('smtp.gmail.com', { family: 4 }, (err, address) => {
-        if (err) {
-          console.warn('[Email] IPv4 DNS lookup failed, falling back to hostname:', err.message);
-          resolve('smtp.gmail.com');
-        } else {
-          console.log('[Email] Resolved smtp.gmail.com →', address);
-          resolve(address);
-        }
-      });
-    });
-
-    _transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: 587,
-      secure: false,                          // STARTTLS on port 587
-      tls: { servername: 'smtp.gmail.com' },  // SNI must match cert hostname, not the IP
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASS,
-      },
-    });
-  }
-  return _transporter;
+function getGmailClient() {
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+  );
+  auth.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+  return google.gmail({ version: 'v1', auth });
 }
 
-async function sendEmail({ to, subject, html }) {
-  if (!process.env.GMAIL_USER) {
-    console.log(`[Email] Would send subject="${subject}" (GMAIL_USER not configured — recipient suppressed)`);
+/**
+ * Send an email via the Gmail REST API (HTTPS, port 443).
+ * @param {object} opts
+ * @param {string} opts.to
+ * @param {string} opts.subject
+ * @param {string} opts.html
+ * @param {string} [opts.replyTo]
+ */
+async function sendEmail({ to, subject, html, replyTo }) {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_REFRESH_TOKEN) {
+    console.log(`[Email] Would send subject="${subject}" (GMAIL_USER/GMAIL_REFRESH_TOKEN not set)`);
     return;
   }
-  const transporter = await getTransporter();
-  await transporter.sendMail({
-    from: `Cornhole249 <${process.env.GMAIL_USER}>`,
-    to,
-    subject,
-    html,
+
+  const from = `Cornhole249 <${process.env.GMAIL_USER}>`;
+  const headerLines = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+  ];
+
+  const raw = Buffer.from(
+    headerLines.join('\r\n') + '\r\n\r\n' + html,
+  ).toString('base64url');
+
+  const gmail = getGmailClient();
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw },
   });
 }
 
@@ -654,10 +645,9 @@ async function sendContactEmail({ replyTo, subject, body, userId }) {
   }
   const userLine = userId ? `<p style="color:#666;font-size:12px;margin:0 0 16px">Submitted by user ID ${userId}</p>` : '';
   const safeBody = body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  await getTransporter().sendMail({
-    from: `Cornhole249 <${process.env.GMAIL_USER}>`,
+  await sendEmail({
     to: CONTACT_TO,
-    replyTo: replyTo,
+    replyTo,
     subject: `[Cornhole249 Contact] ${subject}`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
