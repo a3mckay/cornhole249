@@ -191,7 +191,7 @@ export default function Landing() {
 
       {/* ── Stats strip ──────────────────────────────────────────── */}
       <section
-        className="grid grid-cols-3 gap-4 mb-16 px-4 py-6 rounded-[20px]"
+        className="grid grid-cols-3 gap-1 sm:gap-4 mb-16 px-4 py-6 rounded-[20px]"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '4px 4px 0 var(--color-border)' }}
       >
         {[
@@ -200,7 +200,7 @@ export default function Landing() {
           { n: 'Unlimited', label: 'games to log' },
         ].map(({ n, label }) => (
           <div key={label} className="text-center">
-            <div className="font-display text-3xl md:text-4xl" style={{ color: 'var(--color-primary)' }}>{n}</div>
+            <div className="font-display text-xl sm:text-3xl md:text-4xl" style={{ color: 'var(--color-primary)' }}>{n}</div>
             <div className="font-ui text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</div>
           </div>
         ))}
