@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { capture } from '../lib/analytics';
+import { useAuth } from '../hooks/useAuth';
+import { billingApi } from '../api';
 
 function PricingCard({ badge, name, price, period, note, features, cta, ctaTo, highlight }) {
   return (
@@ -100,9 +102,65 @@ function FAQ() {
 }
 
 export default function Landing() {
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [venueLoading, setVenueLoading] = useState(false);
+  const [venueBanner, setVenueBanner] = useState(null);
+
   useEffect(() => { capture('landing_page_viewed'); }, []);
+
+  // POST to Stripe Checkout for the venue_yearly plan
+  const triggerVenueCheckout = async () => {
+    setVenueLoading(true);
+    try {
+      const { url } = await billingApi.checkout(null, 'venue_yearly');
+      window.location.href = url;
+    } catch (e) {
+      console.error('[Venue] checkout error', e);
+      setVenueLoading(false);
+    }
+  };
+
+  // Button handler — sends unauthenticated users to login first
+  const handleVenueCheckout = () => {
+    if (!user) {
+      navigate(`/login?returnTo=${encodeURIComponent('/?venue=checkout')}`);
+      return;
+    }
+    triggerVenueCheckout();
+  };
+
+  // Handle ?venue=success (Stripe return) and ?venue=checkout (post-login auto-trigger)
+  useEffect(() => {
+    const venueParam = searchParams.get('venue');
+    if (venueParam === 'success') {
+      setVenueBanner('success');
+      navigate('/', { replace: true });
+    } else if (venueParam === 'checkout' && !authLoading && user) {
+      triggerVenueCheckout();
+    }
+  }, [user, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="max-w-4xl mx-auto">
+
+      {/* ── Venue Plan success banner ─────────────────────────── */}
+      {venueBanner === 'success' && (
+        <div
+          className="mx-4 mt-6 rounded-xl px-5 py-4 flex items-center justify-between gap-4"
+          style={{ background: 'rgba(58,107,53,0.1)', border: '1px solid rgba(58,107,53,0.3)' }}
+        >
+          <p className="font-ui text-sm font-semibold" style={{ color: 'var(--color-primary)' }}>
+            🎉 You're all set! Your Venue Plan is now active. All the leagues you own are covered.
+          </p>
+          <button
+            onClick={() => setVenueBanner(null)}
+            className="opacity-50 hover:opacity-80 flex-shrink-0 text-lg"
+            aria-label="Dismiss"
+          >✕</button>
+        </div>
+      )}
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="text-center py-16 px-4">
         <div
@@ -358,9 +416,13 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <Link to="/leagues/new" className="btn btn-primary w-full text-center">
-                Get Venue Plan →
-              </Link>
+              <button
+                onClick={handleVenueCheckout}
+                disabled={venueLoading}
+                className="btn btn-primary w-full text-center disabled:opacity-60"
+              >
+                {venueLoading ? 'Redirecting…' : 'Get Venue Plan →'}
+              </button>
               <p className="text-xs font-ui text-center mt-3" style={{ color: 'var(--color-text-secondary)' }}>
                 CAD. Cancel anytime. Taxes may apply.
               </p>
