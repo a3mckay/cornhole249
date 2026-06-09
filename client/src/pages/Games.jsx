@@ -8,6 +8,92 @@ import { useAuth } from '../hooks/useAuth';
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 
+function PendingGamesBanner({ user }) {
+  const [pending, setPending] = useState([]);
+  const [actioning, setActioning] = useState(null);
+
+  useEffect(() => {
+    if (!user) return;
+    gamesApi.pending().then(setPending).catch(() => {});
+  }, [user]);
+
+  if (!pending.length) return null;
+
+  const actionable = pending.filter((g) => g.can_approve);
+
+  const handleApprove = async (id) => {
+    setActioning(id);
+    try {
+      await gamesApi.approve(id);
+      setPending((prev) => prev.filter((g) => g.id !== id));
+    } catch (_) {}
+    finally { setActioning(null); }
+  };
+
+  const handleDispute = async (id) => {
+    setActioning(id);
+    try {
+      await gamesApi.dispute(id);
+      setPending((prev) => prev.map((g) => g.id === id ? { ...g, status: 'disputed', can_approve: false } : g));
+    } catch (_) {}
+    finally { setActioning(null); }
+  };
+
+  return (
+    <div
+      className="rounded-2xl p-4 mb-6 flex flex-col gap-3"
+      style={{ background: '#FEF3C7', border: '1px solid #FDE68A' }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="font-display text-base" style={{ color: '#92400E' }}>
+          ⏳ {actionable.length > 0 ? `${actionable.length} game${actionable.length !== 1 ? 's' : ''} awaiting your approval` : `${pending.length} pending game${pending.length !== 1 ? 's' : ''}`}
+        </span>
+      </div>
+      {pending.map((g) => {
+        const t1 = g.participants.filter((p) => p.team === 1);
+        const t2 = g.participants.filter((p) => p.team === 2);
+        const t1Score = t1[0]?.score ?? '?';
+        const t2Score = t2[0]?.score ?? '?';
+        const t1Names = t1.map((p) => p.display_name).join(' & ');
+        const t2Names = t2.map((p) => p.display_name).join(' & ');
+        return (
+          <div key={g.id} className="rounded-xl p-3 flex items-center justify-between gap-3" style={{ background: 'rgba(255,255,255,0.7)' }}>
+            <div className="flex-1 min-w-0">
+              <div className="font-ui text-sm font-semibold" style={{ color: '#78350F' }}>
+                {t1Names} <span className="font-normal opacity-70">vs</span> {t2Names}
+              </div>
+              <div className="font-ui text-sm tabular-nums" style={{ color: '#92400E' }}>
+                {t1Score} – {t2Score}
+                {g.status === 'disputed' && <span className="ml-2 text-xs font-semibold text-red-700">Disputed</span>}
+              </div>
+            </div>
+            {g.can_approve && (
+              <div className="flex gap-1.5 flex-shrink-0">
+                <button
+                  onClick={() => handleApprove(g.id)}
+                  disabled={actioning === g.id}
+                  className="text-xs font-ui font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-50"
+                  style={{ background: '#15803D' }}
+                >
+                  {actioning === g.id ? '…' : 'Approve'}
+                </button>
+                <button
+                  onClick={() => handleDispute(g.id)}
+                  disabled={actioning === g.id}
+                  className="text-xs font-ui font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50"
+                  style={{ background: 'var(--color-danger)', color: 'white' }}
+                >
+                  Dispute
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Games() {
   const { user } = useAuth();
   const [games, setGames] = useState([]);
@@ -63,6 +149,8 @@ export default function Games() {
           </Link>
         )}
       </div>
+
+      <PendingGamesBanner user={user} />
 
       {/* Date strip */}
       <div className="mb-5">

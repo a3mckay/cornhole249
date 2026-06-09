@@ -57,6 +57,21 @@ export const authApi = {
 
   deleteAccount: () => axios.delete('/auth/account', { withCredentials: true }).then((r) => r.data),
 
+  // PIPEDA right of access — triggers a JSON download of all stored personal data
+  downloadMyData: async () => {
+    const res = await fetch('/api/auth/my-data', { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to export data');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cornhole249-my-data.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   // Email verification
   verifyEmail: (token) =>
     axios.get(`/auth/verify-email/${token}`, { withCredentials: true }).then((r) => r.data),
@@ -68,6 +83,11 @@ export const authApi = {
     axios.post('/auth/forgot-password', { email }, { withCredentials: true }).then((r) => r.data),
   resetPassword: (token, password) =>
     axios.post('/auth/reset-password', { token, password }, { withCredentials: true }).then((r) => r.data),
+};
+
+// Digest preferences
+export const digestApi = {
+  resubscribe: () => api.post('/digest/resubscribe').then((r) => r.data),
 };
 
 // Users
@@ -86,6 +106,11 @@ export const gamesApi = {
   create: (data) => api.post(`${leagueBase()}/games`, data).then((r) => r.data),
   update: (id, data) => api.patch(`/games/${id}`, data).then((r) => r.data),  // admin only
   delete: (id) => api.delete(`/games/${id}`, {}).then((r) => r.data),         // admin only
+  pending: () => api.get(`${leagueBase()}/games/pending`).then((r) => r.data),
+  approve: (id) => api.post(`${leagueBase()}/games/${id}/approve`).then((r) => r.data),
+  dispute: (id) => api.post(`${leagueBase()}/games/${id}/dispute`).then((r) => r.data),
+  submissions: () => api.get(`${leagueBase()}/games/submissions`).then((r) => r.data),
+  retractSubmission: (id) => api.delete(`${leagueBase()}/games/submissions/${id}`).then((r) => r.data),
 };
 
 // Comments
@@ -165,11 +190,13 @@ export const adminApi = {
 
 // Leagues (global — not league-scoped)
 export const leaguesApi = {
+  browse: (params) => api.get('/leagues', { params }).then((r) => r.data),
   mine: () => api.get('/leagues/mine').then((r) => r.data),
   create: (data) => api.post('/leagues', data).then((r) => r.data),
   get: (slug) => api.get(`/leagues/${slug}`).then((r) => r.data),
   update: (slug, data) => api.patch(`/leagues/${slug}`, data).then((r) => r.data),
   members: (slug) => api.get(`/leagues/${slug}/members`).then((r) => r.data),
+  changeMemberRole: (slug, userId, role) => api.patch(`/leagues/${slug}/members/${userId}`, { role }).then((r) => r.data),
   removeMember: (slug, userId) => api.delete(`/leagues/${slug}/members/${userId}`).then((r) => r.data),
   generateCode: (slug) => api.post(`/leagues/${slug}/join-codes`).then((r) => r.data),
   // Invite token (private leagues)
@@ -190,6 +217,7 @@ export const leaguesApi = {
     return api.post(`/leagues/${slug}/logo`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
   },
   deleteLogo: (slug) => api.delete(`/leagues/${slug}/logo`).then((r) => r.data),
+  regenerateShortCode: (slug) => api.post(`/leagues/${slug}/short-code`).then((r) => r.data),
 };
 
 // Join / invite landing
@@ -198,16 +226,25 @@ export const joinApi = {
   // Token-based (private league invite links)
   getToken: (token) => api.get(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
   joinWithToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
+  // Short code (6-char reusable, direct join)
+  getShortCode: (code) => api.get(`/join/short/${encodeURIComponent(code)}`).then((r) => r.data),
+  joinWithShortCode: (code) => api.post(`/join/short/${encodeURIComponent(code)}`).then((r) => r.data),
+  // Aliases used by FindLeague
+  acceptToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
+  accept: (code) => api.post(`/join/${code}`).then((r) => r.data),
 };
 
 // Billing (Stripe Checkout + Customer Portal)
 export const billingApi = {
+  // Returns { venue: boolean } — whether the authenticated user has an active Venue Plan
+  status: () =>
+    api.get('/billing/status').then((r) => r.data),
   // Redirects to Stripe Checkout — call then window.location.href = data.url
   checkout: (leagueId, plan) =>
     api.post('/billing/checkout', { leagueId, plan }).then((r) => r.data),
-  // Redirects to Stripe Customer Portal
+  // Redirects to Stripe Customer Portal — omit leagueId for venue-plan sessions
   portal: (leagueId) =>
-    api.post('/billing/portal', { leagueId }).then((r) => r.data),
+    api.post('/billing/portal', leagueId ? { leagueId } : {}).then((r) => r.data),
 };
 
 // Admin — billing/plan grants

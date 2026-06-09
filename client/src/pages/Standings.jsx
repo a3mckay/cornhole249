@@ -94,6 +94,7 @@ export default function Standings() {
           shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/standings?type=${type}` : ''}
           title={`Cornhole249 Standings — ${type.toUpperCase()} ${season}`}
           text={`Live ${type.toUpperCase()} standings`}
+          entityType="standings"
         />
       </div>
 

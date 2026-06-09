@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { capture } from '../lib/analytics';
+import { useAuth } from '../hooks/useAuth';
+import { billingApi } from '../api';
 
 function PricingCard({ badge, name, price, period, note, features, cta, ctaTo, highlight }) {
   return (
@@ -69,6 +71,10 @@ const FAQS = [
     q: 'How do I cancel my subscription?',
     a: 'Cancel any time from your league settings. Your Pro access stays active until the end of the billing period. No questions, no friction.',
   },
+  {
+    q: 'What is the Venue plan?',
+    a: "The Venue plan is a single CAD $199/yr subscription that covers every league on your account — no per-league fees. It's designed for bars, rec centres, and organizers who run multiple league nights and don't want to pay separately for each one.",
+  },
 ];
 
 function FAQ() {
@@ -96,9 +102,65 @@ function FAQ() {
 }
 
 export default function Landing() {
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [venueLoading, setVenueLoading] = useState(false);
+  const [venueBanner, setVenueBanner] = useState(null);
+
   useEffect(() => { capture('landing_page_viewed'); }, []);
+
+  // POST to Stripe Checkout for the venue_yearly plan
+  const triggerVenueCheckout = async () => {
+    setVenueLoading(true);
+    try {
+      const { url } = await billingApi.checkout(null, 'venue_yearly');
+      window.location.href = url;
+    } catch (e) {
+      console.error('[Venue] checkout error', e);
+      setVenueLoading(false);
+    }
+  };
+
+  // Button handler — sends unauthenticated users to login first
+  const handleVenueCheckout = () => {
+    if (!user) {
+      navigate(`/login?returnTo=${encodeURIComponent('/?venue=checkout')}`);
+      return;
+    }
+    triggerVenueCheckout();
+  };
+
+  // Handle ?venue=success (Stripe return) and ?venue=checkout (post-login auto-trigger)
+  useEffect(() => {
+    const venueParam = searchParams.get('venue');
+    if (venueParam === 'success') {
+      setVenueBanner('success');
+      navigate('/', { replace: true });
+    } else if (venueParam === 'checkout' && !authLoading && user) {
+      triggerVenueCheckout();
+    }
+  }, [user, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="max-w-4xl mx-auto">
+
+      {/* ── Venue Plan success banner ─────────────────────────── */}
+      {venueBanner === 'success' && (
+        <div
+          className="mx-4 mt-6 rounded-xl px-5 py-4 flex items-center justify-between gap-4"
+          style={{ background: 'rgba(58,107,53,0.1)', border: '1px solid rgba(58,107,53,0.3)' }}
+        >
+          <p className="font-ui text-sm font-semibold" style={{ color: 'var(--color-primary)' }}>
+            🎉 You're all set! Your Venue Plan is now active. All the leagues you own are covered.
+          </p>
+          <button
+            onClick={() => setVenueBanner(null)}
+            className="opacity-50 hover:opacity-80 flex-shrink-0 text-lg"
+            aria-label="Dismiss"
+          >✕</button>
+        </div>
+      )}
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="text-center py-16 px-4">
         <div
@@ -129,7 +191,7 @@ export default function Landing() {
 
       {/* ── Stats strip ──────────────────────────────────────────── */}
       <section
-        className="grid grid-cols-3 gap-4 mb-16 px-4 py-6 rounded-[20px]"
+        className="grid grid-cols-3 gap-1 sm:gap-4 mb-16 px-4 py-6 rounded-[20px]"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', boxShadow: '4px 4px 0 var(--color-border)' }}
       >
         {[
@@ -138,7 +200,7 @@ export default function Landing() {
           { n: 'Unlimited', label: 'games to log' },
         ].map(({ n, label }) => (
           <div key={label} className="text-center">
-            <div className="font-display text-3xl md:text-4xl" style={{ color: 'var(--color-primary)' }}>{n}</div>
+            <div className="font-display text-xl sm:text-3xl md:text-4xl" style={{ color: 'var(--color-primary)' }}>{n}</div>
             <div className="font-ui text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>{label}</div>
           </div>
         ))}
@@ -207,7 +269,7 @@ export default function Landing() {
       </section>
 
       {/* ── Pricing ──────────────────────────────────────────────── */}
-      <section className="mb-16 px-4" id="pricing">
+      <section className="mb-10 px-4" id="pricing">
         <h2 className="font-display text-3xl text-center mb-2" style={{ color: 'var(--color-text-primary)' }}>
           Simple, honest pricing
         </h2>
@@ -282,6 +344,90 @@ export default function Landing() {
             cta="Buy a pass"
             ctaTo="/leagues/new"
           />
+        </div>
+      </section>
+
+      {/* ── Venue pricing ────────────────────────────────────────── */}
+      <section className="mb-16 px-4" id="venue">
+        <div
+          className="rounded-[20px] p-8"
+          style={{ background: 'var(--color-surface)', border: '2px solid var(--color-border)', boxShadow: '4px 4px 0 var(--color-border)' }}
+        >
+          <div className="flex flex-col md:flex-row gap-8 items-start">
+            {/* Left: copy */}
+            <div className="flex-1">
+              <div
+                className="inline-block px-3 py-1 rounded-full text-xs font-ui font-bold mb-4"
+                style={{ background: 'rgba(58,107,53,0.1)', color: 'var(--color-primary)' }}
+              >
+                For establishments
+              </div>
+              <h2 className="font-display text-3xl mb-3" style={{ color: 'var(--color-text-primary)' }}>
+                Running league nights at your venue?
+              </h2>
+              <p className="font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                One flat yearly subscription covers every league you run — no per-league fees, no surprises.
+                Perfect for bars, recreation centres, and community organizations that host multiple league nights.
+              </p>
+              <ul className="flex flex-col gap-2 mb-6">
+                {[
+                  { icon: '🍺', text: 'Bars & pubs running weekly cornhole nights' },
+                  { icon: '🏢', text: 'Recreation centres with multiple groups' },
+                  { icon: '🌐', text: 'Community orgs managing several leagues at once' },
+                ].map(({ icon, text }) => (
+                  <li key={text} className="flex items-center gap-3 font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                    <span>{icon}</span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Right: plan card */}
+            <div
+              className="w-full md:w-72 flex-shrink-0 rounded-[16px] p-6 flex flex-col"
+              style={{ background: 'var(--color-bg)', border: '2px solid var(--color-primary)' }}
+            >
+              <div
+                className="text-xs font-ui font-bold px-3 py-1 rounded-full self-start mb-3"
+                style={{ background: 'var(--color-primary)', color: '#fff' }}
+              >
+                Venue
+              </div>
+              <div className="mb-1">
+                <span className="font-display text-4xl" style={{ color: 'var(--color-text-primary)' }}>CAD $199</span>
+                <span className="font-ui text-sm ml-1" style={{ color: 'var(--color-text-secondary)' }}>/ year</span>
+              </div>
+              <p className="font-ui text-xs mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+                One account, unlimited leagues
+              </p>
+              <ul className="flex flex-col gap-2 mb-6 flex-1">
+                {[
+                  'Unlimited leagues',
+                  'Unlimited players per league',
+                  'Everything in Pro',
+                  'Tournaments & brackets',
+                  'Full stats & CSV export',
+                  'Single subscription for all leagues',
+                ].map((f) => (
+                  <li key={f} className="flex items-start gap-2 font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                    <span className="mt-0.5 flex-shrink-0" style={{ color: 'var(--color-primary)' }}>✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={handleVenueCheckout}
+                disabled={venueLoading}
+                className="btn btn-primary w-full text-center disabled:opacity-60"
+              >
+                {venueLoading ? 'Redirecting…' : 'Get Venue Plan →'}
+              </button>
+              <p className="text-xs font-ui text-center mt-3" style={{ color: 'var(--color-text-secondary)' }}>
+                CAD. Cancel anytime. Taxes may apply.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 

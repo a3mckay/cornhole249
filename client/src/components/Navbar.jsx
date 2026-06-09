@@ -238,6 +238,13 @@ export default function Navbar() {
                         </button>
                       )}
                       <button
+                        onClick={() => { navigate('/find-league'); setDropdownOpen(false); }}
+                        className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
+                        🔍 Find a league
+                      </button>
+                      <button
                         onClick={() => { navigate('/leagues/new'); setDropdownOpen(false); }}
                         className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
                         style={{ color: 'var(--color-text-primary)' }}
@@ -340,6 +347,10 @@ export default function Navbar() {
                     )}
                   </button>
                 )}
+                <button onClick={() => { navigate('/find-league'); setMenuOpen(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-amber-300 hover:bg-white/10 transition-colors">
+                  🔍 Find a league
+                </button>
                 <button onClick={() => { navigate('/leagues/new'); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-amber-300 hover:bg-white/10 transition-colors">
                   + Create new league

@@ -174,7 +174,12 @@ export default function GameNew({ onAchievement }) {
       });
 
       capture('game_logged', { game_type: gameType });
-      navigate(`/games/${game.id}`);
+      // pending = submitted to both_submit queue, no game id yet
+      if (game.pending) {
+        navigate('/games', { state: { pendingSubmission: true } });
+      } else {
+        navigate(`/games/${game.id}`);
+      }
     } catch (err) {
       setErrors([err.response?.data?.error || 'Failed to submit game']);
     } finally {

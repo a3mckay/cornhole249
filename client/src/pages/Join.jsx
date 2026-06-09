@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { joinApi, leaguesApi } from '../api';
+import { capture } from '../lib/analytics';
 import { useAuth } from '../hooks/useAuth';
 
 function setRefCookie(token) {
@@ -162,6 +163,7 @@ function TokenJoin({ token }) {
     try {
       const { slug } = await joinApi.joinWithToken(token);
       await refreshUser();
+      capture('invite_accepted', { league_slug: slug });
       setJoined(slug); // store slug so the confirmation card can navigate
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to join league');

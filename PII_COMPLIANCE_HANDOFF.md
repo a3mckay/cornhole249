@@ -2,7 +2,7 @@
 
 **Session date:** June 3, 2026  
 **Branch:** `claude/pii-storage-audit-aDosZ`  
-**Status:** Minimum compliance work complete. Further hardening noted but not yet done.
+**Status:** ✅ Complete — shipped to production June 3, 2026. `BACKUP_ENCRYPTION_KEY` set in Railway. Further hardening (rate limiting, Sentry scrubbing, data export) noted but deferred.
 
 ---
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { trashTalkApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { capture } from '../lib/analytics';
 import { Link } from 'react-router-dom';
 
 const MAX_CHARS = 280;
@@ -26,6 +27,7 @@ export default function TrashTalk() {
     setSubmitting(true);
     try {
       const post = await trashTalkApi.post(text.trim());
+      capture('trash_talk_posted');
       setPosts((p) => [post, ...p]);
       setText('');
     } catch (err) {

@@ -1,50 +1,74 @@
 /**
- * Email sending via Nodemailer (Gmail SMTP).
+ * Email sending via Gmail HTTP API (googleapis).
+ *
+ * Uses OAuth2 — no SMTP, no port-blocking issues on Railway.
  *
  * Required env vars:
- *   GMAIL_USER      — the Gmail address to send from (e.g. noreply.cornhole249@gmail.com)
- *   GMAIL_APP_PASS  — a Gmail App Password (not your regular password)
- *                     Generate one at: myaccount.google.com/apppasswords
- *   APP_URL         — public base URL for links (e.g. https://www.cornhole249.com)
+ *   GMAIL_USER            — the Gmail address to send from (e.g. noreply.cornhole249@gmail.com)
+ *   GMAIL_REFRESH_TOKEN   — long-lived OAuth2 refresh token for that account
+ *   GOOGLE_CLIENT_ID      — OAuth2 client ID (same one used for Google login)
+ *   GOOGLE_CLIENT_SECRET  — OAuth2 client secret
+ *   APP_URL               — public base URL for links (e.g. https://www.cornhole249.com)
  *
- * If GMAIL_USER is not set, emails are logged to the console instead
- * (safe for local dev without credentials).
- *
- * To create a Gmail App Password:
- *   1. Go to myaccount.google.com → Security → 2-Step Verification (must be enabled)
- *   2. Search for "App passwords" → create one named "Cornhole249"
- *   3. Copy the 16-char password — that's GMAIL_APP_PASS
+ * If GMAIL_USER or GMAIL_REFRESH_TOKEN is not set, emails are logged to the
+ * console instead (safe for local dev without credentials).
  */
 
-const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 
 const APP_URL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
-let _transporter = null;
-
-function getTransporter() {
-  if (!_transporter) {
-    _transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASS,
-      },
-    });
-  }
-  return _transporter;
+/**
+ * Encode a mail header value that may contain non-ASCII characters.
+ * Plain ASCII passes through unchanged; anything else is wrapped in
+ * RFC 2047 UTF-8/Base64 encoding so mail clients display it correctly.
+ */
+function encodeHeader(value) {
+  if (/^[\x00-\x7F]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
 }
 
-async function sendEmail({ to, subject, html }) {
-  if (!process.env.GMAIL_USER) {
-    console.log(`[Email] Would send subject="${subject}" (GMAIL_USER not configured — recipient suppressed)`);
+function getGmailClient() {
+  const auth = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+  );
+  auth.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+  return google.gmail({ version: 'v1', auth });
+}
+
+/**
+ * Send an email via the Gmail REST API (HTTPS, port 443).
+ * @param {object} opts
+ * @param {string} opts.to
+ * @param {string} opts.subject
+ * @param {string} opts.html
+ * @param {string} [opts.replyTo]
+ */
+async function sendEmail({ to, subject, html, replyTo }) {
+  if (!process.env.GMAIL_USER || !process.env.GMAIL_REFRESH_TOKEN) {
+    console.log(`[Email] Would send subject="${subject}" (GMAIL_USER/GMAIL_REFRESH_TOKEN not set)`);
     return;
   }
-  await getTransporter().sendMail({
-    from: `Cornhole249 <${process.env.GMAIL_USER}>`,
-    to,
-    subject,
-    html,
+
+  const from = `Cornhole249 <${process.env.GMAIL_USER}>`;
+  const headerLines = [
+    `From: ${encodeHeader(from)}`,
+    `To: ${to}`,
+    `Subject: ${encodeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    ...(replyTo ? [`Reply-To: ${replyTo}`] : []),
+  ];
+
+  const raw = Buffer.from(
+    headerLines.join('\r\n') + '\r\n\r\n' + html,
+  ).toString('base64url');
+
+  const gmail = getGmailClient();
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: { raw },
   });
 }
 
@@ -188,6 +212,36 @@ async function sendProWelcomeEmail({ to, userName, leagueName, leagueUrl }) {
       </p>
       <p style="font-family:sans-serif;color:#888;font-size:12px">
         Manage or cancel your subscription any time from League Settings.
+      </p>
+    `,
+  });
+}
+
+/**
+ * Welcome email for a new Venue Plan subscription (account-level, covers all owned leagues).
+ */
+async function sendVenueWelcomeEmail({ to, userName }) {
+  const APP_URL_LOCAL = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+  await sendEmail({
+    to,
+    subject: '🎉 Welcome to the Venue Plan — every league you own is covered',
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        You're now on the Cornhole249 <strong>Venue Plan</strong>.
+        Every league you own is fully unlocked — no per-league fees, no surprises.
+      </p>
+      <ul style="font-family:sans-serif;padding-left:1.2em;line-height:1.8">
+        <li>🏟️ All your leagues covered under one subscription</li>
+        <li>📊 Full stats &amp; analytics on every league</li>
+        <li>🏆 Tournament brackets, unlimited players, CSV export</li>
+        <li>♾️ Create as many new leagues as you need</li>
+      </ul>
+      <p style="font-family:sans-serif">
+        <a href="${APP_URL_LOCAL}/leagues/new" style="color:#3A6B35;font-weight:bold">Create a new league →</a>
+      </p>
+      <p style="font-family:sans-serif;color:#888;font-size:12px">
+        Manage or cancel your Venue Plan subscription any time from your league settings.
       </p>
     `,
   });
@@ -396,6 +450,81 @@ async function sendGraceWarningEmail({ to, userName, leagueName, leagueUrl, grac
   });
 }
 
+/**
+ * Sent ~11 months after a Weekend Pass purchase as a re-engagement nudge.
+ * Reminds the owner what they ran last year and invites them to do it again.
+ */
+async function sendWeekendPassAnniversaryEmail({ to, userName, leagueName, leagueUrl, tournamentName }) {
+  const eventLabel = tournamentName || leagueName;
+  await sendEmail({
+    to,
+    subject: `Run it back? You ran ${eventLabel} a year ago`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        About a year ago you ran <strong>${eventLabel}</strong> on Cornhole249.
+        If there's another tournament, bachelor party, or backyard showdown coming up —
+        your league is still here, waiting.
+      </p>
+      <table style="font-family:sans-serif;border-collapse:collapse;width:100%;max-width:400px">
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=weekend_pass" style="display:inline-block;padding:10px 20px;background:#3A6B35;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Get another Weekend Pass — CAD $12
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0 6px">
+            <a href="${leagueUrl}" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              View ${leagueName} →
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="font-family:sans-serif;color:#888;font-size:12px;margin-top:16px">
+        All your old game history is still there. Nothing was deleted.
+      </p>
+    `,
+  });
+}
+
+/**
+ * Sent once per year on a Pro subscription's anniversary. Celebrates the
+ * league's year and reinforces the value of the subscription.
+ */
+async function sendProAnnualRecapEmail({ to, userName, leagueName, leagueUrl, stats }) {
+  const { totalGames = 0, topPlayer = null, totalPlayers = 0 } = stats || {};
+  const topPlayerLine = topPlayer
+    ? `<li style="font-family:sans-serif">🏅 Best record: <strong>${topPlayer.name}</strong> (${topPlayer.wins}–${topPlayer.losses})</li>`
+    : '';
+  await sendEmail({
+    to,
+    subject: `${leagueName}'s year in review — happy anniversary 🎉`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        It's been a full year since <strong>${leagueName}</strong> went Pro on Cornhole249.
+        Here's what your crew got up to:
+      </p>
+      <ul style="font-family:sans-serif;padding-left:1.2em;line-height:2">
+        <li>🎯 <strong>${totalGames}</strong> games logged</li>
+        <li>👥 <strong>${totalPlayers}</strong> active players</li>
+        ${topPlayerLine}
+      </ul>
+      <p style="font-family:sans-serif">
+        Thanks for being a Pro member. The board is judging — keep playing.
+      </p>
+      <p style="font-family:sans-serif">
+        <a href="${leagueUrl}" style="color:#3A6B35;font-weight:bold">View ${leagueName} →</a>
+      </p>
+      <p style="font-family:sans-serif;color:#888;font-size:12px">
+        Your subscription renews automatically. Manage it any time from League Settings.
+      </p>
+    `,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -403,11 +532,14 @@ module.exports = {
   sendJoinApprovedEmail,
   sendJoinDeniedEmail,
   sendProWelcomeEmail,
+  sendVenueWelcomeEmail,
   sendWeekendPassWelcomeEmail,
   sendWeekendPassWarningEmail,
   sendWeekendPassExpiredEmail,
   sendGraceStartEmail,
   sendGraceWarningEmail,
+  sendWeekendPassAnniversaryEmail,
+  sendProAnnualRecapEmail,
   sendContactEmail,
   sendDigestEmail,
 };
@@ -422,10 +554,13 @@ module.exports = {
  * @param {object} opts.league         — { id, slug, name }
  * @param {object[]} opts.games        — assembled game objects (see digest.js)
  * @param {object} opts.highlights     — { streakLeader, biggestMargin, topPlayer, topWins }
- * @param {object[]} opts.standings    — [ { rank, name, wins, losses, gp, win_pct } ]
+ * @param {object[]} opts.standings1v1 — top-5 1v1 standings [ { rank, name, wins, losses, gp, win_pct } ]
+ * @param {object[]} opts.standings2v2 — top-5 2v2 standings
+ * @param {string|null} opts.preheader — LLM-generated inbox preview (~90 chars), or null
+ * @param {string|null} opts.intro     — LLM-generated intro paragraph, or null
  * @param {string} opts.weekLabel      — "Jun 2 – Jun 8"
  */
-async function sendDigestEmail({ to, name, userId, league, games, highlights, standings, weekLabel }) {
+async function sendDigestEmail({ to, name, userId, league, games, highlights, standings1v1, standings2v2, preheader, intro, weekLabel }) {
   const { makeUnsubscribeToken } = require('../routes/digest');
   const token     = makeUnsubscribeToken(userId);
   const unsubUrl  = `${APP_URL}/unsubscribe?uid=${userId}&token=${token}`;
@@ -437,7 +572,9 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     new Date(d).toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' });
 
   function playerLabel(team) {
-    return team.map((p) => p.nickname || p.display_name).join(' & ');
+    return team.map((p) =>
+      p.nickname ? `${p.display_name} &#8220;${p.nickname}&#8221;` : p.display_name
+    ).join(' &amp; ');
   }
 
   function gameRow(game) {
@@ -455,7 +592,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
         <td style="padding:8px 0;border-bottom:1px solid #e8e0d0;font-family:sans-serif;font-size:14px;color:#3c2a1e">
           <strong>${playerLabel(winTeam)}</strong>
           <span style="color:#3a6b35;font-weight:700;margin:0 6px">${winScore}</span>
-          <span style="color:#888">–</span>
+          <span style="color:#888">&#8211;</span>
           <span style="color:#a06040;font-weight:700;margin:0 6px">${loseScore}</span>
           ${playerLabel(loseTeam)}
         </td>
@@ -474,6 +611,21 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
         <td style="padding:6px 8px;font-family:sans-serif;font-size:14px;color:#a06040;text-align:center">${s.losses}</td>
         <td style="padding:6px 8px;font-family:sans-serif;font-size:13px;color:#888;text-align:center">${s.win_pct}%</td>
       </tr>`;
+  }
+
+  function standingsTable(rows) {
+    if (!rows || !rows.length) return '<p style="font-family:sans-serif;font-size:13px;color:#888;margin:0">No games recorded yet.</p>';
+    return `
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <tr style="background:#f5efe0">
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">#</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:left">Player</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">W</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">L</th>
+          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">Win%</th>
+        </tr>
+        ${rows.map(standingRow).join('')}
+      </table>`;
   }
 
   // ── Highlights ─────────────────────────────────────────────────────────────
@@ -501,7 +653,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     highlightRows += `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #e8e0d0;font-family:sans-serif;font-size:14px;color:#3c2a1e">
-          🎯 Biggest win: <strong>${winName}</strong> won ${biggestMargin.winScore}–${biggestMargin.loseScore} (${fmtDate(biggestMargin.played_at)})
+          💥 Biggest win: <strong>${winName}</strong> won ${biggestMargin.winScore}&#8211;${biggestMargin.loseScore} (${fmtDate(biggestMargin.played_at)})
         </td>
       </tr>`;
   }
@@ -520,10 +672,18 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
   const overflowCount = games.length - shownGames.length;
   const gamesHtml = shownGames.map(gameRow).join('');
   const overflowRow = overflowCount > 0
-    ? `<tr><td colspan="2" style="padding:8px 0;font-family:sans-serif;font-size:13px;color:#888">+ ${overflowCount} more game${overflowCount !== 1 ? 's' : ''} — <a href="${leagueUrl}/games" style="color:#3a6b35">view all</a></td></tr>`
+    ? `<tr><td colspan="2" style="padding:8px 0;font-family:sans-serif;font-size:13px;color:#888">+ ${overflowCount} more game${overflowCount !== 1 ? 's' : ''} &#8212; <a href="${leagueUrl}/games" style="color:#3a6b35">view all</a></td></tr>`
     : '';
 
-  const standingsHtml = standings.map(standingRow).join('');
+  // ── Preheader (hidden inbox preview text) ─────────────────────────────────
+  const preheaderHtml = preheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#fff">${preheader}&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;</div>`
+    : '';
+
+  // ── Intro paragraph ────────────────────────────────────────────────────────
+  const introHtml = intro
+    ? `<p style="margin:0 0 24px;font-family:sans-serif;font-size:15px;color:#3c2a1e;line-height:1.5">${intro}</p>`
+    : '';
 
   // ── Email body ─────────────────────────────────────────────────────────────
   const html = `
@@ -531,6 +691,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f5efe0">
+${preheaderHtml}
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5efe0">
 <tr><td align="center" style="padding:24px 16px">
 
@@ -539,19 +700,29 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
 
     <!-- Header -->
     <tr>
-      <td style="background:#4a3728;padding:28px 28px 20px;text-align:center">
-        <p style="margin:0 0 4px;font-family:sans-serif;font-size:13px;font-weight:600;color:rgba(255,255,255,0.6);letter-spacing:0.05em;text-transform:uppercase">Weekly Digest</p>
-        <h1 style="margin:0 0 4px;font-family:Georgia,serif;font-size:26px;color:#fff;font-weight:normal">${league.name}</h1>
+      <td style="background:#3a6b35;padding:6px 28px;text-align:center">
+        <p style="margin:0;font-family:sans-serif;font-size:11px;font-weight:700;color:rgba(255,255,255,0.75);letter-spacing:0.12em;text-transform:uppercase">Weekly Digest</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="background:#4a3728;padding:20px 28px 20px;text-align:center">
+        <h1 style="margin:0 0 4px;font-family:Georgia,serif;font-size:28px;color:#fff;font-weight:normal">${league.name}</h1>
         <p style="margin:0;font-family:sans-serif;font-size:13px;color:rgba(255,255,255,0.55)">${weekLabel}</p>
+        <!-- String lights -->
+        <p style="margin:16px 0 0;font-size:0;line-height:16px;text-align:center">
+          <span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#e74c3c;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#f1c40f;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#2ecc71;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#3498db;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#9b59b6;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#e74c3c;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#f1c40f;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#2ecc71;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;border-radius:5px;background:#3498db;vertical-align:middle"></span><span style="display:inline-block;width:18px;height:2px;background:rgba(255,255,255,0.25);vertical-align:middle"></span>
+        </p>
       </td>
     </tr>
 
     <!-- Body -->
     <tr><td style="padding:28px">
 
+      ${introHtml}
+
       <!-- Games -->
       <h2 style="margin:0 0 12px;font-family:Georgia,serif;font-size:18px;color:#3c2a1e;font-weight:normal">
-        🎳 This Week's Games <span style="font-family:sans-serif;font-size:13px;color:#888;font-weight:400">(${games.length})</span>
+        🎯 This Week&#8217;s Games <span style="font-family:sans-serif;font-size:13px;color:#888;font-weight:400">(${games.length})</span>
       </h2>
       <table width="100%" cellpadding="0" cellspacing="0">
         ${gamesHtml}
@@ -568,28 +739,34 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
       </table>
       ` : ''}
 
-      <!-- Standings -->
-      <h2 style="margin:28px 0 12px;font-family:Georgia,serif;font-size:18px;color:#3c2a1e;font-weight:normal">
+      <!-- Standings: 1v1 -->
+      <h2 style="margin:28px 0 4px;font-family:Georgia,serif;font-size:18px;color:#3c2a1e;font-weight:normal">
         🏆 Standings
       </h2>
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-        <tr style="background:#f5efe0">
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">#</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:left">Player</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">W</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">L</th>
-          <th style="padding:6px 8px;font-family:sans-serif;font-size:11px;color:#888;font-weight:600;text-align:center">Win%</th>
-        </tr>
-        ${standingsHtml}
-      </table>
+      <p style="margin:0 0 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#888;letter-spacing:0.08em;text-transform:uppercase">1v1</p>
+      ${standingsTable(standings1v1)}
+      <p style="margin:8px 0 0;font-family:sans-serif;font-size:13px">
+        <a href="${leagueUrl}/standings" style="color:#3a6b35;text-decoration:none;font-weight:600">View full standings &#8594;</a>
+      </p>
+
+      ${(standings2v2 && standings2v2.length) ? `
+      <!-- Standings: 2v2 -->
+      <p style="margin:20px 0 10px;font-family:sans-serif;font-size:12px;font-weight:700;color:#888;letter-spacing:0.08em;text-transform:uppercase">2v2</p>
+      ${standingsTable(standings2v2)}
+      <p style="margin:8px 0 0;font-family:sans-serif;font-size:13px">
+        <a href="${leagueUrl}/standings?type=2v2" style="color:#3a6b35;text-decoration:none;font-weight:600">View full standings &#8594;</a>
+      </p>
+      ` : ''}
 
       <!-- CTA -->
-      <div style="margin-top:28px;text-align:center">
-        <a href="${leagueUrl}"
-           style="display:inline-block;padding:12px 28px;background:#3a6b35;color:#fff;font-family:sans-serif;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px">
-          Jump into ${league.name} →
-        </a>
-      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px">
+        <tr><td style="border-top:1px solid #e8e0d0;padding-top:28px;text-align:center">
+          <a href="${leagueUrl}"
+             style="display:inline-block;padding:13px 28px 12px;background:#3a6b35;color:#fff;font-family:sans-serif;font-size:15px;font-weight:600;text-decoration:none;border-radius:8px;line-height:1;white-space:nowrap">
+            Jump into ${league.name}&nbsp;&#10095;
+          </a>
+        </td></tr>
+      </table>
 
     </td></tr>
 
@@ -597,11 +774,11 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
     <tr>
       <td style="background:#f5efe0;padding:20px 28px;border-top:1px solid #e8e0d0;text-align:center">
         <p style="margin:0 0 6px;font-family:sans-serif;font-size:12px;color:#888">
-          You're receiving this because you're a member of <strong>${league.name}</strong> on Cornhole249.
+          You&#8217;re receiving this because you&#8217;re a member of <strong>${league.name}</strong> on Cornhole249.
         </p>
         <p style="margin:0;font-family:sans-serif;font-size:12px;color:#aaa">
           <a href="${unsubUrl}" style="color:#888;text-decoration:underline">Unsubscribe</a>
-          ${address ? ` &nbsp;·&nbsp; ${address}` : ''}
+          ${address ? ` &nbsp;&middot;&nbsp; ${address}` : ''}
         </p>
       </td>
     </tr>
@@ -615,7 +792,7 @@ async function sendDigestEmail({ to, name, userId, league, games, highlights, st
 
   await sendEmail({
     to,
-    subject: `Cornhole249 Weekly — ${league.name} · ${weekLabel}`,
+    subject: `${league.name} · Weekly Digest · ${weekLabel}`,
     html,
   });
 }
@@ -631,10 +808,9 @@ async function sendContactEmail({ replyTo, subject, body, userId }) {
   }
   const userLine = userId ? `<p style="color:#666;font-size:12px;margin:0 0 16px">Submitted by user ID ${userId}</p>` : '';
   const safeBody = body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  await getTransporter().sendMail({
-    from: `Cornhole249 <${process.env.GMAIL_USER}>`,
+  await sendEmail({
     to: CONTACT_TO,
-    replyTo: replyTo,
+    replyTo,
     subject: `[Cornhole249 Contact] ${subject}`,
     html: `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">

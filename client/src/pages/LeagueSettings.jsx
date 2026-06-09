@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { leaguesApi, billingApi } from '../api';
+import { leaguesApi, billingApi, digestApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
 import UpgradeModal from '../components/UpgradeModal';
@@ -66,12 +66,31 @@ export default function LeagueSettings() {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState(null); // eslint-disable-line no-unused-vars
 
-  // Member removal
+  // Short code
+  const [shortCode, setShortCode] = useState(null);
+  const [shortCodeCopied, setShortCodeCopied] = useState(false);
+  const [shortCodeRegenerating, setShortCodeRegenerating] = useState(false);
+
+  // Member removal / role change
   const [removingId, setRemovingId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const [changingRoleId, setChangingRoleId] = useState(null);
+
+  // Score & tournament controls
+  const [scoreSubmitPolicy, setScoreSubmitPolicy] = useState('all_members');
+  const [tournamentCreatePolicy, setTournamentCreatePolicy] = useState('admins_only');
+  const [scoreSubmitAllowedIds, setScoreSubmitAllowedIds] = useState([]);
+  const [tournamentCreateAllowedIds, setTournamentCreateAllowedIds] = useState([]);
+  const [scoreVerifyMode, setScoreVerifyMode] = useState('immediate');
+  const [controlsSaving, setControlsSaving] = useState(false);
+  const [controlsSuccess, setControlsSuccess] = useState(false);
+  const [controlsError, setControlsError] = useState('');
 
   // PWA install prompt
   const { canInstall, isIos, isStandalone, promptInstall } = useInstallPrompt();
+
+  // Digest resubscribe
+  const [resubscribing, setResubscribing] = useState(false);
 
   // Billing
   const { leagueId, plan } = useLeague();
@@ -79,6 +98,7 @@ export default function LeagueSettings() {
   const [renewLoading, setRenewLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [exportLoading, setExportLoading] = useState(null);
+  const [venueActive, setVenueActive] = useState(false);
 
   // Grace period — manage player access
   const [graceKeep, setGraceKeep] = useState(null); // Set of user IDs to keep; null = not yet initialised
@@ -101,6 +121,16 @@ export default function LeagueSettings() {
     setPortalLoading(true);
     try {
       const { url } = await billingApi.portal(leagueId);
+      window.location.href = url;
+    } catch {
+      setPortalLoading(false);
+    }
+  };
+
+  const handleVenuePortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { url } = await billingApi.portal(null); // account-level, no leagueId
       window.location.href = url;
     } catch {
       setPortalLoading(false);
@@ -263,12 +293,19 @@ export default function LeagueSettings() {
         leaguesApi.get(slug),
         leaguesApi.members(slug),
       ]);
+      billingApi.status().then((s) => setVenueActive(!!s.venue)).catch(() => {});
       setLeague(leagueData);
       setMembers(membersData);
       setName(leagueData.name);
       setTagline(leagueData.tagline || '');
       setIsPublic(!!leagueData.is_public);
       setRules(leagueData.rules || 'hamilton');
+      setScoreSubmitPolicy(leagueData.score_submit_policy || 'all_members');
+      setTournamentCreatePolicy(leagueData.tournament_create_policy || 'admins_only');
+      try { setScoreSubmitAllowedIds(JSON.parse(leagueData.score_submit_allowed_ids || '[]')); } catch (_) {}
+      try { setTournamentCreateAllowedIds(JSON.parse(leagueData.tournament_create_allowed_ids || '[]')); } catch (_) {}
+      setScoreVerifyMode(leagueData.score_verify_mode || 'immediate');
+      setShortCode(leagueData.short_code || null);
       // Custom rules
       if (leagueData.custom_rules_json) {
         setCustomRules({ ...DEFAULT_CUSTOM_RULES, ...leagueData.custom_rules_json });
@@ -395,6 +432,58 @@ export default function LeagueSettings() {
       setRemovingId(null);
       setConfirmRemove(null);
     }
+  };
+
+  const handleRoleChange = async (memberId, newRole) => {
+    setChangingRoleId(memberId);
+    try {
+      await leaguesApi.changeMemberRole(slug, memberId, newRole);
+      setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, role: newRole } : m));
+    } catch (_) {
+      // Silent fail
+    } finally {
+      setChangingRoleId(null);
+    }
+  };
+
+  const handleControlsSave = async () => {
+    setControlsSaving(true);
+    setControlsError('');
+    setControlsSuccess(false);
+    try {
+      await leaguesApi.update(slug, {
+        score_submit_policy: scoreSubmitPolicy,
+        tournament_create_policy: tournamentCreatePolicy,
+        score_submit_allowed_ids: scoreSubmitAllowedIds,
+        tournament_create_allowed_ids: tournamentCreateAllowedIds,
+        score_verify_mode: scoreVerifyMode,
+      });
+      setControlsSuccess(true);
+      setTimeout(() => setControlsSuccess(false), 2500);
+    } catch (e) {
+      setControlsError(e.response?.data?.error || 'Failed to save');
+    } finally {
+      setControlsSaving(false);
+    }
+  };
+
+  const handleShortCodeCopy = () => {
+    if (!shortCode) return;
+    const url = `${window.location.origin}/find-league?code=${shortCode}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShortCodeCopied(true);
+      setTimeout(() => setShortCodeCopied(false), 2000);
+    });
+  };
+
+  const handleShortCodeRegenerate = async () => {
+    if (!window.confirm('Generate a new code? The old code will stop working immediately.')) return;
+    setShortCodeRegenerating(true);
+    try {
+      const { short_code } = await leaguesApi.regenerateShortCode(slug);
+      setShortCode(short_code);
+    } catch (_) {}
+    finally { setShortCodeRegenerating(false); }
   };
 
   if (loading) {
@@ -525,10 +614,32 @@ export default function LeagueSettings() {
       {/* Billing */}
       <div className="card p-6">
         <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
-          {plan === 'free' ? '⭐ Plan' : '🌟 Plan'}
+          {plan === 'free' && !venueActive ? '⭐ Plan' : '🌟 Plan'}
         </h2>
 
-        {plan === 'weekend_pass' ? (
+        {venueActive ? (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-xs font-ui font-bold px-2.5 py-1 rounded-full uppercase tracking-wider"
+                style={{ background: 'rgba(58,107,53,0.12)', border: '1px solid rgba(58,107,53,0.3)', color: 'var(--color-primary)' }}
+              >
+                Venue Plan
+              </span>
+              <span className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+                All your leagues are covered
+              </span>
+            </div>
+            <button
+              onClick={handleVenuePortal}
+              disabled={portalLoading}
+              className="btn text-sm px-4 py-2 disabled:opacity-50"
+              style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+            >
+              {portalLoading ? 'Redirecting…' : 'Manage Venue subscription'}
+            </button>
+          </div>
+        ) : plan === 'weekend_pass' ? (
           <div className="flex flex-col gap-4">
             {/* Status row */}
             <div className="flex items-center gap-3">
@@ -800,14 +911,14 @@ export default function LeagueSettings() {
                   key={value}
                   type="button"
                   onClick={() => {
-                    if (pro && plan === 'free') { setShowUpgrade(true); return; }
+                    if (pro && plan === 'free' && !venueActive) { setShowUpgrade(true); return; }
                     setRules(value);
                   }}
                   className="flex-1 min-w-[90px] flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-left transition-all"
                   style={{
                     borderColor: rules === value ? 'var(--color-primary)' : 'var(--color-border)',
                     background: rules === value ? 'rgba(58,107,53,0.07)' : 'var(--color-bg)',
-                    opacity: pro && plan === 'free' ? 0.6 : 1,
+                    opacity: pro && plan === 'free' && !venueActive ? 0.6 : 1,
                   }}
                 >
                   <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
@@ -971,7 +1082,7 @@ export default function LeagueSettings() {
           <h2 className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>
             🎨 Custom Theme
           </h2>
-          {plan === 'free' && (
+          {plan === 'free' && !venueActive && (
             <button
               onClick={() => setShowUpgrade(true)}
               className="text-xs font-ui font-semibold px-2.5 py-1 rounded-full"
@@ -982,7 +1093,7 @@ export default function LeagueSettings() {
           )}
         </div>
 
-        {plan === 'free' ? (
+        {plan === 'free' && !venueActive ? (
           <div className="text-center py-6">
             <p className="font-ui text-sm mb-3" style={{ color: 'var(--color-text-secondary)' }}>
               Set your league colours and logo with Pro.
@@ -1111,6 +1222,40 @@ export default function LeagueSettings() {
           <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
             Anyone with this link auto-joins {league?.name}.
           </p>
+
+          {shortCode && (
+            <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                Printable join code
+              </p>
+              <p className="text-xs font-ui mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                Post this at events — anyone can type it into Find a League to join instantly.
+              </p>
+              <div className="flex items-center gap-3">
+                <span
+                  className="font-mono text-2xl font-bold tracking-widest px-4 py-2 rounded-xl select-all"
+                  style={{ background: 'var(--color-bg)', border: '2px solid var(--color-border)', color: 'var(--color-text-primary)', letterSpacing: '0.2em' }}
+                >
+                  {shortCode}
+                </span>
+                <button
+                  onClick={handleShortCodeCopy}
+                  className="btn text-sm px-3 py-2"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                >
+                  {shortCodeCopied ? '✓ Copied' : 'Copy link'}
+                </button>
+                <button
+                  onClick={handleShortCodeRegenerate}
+                  disabled={shortCodeRegenerating}
+                  className="btn text-sm px-3 py-2 disabled:opacity-50"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                >
+                  {shortCodeRegenerating ? '…' : 'New code'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1128,6 +1273,40 @@ export default function LeagueSettings() {
           <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
             Anyone can find your league here and request to join. You approve each request.
           </p>
+
+          {shortCode && (
+            <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                Printable join code
+              </p>
+              <p className="text-xs font-ui mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                Post this at events — anyone can type it into Find a League to join instantly.
+              </p>
+              <div className="flex items-center gap-3">
+                <span
+                  className="font-mono text-2xl font-bold tracking-widest px-4 py-2 rounded-xl select-all"
+                  style={{ background: 'var(--color-bg)', border: '2px solid var(--color-border)', color: 'var(--color-text-primary)', letterSpacing: '0.2em' }}
+                >
+                  {shortCode}
+                </span>
+                <button
+                  onClick={handleShortCodeCopy}
+                  className="btn text-sm px-3 py-2"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                >
+                  {shortCodeCopied ? '✓ Copied' : 'Copy link'}
+                </button>
+                <button
+                  onClick={handleShortCodeRegenerate}
+                  disabled={shortCodeRegenerating}
+                  className="btn text-sm px-3 py-2 disabled:opacity-50"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                >
+                  {shortCodeRegenerating ? '…' : 'New code'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1185,6 +1364,137 @@ export default function LeagueSettings() {
         leagueId={leagueId}
       />
 
+      {/* Score & Tournament Controls */}
+      {canManage && (
+        <div className="card p-6">
+          <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+            🔒 Permissions
+          </h2>
+          <p className="font-ui text-sm mb-5" style={{ color: 'var(--color-text-secondary)' }}>
+            Control who can submit scores, start tournaments, and how scores are verified.
+          </p>
+
+          <div className="flex flex-col gap-5">
+            {/* Score submission policy */}
+            <div>
+              <label className="block font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Who can submit scores?
+              </label>
+              <select
+                value={scoreSubmitPolicy}
+                onChange={(e) => setScoreSubmitPolicy(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="all_members">All members</option>
+                <option value="admins_only">Admins only</option>
+                <option value="select_players">Select players</option>
+              </select>
+              {scoreSubmitPolicy === 'select_players' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <p className="font-ui text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Choose which players (in addition to admins) can submit scores:
+                  </p>
+                  {members.filter((m) => m.role === 'player').map((m) => (
+                    <label key={m.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scoreSubmitAllowedIds.includes(m.id)}
+                        onChange={(e) => {
+                          setScoreSubmitAllowedIds((prev) =>
+                            e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id)
+                          );
+                        }}
+                        className="rounded"
+                      />
+                      <span className="font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>{m.display_name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Tournament creation policy */}
+            <div>
+              <label className="block font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Who can start tournaments?
+              </label>
+              <select
+                value={tournamentCreatePolicy}
+                onChange={(e) => setTournamentCreatePolicy(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="admins_only">Admins only</option>
+                <option value="all_members">All members</option>
+                <option value="select_players">Select players</option>
+              </select>
+              {tournamentCreatePolicy === 'select_players' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <p className="font-ui text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Choose which players (in addition to admins) can start tournaments:
+                  </p>
+                  {members.filter((m) => m.role === 'player').map((m) => (
+                    <label key={m.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tournamentCreateAllowedIds.includes(m.id)}
+                        onChange={(e) => {
+                          setTournamentCreateAllowedIds((prev) =>
+                            e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id)
+                          );
+                        }}
+                        className="rounded"
+                      />
+                      <span className="font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>{m.display_name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Score verification mode */}
+            <div>
+              <label className="block font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Score verification
+              </label>
+              <select
+                value={scoreVerifyMode}
+                onChange={(e) => setScoreVerifyMode(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="immediate">Immediate — scores count right away</option>
+                <option value="opponent_approve">Opponent approval — opposing team must approve</option>
+                <option value="both_submit">Both teams submit — scores must match to count</option>
+              </select>
+              {scoreVerifyMode === 'opponent_approve' && (
+                <p className="font-ui text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  One player submits the score. Any player from the opposing team can approve or dispute it.
+                </p>
+              )}
+              {scoreVerifyMode === 'both_submit' && (
+                <p className="font-ui text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  Both teams independently submit the game. When the scores match, the game becomes official. Mismatches are flagged as disputed.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-5">
+            <button
+              onClick={handleControlsSave}
+              disabled={controlsSaving}
+              className="btn btn-primary text-sm px-5 py-2 disabled:opacity-50"
+            >
+              {controlsSaving ? 'Saving…' : 'Save permissions'}
+            </button>
+            {controlsSuccess && <span className="font-ui text-sm" style={{ color: 'var(--color-primary)' }}>Saved!</span>}
+            {controlsError && <span className="font-ui text-sm" style={{ color: 'var(--color-danger)' }}>{controlsError}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Members */}
       <div className="card p-6">
         <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
@@ -1195,6 +1505,7 @@ export default function LeagueSettings() {
             const badge = ROLE_BADGE[m.role] || ROLE_BADGE.player;
             const isMe = m.id === user?.id;
             const canRemove = canManage && m.role !== 'owner' && !isMe;
+            const canChangeRole = myRole === 'owner' && m.role !== 'owner' && !isMe;
             return (
               <div
                 key={m.id}
@@ -1217,41 +1528,56 @@ export default function LeagueSettings() {
                     </div>
                   )}
                 </div>
-                <span
-                  className="text-xs font-ui font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: badge.bg, color: badge.color }}
-                >
-                  {badge.label}
-                </span>
-                {canRemove && (
-                  confirmRemove === m.id ? (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => handleRemove(m.id)}
-                        disabled={removingId === m.id}
-                        className="text-xs font-ui font-semibold px-2 py-1 rounded-lg text-white"
-                        style={{ background: 'var(--color-danger)' }}
-                      >
-                        {removingId === m.id ? '…' : 'Remove'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmRemove(null)}
-                        className="text-xs font-ui px-2 py-1 rounded-lg border"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmRemove(m.id)}
-                      className="text-xs font-ui opacity-40 hover:opacity-100 flex-shrink-0 transition-opacity"
-                      style={{ color: 'var(--color-danger)' }}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {canChangeRole ? (
+                    <select
+                      value={m.role}
+                      disabled={changingRoleId === m.id}
+                      onChange={(e) => handleRoleChange(m.id, e.target.value)}
+                      className="text-xs font-ui font-semibold px-2 py-0.5 rounded-full border cursor-pointer disabled:opacity-50"
+                      style={{ background: badge.bg, color: badge.color, borderColor: badge.color + '44' }}
                     >
-                      Remove
-                    </button>
-                  )
-                )}
+                      <option value="admin">Admin</option>
+                      <option value="player">Player</option>
+                    </select>
+                  ) : (
+                    <span
+                      className="text-xs font-ui font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: badge.bg, color: badge.color }}
+                    >
+                      {badge.label}
+                    </span>
+                  )}
+                  {canRemove && (
+                    confirmRemove === m.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleRemove(m.id)}
+                          disabled={removingId === m.id}
+                          className="text-xs font-ui font-semibold px-2 py-1 rounded-lg text-white"
+                          style={{ background: 'var(--color-danger)' }}
+                        >
+                          {removingId === m.id ? '…' : 'Remove'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmRemove(null)}
+                          className="text-xs font-ui px-2 py-1 rounded-lg border"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmRemove(m.id)}
+                        className="text-xs font-ui opacity-40 hover:opacity-100 transition-opacity"
+                        style={{ color: 'var(--color-danger)' }}
+                      >
+                        Remove
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
             );
           })}
@@ -1290,6 +1616,47 @@ export default function LeagueSettings() {
           </div>
         </div>
       )}
+
+      {/* ── Email Preferences ─────────────────────────────────────────────── */}
+      <div
+        className="rounded-2xl p-6"
+        style={{ background: 'var(--color-card)', border: '1px solid var(--color-border)' }}
+      >
+        <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          📧 Email Preferences
+        </h2>
+        <p className="font-ui text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+          Weekly digest emails recap the week's games, standings, and highlights. Sent every Monday morning.
+        </p>
+        {user?.digest_unsubscribed_at ? (
+          <div className="flex items-center gap-4">
+            <span className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              You've unsubscribed from weekly digest emails.
+            </span>
+            <button
+              onClick={async () => {
+                setResubscribing(true);
+                try {
+                  await digestApi.resubscribe();
+                  await refreshUser();
+                } catch {
+                  // silent fail — not critical
+                } finally {
+                  setResubscribing(false);
+                }
+              }}
+              disabled={resubscribing}
+              className="btn btn-primary text-sm px-4 py-2 disabled:opacity-50 flex-shrink-0"
+            >
+              {resubscribing ? 'Saving…' : 'Re-subscribe'}
+            </button>
+          </div>
+        ) : (
+          <p className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            ✅ You're subscribed. Use the unsubscribe link in any digest email to opt out.
+          </p>
+        )}
+      </div>
 
       {/* ── Install App ────────────────────────────────────────────────────── */}
       <div

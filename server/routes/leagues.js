@@ -33,6 +33,17 @@ const logoUpload = multer({
 });
 
 const FREE_LEAGUE_OWNER_CAP = 2;
+const SHORT_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
+
+async function generateUniqueShortCode(db) {
+  let code, attempts = 0;
+  do {
+    code = Array.from({ length: 6 }, () => SHORT_CODE_CHARS[Math.floor(Math.random() * SHORT_CODE_CHARS.length)]).join('');
+    const { rows } = await sql`SELECT id FROM leagues WHERE short_code = ${code}`.execute(db);
+    if (!rows.length) return code;
+  } while (++attempts < 20);
+  return code; // last attempt, collision extremely unlikely
+}
 
 function slugify(name) {
   return name
@@ -45,6 +56,40 @@ function slugify(name) {
 function randomSuffix() {
   return Math.random().toString(36).slice(2, 6);
 }
+
+// GET /api/leagues — browse public leagues (search/discover)
+router.get('/', async (req, res) => {
+  try {
+    const db = getDb();
+    const { q = '', page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const search = `%${q.trim().toLowerCase()}%`;
+
+    const { rows } = await sql`
+      SELECT l.id, l.slug, l.name, l.tagline, l.is_public, l.plan, l.theme_json,
+        (SELECT COUNT(*) FROM league_memberships WHERE league_id = l.id) AS member_count
+      FROM leagues l
+      WHERE l.is_public = TRUE
+        AND (${q.trim() === ''} OR LOWER(l.name) LIKE ${search} OR LOWER(COALESCE(l.tagline, '')) LIKE ${search})
+      ORDER BY member_count DESC, l.name
+      LIMIT ${parseInt(limit)} OFFSET ${offset}
+    `.execute(db);
+
+    const { rows: countRows } = await sql`
+      SELECT COUNT(*) as c FROM leagues
+      WHERE is_public = TRUE
+        AND (${q.trim() === ''} OR LOWER(name) LIKE ${search} OR LOWER(COALESCE(tagline, '')) LIKE ${search})
+    `.execute(db);
+
+    res.json({
+      leagues: rows.map((r) => ({ ...r, member_count: parseInt(r.member_count) || 0 })),
+      total: parseInt(countRows[0].c) || 0,
+      page: parseInt(page),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // GET /api/leagues/mine — leagues where the current user is a member
 router.get('/mine', requireAuth, async (req, res) => {
@@ -143,9 +188,11 @@ router.post('/', requireAuth, async (req, res) => {
       if (existing2.length) slug = `${base}-${randomSuffix()}`;
     }
 
+    const shortCode = await generateUniqueShortCode(db);
+
     const league = await db
       .insertInto('leagues')
-      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null })
+      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null, short_code: shortCode })
       .returningAll()
       .executeTakeFirstOrThrow();
 
@@ -198,7 +245,12 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Owner or admin role required' });
     }
 
-    const { name, is_public, rules, use_case, tagline, custom_rules_json, theme_json } = req.body;
+    const {
+      name, is_public, rules, use_case, tagline, custom_rules_json, theme_json,
+      score_submit_policy, tournament_create_policy,
+      score_submit_allowed_ids, tournament_create_allowed_ids,
+      score_verify_mode,
+    } = req.body;
     const updates = {};
     if (name !== undefined) {
       if (!name.trim()) return res.status(400).json({ error: 'Name cannot be empty' });
@@ -224,6 +276,29 @@ router.patch('/:slug', requireAuth, async (req, res) => {
         return res.status(403).json({ error: 'Custom theme requires a Pro plan', upgrade: true });
       }
       updates.theme_json = theme_json ? JSON.stringify(theme_json) : null;
+    }
+    const validSubmitPolicies = ['all_members', 'admins_only', 'select_players'];
+    if (score_submit_policy !== undefined) {
+      if (!validSubmitPolicies.includes(score_submit_policy)) return res.status(400).json({ error: 'Invalid score_submit_policy' });
+      updates.score_submit_policy = score_submit_policy;
+    }
+    const validTournamentPolicies = ['admins_only', 'all_members', 'select_players'];
+    if (tournament_create_policy !== undefined) {
+      if (!validTournamentPolicies.includes(tournament_create_policy)) return res.status(400).json({ error: 'Invalid tournament_create_policy' });
+      updates.tournament_create_policy = tournament_create_policy;
+    }
+    if (score_submit_allowed_ids !== undefined) {
+      if (!Array.isArray(score_submit_allowed_ids)) return res.status(400).json({ error: 'score_submit_allowed_ids must be an array' });
+      updates.score_submit_allowed_ids = JSON.stringify(score_submit_allowed_ids);
+    }
+    if (tournament_create_allowed_ids !== undefined) {
+      if (!Array.isArray(tournament_create_allowed_ids)) return res.status(400).json({ error: 'tournament_create_allowed_ids must be an array' });
+      updates.tournament_create_allowed_ids = JSON.stringify(tournament_create_allowed_ids);
+    }
+    const validVerifyModes = ['immediate', 'opponent_approve', 'both_submit'];
+    if (score_verify_mode !== undefined) {
+      if (!validVerifyModes.includes(score_verify_mode)) return res.status(400).json({ error: 'Invalid score_verify_mode' });
+      updates.score_verify_mode = score_verify_mode;
     }
 
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update' });
@@ -482,6 +557,43 @@ router.delete('/:slug/members/:userId', requireAuth, async (req, res) => {
 
     await db
       .deleteFrom('league_memberships')
+      .where('league_id', '=', league.id)
+      .where('user_id', '=', targetId)
+      .execute();
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/leagues/:slug/members/:userId — change member role (owner only)
+router.patch('/:slug/members/:userId', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: requesterRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!requesterRows[0] || requesterRows[0].role !== 'owner') {
+      return res.status(403).json({ error: 'Only the league owner can change member roles' });
+    }
+
+    const targetId = parseInt(req.params.userId);
+    const { role } = req.body;
+    if (!['admin', 'player'].includes(role)) return res.status(400).json({ error: 'Role must be admin or player' });
+
+    const { rows: targetRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${targetId}
+    `.execute(db);
+    if (!targetRows[0]) return res.status(404).json({ error: 'Member not found' });
+    if (targetRows[0].role === 'owner') return res.status(403).json({ error: 'Cannot change the owner role' });
+
+    await db.updateTable('league_memberships')
+      .set({ role })
       .where('league_id', '=', league.id)
       .where('user_id', '=', targetId)
       .execute();
@@ -754,5 +866,29 @@ function generateInviteToken() {
   const { randomBytes } = require('crypto');
   return randomBytes(18).toString('base64url');
 }
+
+// POST /api/leagues/:slug/short-code — regenerate the league's short code (owner/admin)
+router.post('/:slug/short-code', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const shortCode = await generateUniqueShortCode(db);
+    await db.updateTable('leagues').set({ short_code: shortCode }).where('id', '=', league.id).execute();
+
+    res.json({ short_code: shortCode });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 module.exports = router;

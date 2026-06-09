@@ -43,6 +43,7 @@ const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
 const ClaimAccount   = lazy(() => import('./pages/ClaimAccount'));
 const VerifyEmail    = lazy(() => import('./pages/VerifyEmail'));
 const Join           = lazy(() => import('./pages/Join'));
+const FindLeague     = lazy(() => import('./pages/FindLeague'));
 const CreateLeague   = lazy(() => import('./pages/CreateLeague'));
 const LeagueWelcome  = lazy(() => import('./pages/LeagueWelcome'));
 const UseCase        = lazy(() => import('./pages/UseCase'));
@@ -244,6 +245,7 @@ export default function App() {
             <Route path="/verify-email/:token" element={<PageWrapper><VerifyEmail /></PageWrapper>} />
             <Route path="/join" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/join/:code" element={<PageWrapper><Join /></PageWrapper>} />
+            <Route path="/find-league" element={<PageWrapper><FindLeague /></PageWrapper>} />
             <Route path="/leagues/new" element={<PageWrapper><CreateLeague /></PageWrapper>} />
             <Route path="/terms" element={<PageWrapper><Terms /></PageWrapper>} />
             <Route path="/privacy" element={<PageWrapper><Privacy /></PageWrapper>} />

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 const { requirePro } = require('../middleware/planAccess');
 const { recalculateAllElos } = require('../lib/elo');
 const { evaluateAchievements } = require('../lib/achievements');
@@ -64,11 +64,28 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/tournaments (admin)
-router.post('/', requireAdmin, requirePro, async (req, res) => {
+// POST /api/tournaments
+router.post('/', requireAuth, requirePro, async (req, res) => {
   try {
     const db = getDb();
     const { name, format, game_type, season, seeding, teams } = req.body;
+
+    // Check tournament_create_policy
+    const { rows: leagueRows } = await sql`
+      SELECT tournament_create_policy, tournament_create_allowed_ids FROM leagues WHERE id = ${req.leagueId}
+    `.execute(db);
+    const tournamentPolicy = leagueRows[0]?.tournament_create_policy || 'admins_only';
+    const isLeagueAdmin = ['owner', 'admin'].includes(req.leagueRole) || req.session?.isAdmin;
+    if (tournamentPolicy === 'admins_only' && !isLeagueAdmin) {
+      return res.status(403).json({ error: 'Only league admins can create tournaments in this league' });
+    }
+    if (tournamentPolicy === 'select_players' && !isLeagueAdmin) {
+      let allowedIds = [];
+      try { allowedIds = JSON.parse(leagueRows[0]?.tournament_create_allowed_ids || '[]'); } catch (_) {}
+      if (!allowedIds.includes(req.session.userId)) {
+        return res.status(403).json({ error: 'You are not authorised to create tournaments in this league' });
+      }
+    }
 
     if (!name || !format || !game_type || !season) {
       return res.status(400).json({ error: 'name, format, game_type, season required' });

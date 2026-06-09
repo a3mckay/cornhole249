@@ -7,6 +7,64 @@ const { capture: analyticsCapture } = require('../lib/analytics');
 
 // ── Token-based invite (private leagues) ────────────────────────────────────
 
+// ── Short code (reusable 6-char code, direct join) ───────────────────────────
+
+// GET /api/join/short/:code — look up league by short code
+router.get('/short/:code', async (req, res) => {
+  try {
+    const db = getDb();
+    const code = req.params.code.trim().toUpperCase();
+    const { rows } = await sql`SELECT id FROM leagues WHERE short_code = ${code}`.execute(db);
+    if (!rows[0]) return res.json({ valid: false });
+
+    const preview = await leaguePreview(db, rows[0].id);
+    if (!preview) return res.json({ valid: false });
+
+    let alreadyMember = false;
+    if (req.session?.userId) {
+      const { rows: memRows } = await sql`
+        SELECT 1 FROM league_memberships WHERE league_id = ${rows[0].id} AND user_id = ${req.session.userId}
+      `.execute(db);
+      alreadyMember = memRows.length > 0;
+    }
+
+    res.json({ valid: true, token_type: 'short_code', already_member: alreadyMember, ...preview });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/join/short/:code — direct join via short code (requires auth, no approval queue)
+router.post('/short/:code', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const code = req.params.code.trim().toUpperCase();
+    const { rows } = await sql`SELECT id, name, slug, plan FROM leagues WHERE short_code = ${code}`.execute(db);
+    if (!rows[0]) return res.status(404).json({ error: 'Code not found' });
+
+    const league = rows[0];
+
+    if (league.plan === 'free') {
+      const { rows: countRows } = await sql`SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${league.id}`.execute(db);
+      if (parseInt(countRows[0].n) >= 8) {
+        return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
+      }
+    }
+
+    await db
+      .insertInto('league_memberships')
+      .values({ league_id: league.id, user_id: req.session.userId, role: 'player' })
+      .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+      .execute();
+
+    analyticsCapture(req.session.userId, 'short_code_join', { league_id: league.id, slug: league.slug });
+
+    res.json({ ok: true, slug: league.slug });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/join?t=TOKEN — validate token, return league preview
 router.get('/', async (req, res) => {
   const token = req.query.t;
@@ -98,8 +156,6 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// ── Legacy single-use code route (backward compat) ───────────────────────────
-
 // GET /api/join/:code — old invite codes still work for existing links
 router.get('/:code', async (req, res) => {
   try {
@@ -140,6 +196,47 @@ router.get('/:code', async (req, res) => {
       inviter_ref_token: inviterRefToken,
       ...(preview || {}),
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/join/:code — authenticated user joins via legacy code
+router.post('/:code', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const code = req.params.code.trim().toUpperCase();
+
+    const joinCode = await db
+      .selectFrom('join_codes')
+      .selectAll()
+      .where('code', '=', code)
+      .executeTakeFirst();
+
+    if (!joinCode) return res.status(404).json({ error: 'Join code not found' });
+    if (joinCode.used_by) return res.status(410).json({ error: 'This code has already been used' });
+
+    const leagueId = joinCode.league_id || 1;
+
+    // Free plan member cap
+    const { rows: leagueRows } = await sql`SELECT plan, slug FROM leagues WHERE id = ${leagueId}`.execute(db);
+    const league = leagueRows[0];
+    if (league?.plan === 'free') {
+      const { rows: countRows } = await sql`SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${leagueId}`.execute(db);
+      if (parseInt(countRows[0].n) >= 8) {
+        return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
+      }
+    }
+
+    await db
+      .insertInto('league_memberships')
+      .values({ league_id: leagueId, user_id: req.session.userId, role: 'player' })
+      .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+      .execute();
+
+    await db.updateTable('join_codes').set({ used_by: req.session.userId }).where('code', '=', code).execute();
+
+    res.json({ ok: true, slug: league?.slug });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

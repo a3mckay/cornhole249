@@ -24,6 +24,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { billingApi } from '../api';
 import { capture } from '../lib/analytics';
 
@@ -45,6 +46,7 @@ export default function UpgradeModal({ open, onClose, feature, leagueId }) {
 
   const handleCheckout = async (plan) => {
     if (!leagueId) return;
+    capture('checkout_started', { plan });
     setLoading(plan);
     try {
       const { url } = await billingApi.checkout(leagueId, plan);
@@ -133,6 +135,16 @@ export default function UpgradeModal({ open, onClose, feature, leagueId }) {
 
         <p className="text-xs font-ui text-center mt-4" style={{ color: 'var(--color-text-secondary)' }}>
           Prices in CAD. Cancel anytime. Taxes may apply.
+        </p>
+        <p className="text-xs font-ui text-center mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+          Running multiple leagues?{' '}
+          <Link
+            to="/#venue"
+            onClick={onClose}
+            style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}
+          >
+            See the Venue Plan →
+          </Link>
         </p>
       </div>
     </div>

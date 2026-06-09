@@ -24,6 +24,11 @@ const MIGRATIONS = [
   { name: '009_league_id_indexes',              file: './migrations/009_league_id_indexes' },
   { name: '010_pass_warning_sent_at',           file: './migrations/010_pass_warning_sent_at' },
   { name: '011_downgrade_grace',               file: './migrations/011_downgrade_grace' },
+  { name: '012_digest_unsubscribed',           file: './migrations/012_digest_unsubscribed' },
+  { name: '013_venue_plan',                    file: './migrations/013_venue_plan' },
+  { name: '014_anniversary_triggers',          file: './migrations/014_anniversary_triggers' },
+  { name: '015_league_controls',               file: './migrations/015_league_controls' },
+  { name: '016_league_short_code',             file: './migrations/016_league_short_code' },
 ];
 
 async function run(db) {

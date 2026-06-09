@@ -109,6 +109,79 @@ router.get('/dates', async (req, res) => {
   }
 });
 
+// GET /api/games/pending — pending games awaiting approval by the current user's opposing team
+router.get('/pending', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = req.session.userId;
+
+    const { rows: games } = await sql`
+      SELECT g.*, v.name as venue_name
+      FROM games g LEFT JOIN venues v ON g.venue_id = v.id
+      WHERE g.league_id = ${req.leagueId}
+        AND g.status IN ('pending_approval', 'disputed')
+      ORDER BY g.played_at DESC
+    `.execute(db);
+
+    await Promise.all(games.map(async (game) => {
+      const { rows: parts } = await sql`
+        SELECT gp.*, u.display_name, u.nickname, u.avatar_url
+        FROM game_participants gp JOIN users u ON gp.user_id = u.id
+        WHERE gp.game_id = ${game.id}
+        ORDER BY gp.team, gp.id
+      `.execute(db);
+      game.participants = parts;
+    }));
+
+    for (const game of games) {
+      const submittedByMe = game.submitted_by_user_id === userId;
+      const isParticipant = game.participants.some((p) => p.user_id === userId);
+      const myTeam = game.participants.find((p) => p.user_id === userId)?.team;
+      const submitterTeam = game.participants.find((p) => p.user_id === game.submitted_by_user_id)?.team;
+      game.can_approve = !submittedByMe && isParticipant && myTeam !== submitterTeam && game.status === 'pending_approval';
+      game.submitted_by_me = submittedByMe;
+    }
+
+    res.json(games);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/games/submissions — pending both_submit submissions for current user's league
+router.get('/submissions', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: subs } = await sql`
+      SELECT pgs.*, u.display_name as submitter_name
+      FROM pending_game_submissions pgs
+      JOIN users u ON u.id = pgs.submitter_user_id
+      WHERE pgs.league_id = ${req.leagueId}
+      ORDER BY pgs.created_at DESC
+    `.execute(db);
+
+    for (const sub of subs) {
+      const t1Ids = JSON.parse(sub.team1_player_ids || '[]');
+      const t2Ids = JSON.parse(sub.team2_player_ids || '[]');
+      const allIds = [...t1Ids, ...t2Ids];
+      if (allIds.length) {
+        const players = await db.selectFrom('users').select(['id', 'display_name', 'nickname', 'avatar_url']).where('id', 'in', allIds).execute();
+        const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+        sub.team1_players = t1Ids.map((id) => byId[id]).filter(Boolean);
+        sub.team2_players = t2Ids.map((id) => byId[id]).filter(Boolean);
+      } else {
+        sub.team1_players = [];
+        sub.team2_players = [];
+      }
+      sub.submitted_by_me = sub.submitter_user_id === req.session.userId;
+    }
+
+    res.json(subs);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/games/:id
 router.get('/:id', async (req, res) => {
   try {
@@ -195,36 +268,156 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Games cannot end in a tie' });
     }
 
-    // ── Custom rules validation ──────────────────────────────────────────────
-    // Fetch league to check custom rules if applicable.
+    // ── Fetch league settings (rules + policies) ─────────────────────────────
     const { rows: leagueRows } = await sql`
-      SELECT rules, custom_rules_json FROM leagues WHERE id = ${req.leagueId}
+      SELECT rules, custom_rules_json, score_submit_policy, score_submit_allowed_ids, score_verify_mode
+      FROM leagues WHERE id = ${req.leagueId}
     `.execute(db);
-    const leagueRules = leagueRows[0]?.rules;
-    const customRules = leagueRows[0]?.custom_rules_json;
+    const league = leagueRows[0] || {};
 
+    // ── Submit policy check ──────────────────────────────────────────────────
+    const submitPolicy = league.score_submit_policy || 'all_members';
+    const isLeagueAdmin = ['owner', 'admin'].includes(req.leagueRole);
+    if (submitPolicy === 'admins_only' && !isLeagueAdmin) {
+      return res.status(403).json({ error: 'Only league admins can submit scores in this league' });
+    }
+    if (submitPolicy === 'select_players' && !isLeagueAdmin) {
+      let allowedIds = [];
+      try { allowedIds = JSON.parse(league.score_submit_allowed_ids || '[]'); } catch (_) {}
+      if (!allowedIds.includes(req.session.userId)) {
+        return res.status(403).json({ error: 'You are not authorised to submit scores in this league' });
+      }
+    }
+
+    // ── Custom rules validation ──────────────────────────────────────────────
+    const leagueRules = league.rules;
+    const customRules = league.custom_rules_json;
     if (leagueRules === 'custom' && customRules) {
       const target = customRules.target_score;
       const winBy  = customRules.win_by ?? 1;
       const winner = Math.max(t1Score, t2Score);
       const loser  = Math.min(t1Score, t2Score);
       if (target && winner < target) {
-        return res.status(400).json({
-          error: `Winning score must be at least ${target} (custom rules)`,
-        });
+        return res.status(400).json({ error: `Winning score must be at least ${target} (custom rules)` });
       }
       if (winBy > 1 && (winner - loser) < winBy) {
-        return res.status(400).json({
-          error: `Win by ${winBy} required (custom rules)`,
-        });
+        return res.status(400).json({ error: `Win by ${winBy} required (custom rules)` });
       }
     }
 
     const gameDate = played_at ? new Date(played_at) : new Date();
     const gameSeason = season || gameDate.getFullYear();
+    const verifyMode = league.score_verify_mode || 'immediate';
+
+    // ── both_submit mode: store submission and try to match ──────────────────
+    if (verifyMode === 'both_submit') {
+      const submitterTeam = t1Ids.includes(req.session.userId) ? 1 : 2;
+
+      const newSub = await db
+        .insertInto('pending_game_submissions')
+        .values({
+          league_id: req.leagueId,
+          submitter_user_id: req.session.userId,
+          submitter_team: submitterTeam,
+          game_type,
+          played_at: gameDate.toISOString(),
+          season: gameSeason,
+          venue_id: venue_id || null,
+          team1_player_ids: JSON.stringify(t1Ids),
+          team2_player_ids: JSON.stringify(t2Ids),
+          team1_score: t1Score,
+          team2_score: t2Score,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow();
+
+      // Look for a matching submission from the opposing team (within 48h)
+      const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const { rows: existing } = await sql`
+        SELECT * FROM pending_game_submissions
+        WHERE league_id = ${req.leagueId}
+          AND id != ${newSub.id}
+          AND created_at > ${cutoff}
+      `.execute(db);
+
+      const normalizeIds = (arr) => [...arr].sort((a, b) => a - b).join(',');
+      const newT1 = normalizeIds(t1Ids);
+      const newT2 = normalizeIds(t2Ids);
+
+      let match = null;
+      for (const sub of existing) {
+        const subT1 = normalizeIds(JSON.parse(sub.team1_player_ids || '[]'));
+        const subT2 = normalizeIds(JSON.parse(sub.team2_player_ids || '[]'));
+        if (subT1 === newT1 && subT2 === newT2) {
+          match = { sub, flipped: false };
+          break;
+        }
+        if (subT1 === newT2 && subT2 === newT1) {
+          match = { sub, flipped: true };
+          break;
+        }
+      }
+
+      if (!match) {
+        return res.status(202).json({ pending: true, submission_id: newSub.id, message: 'Submission recorded. Waiting for the other team to submit.' });
+      }
+
+      // Check if scores agree
+      const { sub, flipped } = match;
+      const scoresMatch = flipped
+        ? (t1Score === sub.team2_score && t2Score === sub.team1_score)
+        : (t1Score === sub.team1_score && t2Score === sub.team2_score);
+
+      const gameStatus = scoresMatch ? 'official' : 'disputed';
+      const isTeam1Winner = t1Score > t2Score;
+
+      const newGame = await db
+        .insertInto('games')
+        .values({
+          game_type,
+          played_at: gameDate.toISOString(),
+          season: gameSeason,
+          venue_id: venue_id || null,
+          submitted_by_user_id: req.session.userId,
+          league_id: req.leagueId,
+          status: gameStatus,
+        })
+        .returning(['id'])
+        .executeTakeFirstOrThrow();
+
+      const gameId = newGame.id;
+      for (const p of team1) {
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: p.score || 0, is_winner: isTeam1Winner ? 1 : 0 }).execute();
+      }
+      for (const p of team2) {
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: p.score || 0, is_winner: isTeam1Winner ? 0 : 1 }).execute();
+      }
+
+      // Remove both matched submissions
+      await db.deleteFrom('pending_game_submissions').where('id', 'in', [newSub.id, sub.id]).execute();
+
+      if (gameStatus === 'official') {
+        await updateElosAfterGame(gameId, db);
+        evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
+      }
+
+      if (venue_id) {
+        const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', venue_id).executeTakeFirst();
+        if (venue?.lat && venue?.lng) {
+          fetchWeatherForGame(venue.lat, venue.lng, gameDate.toISOString()).then(async (weather) => {
+            if (weather) await db.updateTable('games').set({ weather_json: JSON.stringify(weather) }).where('id', '=', gameId).execute();
+          }).catch(() => {});
+        }
+      }
+
+      const { rows: gameRows } = await sql`SELECT * FROM games WHERE id = ${gameId}`.execute(db);
+      return res.status(201).json({ ...gameRows[0], scores_matched: scoresMatch });
+    }
+
+    // ── opponent_approve or immediate ────────────────────────────────────────
+    const gameStatus = verifyMode === 'opponent_approve' ? 'pending_approval' : 'official';
     const isTeam1Winner = t1Score > t2Score;
 
-    // Insert game
     const newGame = await db
       .insertInto('games')
       .values({
@@ -234,48 +427,108 @@ router.post('/', requireAuth, async (req, res) => {
         venue_id: venue_id || null,
         submitted_by_user_id: req.session.userId,
         league_id: req.leagueId,
+        status: gameStatus,
       })
       .returning(['id'])
       .executeTakeFirstOrThrow();
 
     const gameId = newGame.id;
 
-    // Insert participants
     for (const p of team1) {
-      await db.insertInto('game_participants').values({
-        game_id: gameId, user_id: p.user_id, team: 1,
-        score: p.score || 0, is_winner: isTeam1Winner ? 1 : 0,
-      }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: p.score || 0, is_winner: isTeam1Winner ? 1 : 0 }).execute();
     }
     for (const p of team2) {
-      await db.insertInto('game_participants').values({
-        game_id: gameId, user_id: p.user_id, team: 2,
-        score: p.score || 0, is_winner: isTeam1Winner ? 0 : 1,
-      }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: p.score || 0, is_winner: isTeam1Winner ? 0 : 1 }).execute();
     }
 
-    // Update Elos
-    await updateElosAfterGame(gameId, db);
+    if (gameStatus === 'official') {
+      await updateElosAfterGame(gameId, db);
+      evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
+    }
 
-    // Fetch weather (non-blocking)
     if (venue_id) {
       const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', venue_id).executeTakeFirst();
-      if (venue && venue.lat && venue.lng) {
-        fetchWeatherForGame(venue.lat, venue.lng, gameDate.toISOString())
-          .then(async (weather) => {
-            if (weather) {
-              await db.updateTable('games').set({ weather_json: JSON.stringify(weather) }).where('id', '=', gameId).execute();
-            }
-          })
-          .catch(() => {});
+      if (venue?.lat && venue?.lng) {
+        fetchWeatherForGame(venue.lat, venue.lng, gameDate.toISOString()).then(async (weather) => {
+          if (weather) await db.updateTable('games').set({ weather_json: JSON.stringify(weather) }).where('id', '=', gameId).execute();
+        }).catch(() => {});
       }
     }
 
-    // Evaluate achievements (non-blocking)
-    evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
-
     const { rows: gameRows } = await sql`SELECT * FROM games WHERE id = ${gameId}`.execute(db);
     res.status(201).json(gameRows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/games/:id/approve — approve a pending_approval game (opposing team player)
+router.post('/:id/approve', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const gameId = parseInt(req.params.id);
+    const userId = req.session.userId;
+
+    const game = await db.selectFrom('games').selectAll().where('id', '=', gameId).where('league_id', '=', req.leagueId).executeTakeFirst();
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (game.status !== 'pending_approval') return res.status(409).json({ error: 'Game is not pending approval' });
+
+    const { rows: parts } = await sql`SELECT * FROM game_participants WHERE game_id = ${gameId}`.execute(db);
+    const myPart = parts.find((p) => p.user_id === userId);
+    if (!myPart) return res.status(403).json({ error: 'You are not a participant in this game' });
+
+    const submitterPart = parts.find((p) => p.user_id === game.submitted_by_user_id);
+    if (submitterPart && myPart.team === submitterPart.team) {
+      return res.status(403).json({ error: 'Only a player from the opposing team can approve this game' });
+    }
+
+    await db.updateTable('games').set({ status: 'official' }).where('id', '=', gameId).execute();
+    await updateElosAfterGame(gameId, db);
+    evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/games/:id/dispute — dispute a pending_approval game (opposing team player)
+router.post('/:id/dispute', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const gameId = parseInt(req.params.id);
+    const userId = req.session.userId;
+
+    const game = await db.selectFrom('games').selectAll().where('id', '=', gameId).where('league_id', '=', req.leagueId).executeTakeFirst();
+    if (!game) return res.status(404).json({ error: 'Game not found' });
+    if (game.status !== 'pending_approval') return res.status(409).json({ error: 'Game is not pending approval' });
+
+    const { rows: parts } = await sql`SELECT * FROM game_participants WHERE game_id = ${gameId}`.execute(db);
+    const myPart = parts.find((p) => p.user_id === userId);
+    if (!myPart) return res.status(403).json({ error: 'You are not a participant in this game' });
+
+    const submitterPart = parts.find((p) => p.user_id === game.submitted_by_user_id);
+    if (submitterPart && myPart.team === submitterPart.team) {
+      return res.status(403).json({ error: 'Only a player from the opposing team can dispute this game' });
+    }
+
+    await db.updateTable('games').set({ status: 'disputed' }).where('id', '=', gameId).execute();
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/games/submissions/:id — retract a pending submission (submitter only)
+router.delete('/submissions/:id', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const sub = await db.selectFrom('pending_game_submissions').selectAll().where('id', '=', parseInt(req.params.id)).executeTakeFirst();
+    if (!sub) return res.status(404).json({ error: 'Submission not found' });
+    if (sub.submitter_user_id !== req.session.userId) return res.status(403).json({ error: 'You can only retract your own submissions' });
+    await db.deleteFrom('pending_game_submissions').where('id', '=', sub.id).execute();
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -366,8 +619,10 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 });
 
 async function updateElosAfterGame(gameId, db) {
-  const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
-  const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
+  const { rows: games } = await sql`SELECT * FROM games WHERE status = 'official' OR status IS NULL ORDER BY played_at ASC`.execute(db);
+  const officialIds = new Set(games.map((g) => g.id));
+  const { rows: allParticipants } = await sql`SELECT * FROM game_participants`.execute(db);
+  const participants = allParticipants.filter((p) => officialIds.has(p.game_id));
   const newElos = recalculateAllElos(games, participants);
 
   await db.transaction().execute(async (trx) => {

@@ -56,7 +56,7 @@ router.get('/me', async (req, res) => {
       .select([
         'id', 'display_name', 'nickname', 'avatar_url', 'is_admin',
         'elo_rating', 'ref_token', 'email', 'email_verified_at',
-        'google_id',
+        'google_id', 'digest_unsubscribed_at',
       ])
       .where('id', '=', req.session.userId)
       .executeTakeFirst();
@@ -476,6 +476,84 @@ router.post('/reset-password', async (req, res) => {
       .execute();
 
     res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /auth/my-data ────────────────────────────────────────────────────────
+// PIPEDA / CCPA right of access: returns all personal data we hold about the
+// authenticated user as a downloadable JSON file.
+
+router.get('/my-data', async (req, res) => {
+  try {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not logged in' });
+    const userId = req.session.userId;
+    const db = getDb();
+
+    // Profile
+    const profile = await db
+      .selectFrom('users')
+      .select([
+        'id', 'display_name', 'nickname', 'email', 'google_email',
+        'avatar_url', 'elo_rating', 'handedness',
+        'created_at', 'email_verified_at',
+      ])
+      .where('id', '=', userId)
+      .executeTakeFirst();
+
+    // League memberships
+    const memberships = await db
+      .selectFrom('league_memberships as lm')
+      .innerJoin('leagues as l', 'l.id', 'lm.league_id')
+      .select(['l.name as league_name', 'l.slug', 'lm.role', 'lm.joined_at'])
+      .where('lm.user_id', '=', userId)
+      .execute();
+
+    // Games played (up to 500 most recent)
+    const games = await db
+      .selectFrom('game_participants as gp')
+      .innerJoin('games as g', 'g.id', 'gp.game_id')
+      .leftJoin('leagues as l', 'l.id', 'g.league_id')
+      .select([
+        'g.id as game_id', 'g.game_type', 'g.played_at', 'g.season',
+        'l.name as league_name', 'l.slug as league_slug',
+        'gp.team', 'gp.score', 'gp.is_winner',
+      ])
+      .where('gp.user_id', '=', userId)
+      .orderBy('g.played_at', 'desc')
+      .limit(500)
+      .execute();
+
+    // Comments
+    const comments = await db
+      .selectFrom('comments as c')
+      .leftJoin('leagues as l', 'l.id', 'c.league_id')
+      .select(['c.body', 'c.created_at', 'l.name as league_name'])
+      .where('c.user_id', '=', userId)
+      .orderBy('c.created_at', 'desc')
+      .execute();
+
+    // Achievements
+    const achievements = await db
+      .selectFrom('achievements')
+      .select(['achievement_key', 'earned_at'])
+      .where('user_id', '=', userId)
+      .orderBy('earned_at', 'desc')
+      .execute();
+
+    const payload = {
+      exported_at: new Date().toISOString(),
+      profile,
+      memberships,
+      games,
+      comments,
+      achievements,
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="cornhole249-my-data.json"');
+    res.send(JSON.stringify(payload, null, 2));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

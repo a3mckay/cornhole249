@@ -1,3 +1,20 @@
+// Force IPv4 DNS resolution — Railway containers lack IPv6 routing, which
+// causes Nodemailer SMTP connections (smtp.gmail.com) to fail with ENETUNREACH.
+require('dns').setDefaultResultOrder('ipv4first');
+
+// ── Global error safety net ───────────────────────────────────────────────────
+// In Node 22, unhandled promise rejections crash the process (exit 1) by
+// default. Log them visibly so Railway logs capture the root cause before exit.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled promise rejection:', reason);
+  // Re-throw so Railway sees a non-zero exit code and Sentry captures it.
+  throw reason;
+});
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  process.exit(1);
+});
+
 // Sentry must be initialised before any other require so it can instrument Node internals.
 // instrument.js also calls dotenv.config() so we don't need to repeat it here.
 require('./instrument');
@@ -356,351 +373,490 @@ if (process.env.SENTRY_DSN) {
 const { errorHandler } = require('./middleware/errors');
 app.use(errorHandler);
 
-// ── Async startup: migrations → Elo recalc → one-time fixes → seed ──────────
+// ── Async startup: migrations (blocking) → listen → background work ──────────
+//
+// IMPORTANT: app.listen() is called immediately after migrations so Railway's
+// healthcheck (GET /api/standings, 30s timeout) can succeed before the slow
+// Elo recalculation and weather backfill finish. Those run in the background
+// after the server is already accepting requests.
 (async () => {
   try {
+    // Migrations MUST complete before we serve any requests — schema must exist.
     await runMigrations();
 
-    const { recalculateAllElos } = require('./lib/elo');
-    const db = getDb();
-
-    // Recalculate all Elo ratings on startup to apply the latest formula
-    const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
-    const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
-    if (games.length > 0) {
-      const newElos = recalculateAllElos(games, participants);
-      await db.transaction().execute(async (trx) => {
-        for (const [userId, elo] of Object.entries(newElos)) {
-          await trx.updateTable('users').set({ elo_rating: elo }).where('id', '=', parseInt(userId)).execute();
-        }
-      });
-      console.log(`[Elo] Recalculated ratings for ${Object.keys(newElos).length} players`);
-    }
-
-    // One-time venue/weather fixes and weather backfill
-    // Each fix is guarded by a kv_store key so it only runs once per deploy.
-    try {
-      const { fetchWeatherForGame } = require('./routes/weather');
-
-      // One-time fix: game timestamps were stored with UTC offset instead of local time.
-      // The datetime-local input was initialised with toISOString() (UTC), so games entered
-      // in Eastern time (EDT = UTC-4) were stored 4 hours ahead of the actual local time.
-      // Correct by subtracting 4 hours for all 249 Park games in 2026.
-      {
-        const alreadyFixed = await db
-          .selectFrom('kv_store')
-          .select(['value'])
-          .where('key', '=', 'fix_249park_tz_2026')
-          .executeTakeFirst();
-        if (!alreadyFixed) {
-          const venue249Fix = await db
-            .selectFrom('venues')
-            .select(['id'])
-            .where('name', '=', '249 Park')
-            .executeTakeFirst();
-          if (venue249Fix) {
-            const { rows: affected } = await sql`
-              SELECT id, played_at FROM games WHERE venue_id = ${venue249Fix.id} AND season = 2026
-            `.execute(db);
-            let fixedCount = 0;
-            for (const game of affected) {
-              const d = new Date(game.played_at);
-              if (isNaN(d.getTime())) continue;
-              const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000);
-              await db.updateTable('games')
-                .set({ played_at: corrected.toISOString() })
-                .where('id', '=', game.id)
-                .execute();
-              fixedCount++;
-            }
-            console.log(`[DateFix] Corrected ${fixedCount} 249 Park 2026 game timestamps (EDT -4h)`);
-          }
-          await db.insertInto('kv_store')
-            .values({ key: 'fix_249park_tz_2026', value: '1' })
-            .onConflict((oc) => oc.column('key').doNothing())
-            .execute();
-        }
-      }
-
-      // Set coordinates for 249 Park — always ensure correct coords
-      const venue249 = await db
-        .selectFrom('venues')
-        .selectAll()
-        .where('name', '=', '249 Park')
-        .executeTakeFirst();
-      if (venue249) {
-        const correctLat = 43.26553781771368;
-        const correctLng = -79.86855315885511;
-        const coordsWrong = !venue249.lat || Math.abs(venue249.lat - correctLat) > 0.001;
-        if (coordsWrong) {
-          await db.updateTable('venues')
-            .set({ lat: correctLat, lng: correctLng })
-            .where('id', '=', venue249.id)
-            .execute();
-          console.log(`[Venue] Set/corrected coordinates for 249 Park (id=${venue249.id})`);
-        }
-      }
-
-      // One-shot: clear all weather_json after switching from daily aggregates
-      // to hourly weather lookup at game time.
-      {
-        const alreadyDone = await db
-          .selectFrom('kv_store')
-          .select(['value'])
-          .where('key', '=', 'weather_hourly_v3')
-          .executeTakeFirst();
-        if (!alreadyDone) {
-          const { rows: cleared } = await sql`
-            UPDATE games SET weather_json = NULL WHERE weather_json IS NOT NULL RETURNING id
-          `.execute(db);
-          console.log(`[Weather] Cleared ${cleared.length} weather entries — refetching with hourly data`);
-          await db.insertInto('kv_store')
-            .values({ key: 'weather_hourly_v3', value: '1' })
-            .onConflict((oc) => oc.column('key').doNothing())
-            .execute();
-        }
-      }
-
-      // One-shot: correct game #25's played_at, which was shifted +4 hours by
-      // the edit-form datetime-local bug when a venue was added after the fact.
-      {
-        const alreadyDone = await db
-          .selectFrom('kv_store')
-          .select(['value'])
-          .where('key', '=', 'fix_game25_tz_shift')
-          .executeTakeFirst();
-        if (!alreadyDone) {
-          const g25 = await db
-            .selectFrom('games')
-            .select(['id', 'played_at'])
-            .where('id', '=', 25)
-            .executeTakeFirst();
-          if (g25 && g25.played_at) {
-            const d = new Date(g25.played_at);
-            if (!isNaN(d.getTime())) {
-              const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000).toISOString();
-              await db.updateTable('games')
-                .set({ played_at: corrected, weather_json: null })
-                .where('id', '=', 25)
-                .execute();
-              console.log(`[Fix] Game #25 played_at ${g25.played_at} → ${corrected}; weather cleared for refetch`);
-            }
-          }
-          await db.insertInto('kv_store')
-            .values({ key: 'fix_game25_tz_shift', value: '1' })
-            .onConflict((oc) => oc.column('key').doNothing())
-            .execute();
-        }
-      }
-
-      // Backfill weather for games at venues with coordinates but no weather_json
-      const { rows: gamesNeedingWeather } = await sql`
-        SELECT g.id, g.played_at, v.lat, v.lng
-        FROM games g
-        JOIN venues v ON g.venue_id = v.id
-        WHERE g.weather_json IS NULL AND v.lat IS NOT NULL AND v.lat != 0
-      `.execute(db);
-
-      for (const game of gamesNeedingWeather) {
-        const weather = await fetchWeatherForGame(game.lat, game.lng, game.played_at);
-        if (weather) {
-          await db.updateTable('games')
-            .set({ weather_json: JSON.stringify(weather) })
-            .where('id', '=', game.id)
-            .execute();
-          console.log(`[Weather] Backfilled game #${game.id}: ${weather.condition} ${weather.temp_c}°C`);
-        }
-      }
-    } catch (e) {
-      console.warn('[Startup] Venue/weather backfill failed:', e.message);
-    }
-
-    // Auto-seed if empty (no-op in Postgres mode — see seed.js)
-    const { seedIfEmpty } = require('./seed');
-    seedIfEmpty();
-
-    // ── Daily Postgres backup (production only) ──────────────────────────────
-    // Dumps all tables to a gzipped JSON file on the Railway volume.
-    // Keeps the 7 most recent backups; older ones are rotated out.
-    if (process.env.NODE_ENV === 'production') {
-      const cron = require('node-cron');
-      const { runBackup, BACKUP_DIR } = require('./lib/backup');
-      const { getDb, sql } = require('./db');
-      const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail, sendGraceWarningEmail } = require('./lib/email');
-
-      // 03:00 UTC every day
-      cron.schedule('0 3 * * *', async () => {
-        runBackup().catch((e) => console.error('[Backup] Cron error:', e.message));
-
-        const db = getDb();
-        const baseUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
-
-        // ── Weekend pass: day-before warning ──────────────────────────────────
-        try {
-          const { rows: expiringSoon } = await sql`
-            SELECT l.id, l.name, l.slug, l.expires_at,
-                   u.email, u.display_name
-            FROM leagues l
-            JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
-            JOIN users u ON u.id = lm.user_id
-            WHERE l.plan = 'weekend_pass'
-              AND l.expires_at > NOW()
-              AND l.expires_at <= NOW() + INTERVAL '48 hours'
-              AND l.pass_warning_sent_at IS NULL
-              AND u.email IS NOT NULL
-          `.execute(db);
-
-          for (const row of expiringSoon) {
-            try {
-              const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
-              await sendWeekendPassWarningEmail({
-                to: row.email,
-                userName: row.display_name,
-                leagueName: row.name,
-                leagueUrl,
-                expiresAt: row.expires_at,
-              });
-              await sql`UPDATE leagues SET pass_warning_sent_at = NOW() WHERE id = ${row.id}`.execute(db);
-              console.log(`[Cron] Weekend pass warning sent → league ${row.id}`);
-            } catch (err) {
-              console.error(`[Cron] Warning email failed for league ${row.id}:`, err.message);
-            }
-          }
-        } catch (e) {
-          console.error('[Cron] Weekend pass warning query failed:', e.message);
-        }
-
-        // ── Weekend pass: expiry — flip to free + notify ───────────────────
-        try {
-          const { rows: expired } = await sql`
-            SELECT l.id, l.name, l.slug,
-                   u.email, u.display_name
-            FROM leagues l
-            JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
-            JOIN users u ON u.id = lm.user_id
-            WHERE l.plan = 'weekend_pass'
-              AND l.expires_at < NOW()
-              AND u.email IS NOT NULL
-          `.execute(db);
-
-          for (const row of expired) {
-            try {
-              await sql`
-                UPDATE leagues
-                SET plan = 'free', expires_at = NULL, pass_warning_sent_at = NULL
-                WHERE id = ${row.id}
-              `.execute(db);
-              const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
-              await sendWeekendPassExpiredEmail({
-                to: row.email,
-                userName: row.display_name,
-                leagueName: row.name,
-                leagueUrl,
-              });
-              console.log(`[Cron] Weekend pass expired → league ${row.id} → free`);
-            } catch (err) {
-              console.error(`[Cron] Expiry handling failed for league ${row.id}:`, err.message);
-            }
-          }
-        } catch (e) {
-          console.error('[Cron] Weekend pass expiry query failed:', e.message);
-        }
-
-        // ── Downgrade grace: freeze excess members after grace expires ─────────
-        try {
-          const { rows: graceExpired } = await sql`
-            SELECT l.id, l.slug, l.name
-            FROM leagues l
-            WHERE l.grace_period_ends_at IS NOT NULL
-              AND l.grace_period_ends_at < NOW()
-              AND l.plan = 'free'
-          `.execute(db);
-
-          for (const league of graceExpired) {
-            try {
-              // Oldest 8 by joined_at are kept; NULLS LAST so unknown join dates freeze first
-              const { rows: activeMembers } = await sql`
-                SELECT user_id, joined_at
-                FROM league_memberships
-                WHERE league_id = ${league.id} AND frozen_at IS NULL
-                ORDER BY joined_at ASC NULLS LAST
-              `.execute(db);
-
-              const toFreeze = activeMembers.slice(8);
-              for (const member of toFreeze) {
-                await sql`
-                  UPDATE league_memberships
-                  SET frozen_at = NOW()
-                  WHERE league_id = ${league.id} AND user_id = ${member.user_id}
-                `.execute(db);
-                console.log(`[Cron] Froze user_id=${member.user_id} in league ${league.id} (joined_at=${member.joined_at})`);
-              }
-
-              // Clear grace period marker
-              await sql`
-                UPDATE leagues SET grace_period_ends_at = NULL WHERE id = ${league.id}
-              `.execute(db);
-
-              console.log(`[Cron] Grace period resolved for league ${league.id}: ${Math.min(activeMembers.length, 8)} active, ${toFreeze.length} frozen`);
-            } catch (err) {
-              console.error(`[Cron] Grace freeze failed for league ${league.id}:`, err.message);
-            }
-          }
-        } catch (e) {
-          console.error('[Cron] Grace freeze query failed:', e.message);
-        }
-
-        // ── Downgrade grace: day-before warning (if unresolved) ───────────────
-        try {
-          const { rows: warningSoon } = await sql`
-            SELECT l.id, l.slug, l.name, l.grace_period_ends_at,
-                   u.email, u.display_name
-            FROM leagues l
-            JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
-            JOIN users u ON u.id = lm.user_id
-            WHERE l.grace_period_ends_at IS NOT NULL
-              AND l.grace_period_ends_at > NOW()
-              AND l.grace_period_ends_at <= NOW() + INTERVAL '24 hours'
-              AND u.email IS NOT NULL
-              AND (
-                SELECT COUNT(*) FROM league_memberships
-                WHERE league_id = l.id AND frozen_at IS NULL
-              ) > 8
-          `.execute(db);
-
-          for (const row of warningSoon) {
-            try {
-              const leagueUrl = `${baseUrl}/l/${row.slug}`;
-              await sendGraceWarningEmail({
-                to: row.email,
-                userName: row.display_name,
-                leagueName: row.name,
-                leagueUrl,
-                graceEndsAt: row.grace_period_ends_at,
-              });
-              console.log(`[Cron] Grace warning email sent → league ${row.id}`);
-            } catch (err) {
-              console.error(`[Cron] Grace warning email failed for league ${row.id}:`, err.message);
-            }
-          }
-        } catch (e) {
-          console.error('[Cron] Grace warning query failed:', e.message);
-        }
-      });
-
-      console.log(`[Backup] Daily backup scheduled at 03:00 UTC → ${BACKUP_DIR}`);
-      console.log('[Cron] Weekend pass warning + expiry + grace period scheduled at 03:00 UTC');
-    }
-
+    // Start listening as soon as the schema is ready so the healthcheck passes.
     if (require.main === module) {
       app.listen(PORT, () => {
         console.log(`[Server] Cornhole249 running on http://localhost:${PORT}`);
       });
     }
   } catch (e) {
-    console.error('[Startup]', e);
+    console.error('[Startup] Migration failed — cannot start server:', e);
     process.exit(1);
   }
+
+  // Background work — runs after listen(); errors are logged but never crash the process.
+  (async () => {
+    try {
+      const { recalculateAllElos } = require('./lib/elo');
+      const db = getDb();
+
+      // Recalculate all Elo ratings on startup to apply the latest formula
+      const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
+      const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
+      if (games.length > 0) {
+        const newElos = recalculateAllElos(games, participants);
+        await db.transaction().execute(async (trx) => {
+          for (const [userId, elo] of Object.entries(newElos)) {
+            await trx.updateTable('users').set({ elo_rating: elo }).where('id', '=', parseInt(userId)).execute();
+          }
+        });
+        console.log(`[Elo] Recalculated ratings for ${Object.keys(newElos).length} players`);
+      }
+
+      // One-time venue/weather fixes and weather backfill
+      // Each fix is guarded by a kv_store key so it only runs once per deploy.
+      try {
+        const { fetchWeatherForGame } = require('./routes/weather');
+
+        // One-time fix: game timestamps were stored with UTC offset instead of local time.
+        // The datetime-local input was initialised with toISOString() (UTC), so games entered
+        // in Eastern time (EDT = UTC-4) were stored 4 hours ahead of the actual local time.
+        // Correct by subtracting 4 hours for all 249 Park games in 2026.
+        {
+          const alreadyFixed = await db
+            .selectFrom('kv_store')
+            .select(['value'])
+            .where('key', '=', 'fix_249park_tz_2026')
+            .executeTakeFirst();
+          if (!alreadyFixed) {
+            const venue249Fix = await db
+              .selectFrom('venues')
+              .select(['id'])
+              .where('name', '=', '249 Park')
+              .executeTakeFirst();
+            if (venue249Fix) {
+              const { rows: affected } = await sql`
+                SELECT id, played_at FROM games WHERE venue_id = ${venue249Fix.id} AND season = 2026
+              `.execute(db);
+              let fixedCount = 0;
+              for (const game of affected) {
+                const d = new Date(game.played_at);
+                if (isNaN(d.getTime())) continue;
+                const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000);
+                await db.updateTable('games')
+                  .set({ played_at: corrected.toISOString() })
+                  .where('id', '=', game.id)
+                  .execute();
+                fixedCount++;
+              }
+              console.log(`[DateFix] Corrected ${fixedCount} 249 Park 2026 game timestamps (EDT -4h)`);
+            }
+            await db.insertInto('kv_store')
+              .values({ key: 'fix_249park_tz_2026', value: '1' })
+              .onConflict((oc) => oc.column('key').doNothing())
+              .execute();
+          }
+        }
+
+        // Set coordinates for 249 Park — always ensure correct coords
+        const venue249 = await db
+          .selectFrom('venues')
+          .selectAll()
+          .where('name', '=', '249 Park')
+          .executeTakeFirst();
+        if (venue249) {
+          const correctLat = 43.26553781771368;
+          const correctLng = -79.86855315885511;
+          const coordsWrong = !venue249.lat || Math.abs(venue249.lat - correctLat) > 0.001;
+          if (coordsWrong) {
+            await db.updateTable('venues')
+              .set({ lat: correctLat, lng: correctLng })
+              .where('id', '=', venue249.id)
+              .execute();
+            console.log(`[Venue] Set/corrected coordinates for 249 Park (id=${venue249.id})`);
+          }
+        }
+
+        // One-shot: clear all weather_json after switching from daily aggregates
+        // to hourly weather lookup at game time.
+        {
+          const alreadyDone = await db
+            .selectFrom('kv_store')
+            .select(['value'])
+            .where('key', '=', 'weather_hourly_v3')
+            .executeTakeFirst();
+          if (!alreadyDone) {
+            const { rows: cleared } = await sql`
+              UPDATE games SET weather_json = NULL WHERE weather_json IS NOT NULL RETURNING id
+            `.execute(db);
+            console.log(`[Weather] Cleared ${cleared.length} weather entries — refetching with hourly data`);
+            await db.insertInto('kv_store')
+              .values({ key: 'weather_hourly_v3', value: '1' })
+              .onConflict((oc) => oc.column('key').doNothing())
+              .execute();
+          }
+        }
+
+        // One-shot: correct game #25's played_at, which was shifted +4 hours by
+        // the edit-form datetime-local bug when a venue was added after the fact.
+        {
+          const alreadyDone = await db
+            .selectFrom('kv_store')
+            .select(['value'])
+            .where('key', '=', 'fix_game25_tz_shift')
+            .executeTakeFirst();
+          if (!alreadyDone) {
+            const g25 = await db
+              .selectFrom('games')
+              .select(['id', 'played_at'])
+              .where('id', '=', 25)
+              .executeTakeFirst();
+            if (g25 && g25.played_at) {
+              const d = new Date(g25.played_at);
+              if (!isNaN(d.getTime())) {
+                const corrected = new Date(d.getTime() - 4 * 60 * 60 * 1000).toISOString();
+                await db.updateTable('games')
+                  .set({ played_at: corrected, weather_json: null })
+                  .where('id', '=', 25)
+                  .execute();
+                console.log(`[Fix] Game #25 played_at ${g25.played_at} → ${corrected}; weather cleared for refetch`);
+              }
+            }
+            await db.insertInto('kv_store')
+              .values({ key: 'fix_game25_tz_shift', value: '1' })
+              .onConflict((oc) => oc.column('key').doNothing())
+              .execute();
+          }
+        }
+
+        // Backfill weather for games at venues with coordinates but no weather_json
+        const { rows: gamesNeedingWeather } = await sql`
+          SELECT g.id, g.played_at, v.lat, v.lng
+          FROM games g
+          JOIN venues v ON g.venue_id = v.id
+          WHERE g.weather_json IS NULL AND v.lat IS NOT NULL AND v.lat != 0
+        `.execute(db);
+
+        for (const game of gamesNeedingWeather) {
+          const weather = await fetchWeatherForGame(game.lat, game.lng, game.played_at);
+          if (weather) {
+            await db.updateTable('games')
+              .set({ weather_json: JSON.stringify(weather) })
+              .where('id', '=', game.id)
+              .execute();
+            console.log(`[Weather] Backfilled game #${game.id}: ${weather.condition} ${weather.temp_c}°C`);
+          }
+        }
+      } catch (e) {
+        console.warn('[Startup] Venue/weather backfill failed:', e.message);
+      }
+
+      // Auto-seed if empty (no-op in Postgres mode — see seed.js)
+      const { seedIfEmpty } = require('./seed');
+      seedIfEmpty();
+
+      // ── Daily Postgres backup (production only) ──────────────────────────────
+      // Dumps all tables to a gzipped JSON file on the Railway volume.
+      // Keeps the 7 most recent backups; older ones are rotated out.
+      if (process.env.NODE_ENV === 'production') {
+        const cron = require('node-cron');
+        const { runBackup, BACKUP_DIR } = require('./lib/backup');
+        const { getDb, sql } = require('./db');
+        const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail, sendGraceWarningEmail, sendWeekendPassAnniversaryEmail, sendProAnnualRecapEmail } = require('./lib/email');
+
+        // 03:00 UTC every day
+        cron.schedule('0 3 * * *', async () => {
+          runBackup().catch((e) => console.error('[Backup] Cron error:', e.message));
+
+          const db = getDb();
+          const baseUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+
+          // ── Weekend pass: day-before warning ──────────────────────────────────
+          try {
+            const { rows: expiringSoon } = await sql`
+              SELECT l.id, l.name, l.slug, l.expires_at,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.plan = 'weekend_pass'
+                AND l.expires_at > NOW()
+                AND l.expires_at <= NOW() + INTERVAL '48 hours'
+                AND l.pass_warning_sent_at IS NULL
+                AND u.email IS NOT NULL
+            `.execute(db);
+
+            for (const row of expiringSoon) {
+              try {
+                const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                await sendWeekendPassWarningEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                  expiresAt: row.expires_at,
+                });
+                await sql`UPDATE leagues SET pass_warning_sent_at = NOW() WHERE id = ${row.id}`.execute(db);
+                console.log(`[Cron] Weekend pass warning sent → league ${row.id}`);
+              } catch (err) {
+                console.error(`[Cron] Warning email failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Weekend pass warning query failed:', e.message);
+          }
+
+          // ── Weekend pass: expiry — flip to free + notify ───────────────────
+          try {
+            const { rows: expired } = await sql`
+              SELECT l.id, l.name, l.slug,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.plan = 'weekend_pass'
+                AND l.expires_at < NOW()
+                AND u.email IS NOT NULL
+            `.execute(db);
+
+            for (const row of expired) {
+              try {
+                await sql`
+                  UPDATE leagues
+                  SET plan = 'free', expires_at = NULL, pass_warning_sent_at = NULL
+                  WHERE id = ${row.id}
+                `.execute(db);
+                const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                await sendWeekendPassExpiredEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                });
+                console.log(`[Cron] Weekend pass expired → league ${row.id} → free`);
+              } catch (err) {
+                console.error(`[Cron] Expiry handling failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Weekend pass expiry query failed:', e.message);
+          }
+
+          // ── Downgrade grace: freeze excess members after grace expires ─────────
+          try {
+            const { rows: graceExpired } = await sql`
+              SELECT l.id, l.slug, l.name
+              FROM leagues l
+              WHERE l.grace_period_ends_at IS NOT NULL
+                AND l.grace_period_ends_at < NOW()
+                AND l.plan = 'free'
+            `.execute(db);
+
+            for (const league of graceExpired) {
+              try {
+                // Oldest 8 by joined_at are kept; NULLS LAST so unknown join dates freeze first
+                const { rows: activeMembers } = await sql`
+                  SELECT user_id, joined_at
+                  FROM league_memberships
+                  WHERE league_id = ${league.id} AND frozen_at IS NULL
+                  ORDER BY joined_at ASC NULLS LAST
+                `.execute(db);
+
+                const toFreeze = activeMembers.slice(8);
+                for (const member of toFreeze) {
+                  await sql`
+                    UPDATE league_memberships
+                    SET frozen_at = NOW()
+                    WHERE league_id = ${league.id} AND user_id = ${member.user_id}
+                  `.execute(db);
+                  console.log(`[Cron] Froze user_id=${member.user_id} in league ${league.id} (joined_at=${member.joined_at})`);
+                }
+
+                // Clear grace period marker
+                await sql`
+                  UPDATE leagues SET grace_period_ends_at = NULL WHERE id = ${league.id}
+                `.execute(db);
+
+                console.log(`[Cron] Grace period resolved for league ${league.id}: ${Math.min(activeMembers.length, 8)} active, ${toFreeze.length} frozen`);
+              } catch (err) {
+                console.error(`[Cron] Grace freeze failed for league ${league.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Grace freeze query failed:', e.message);
+          }
+
+          // ── Downgrade grace: day-before warning (if unresolved) ───────────────
+          try {
+            const { rows: warningSoon } = await sql`
+              SELECT l.id, l.slug, l.name, l.grace_period_ends_at,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.grace_period_ends_at IS NOT NULL
+                AND l.grace_period_ends_at > NOW()
+                AND l.grace_period_ends_at <= NOW() + INTERVAL '24 hours'
+                AND u.email IS NOT NULL
+                AND (
+                  SELECT COUNT(*) FROM league_memberships
+                  WHERE league_id = l.id AND frozen_at IS NULL
+                ) > 8
+            `.execute(db);
+
+            for (const row of warningSoon) {
+              try {
+                const leagueUrl = `${baseUrl}/l/${row.slug}`;
+                await sendGraceWarningEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                  graceEndsAt: row.grace_period_ends_at,
+                });
+                console.log(`[Cron] Grace warning email sent → league ${row.id}`);
+              } catch (err) {
+                console.error(`[Cron] Grace warning email failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Grace warning query failed:', e.message);
+          }
+
+          // ── Weekend pass: 11-month anniversary re-engagement ──────────────────
+          // Fires ~11 months after purchase. "Run it back?" CTA to buy another pass.
+          // Skipped if the league has since upgraded to Pro (they don't need it).
+          try {
+            const { rows: anniversary } = await sql`
+              SELECT l.id, l.name, l.slug, l.weekend_pass_purchased_at,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.weekend_pass_purchased_at IS NOT NULL
+                AND l.weekend_pass_purchased_at <= NOW() - INTERVAL '330 days'
+                AND l.weekend_pass_purchased_at >= NOW() - INTERVAL '340 days'
+                AND l.pass_anniversary_sent_at IS NULL
+                AND l.plan != 'pro'
+                AND u.email IS NOT NULL
+            `.execute(db);
+
+            for (const row of anniversary) {
+              try {
+                // Find the most recent tournament name to personalise the email
+                const { rows: [tournament] } = await sql`
+                  SELECT name FROM tournaments
+                  WHERE league_id = ${row.id}
+                  ORDER BY created_at DESC LIMIT 1
+                `.execute(db);
+
+                const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                await sendWeekendPassAnniversaryEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                  tournamentName: tournament?.name || null,
+                });
+                await sql`
+                  UPDATE leagues SET pass_anniversary_sent_at = NOW() WHERE id = ${row.id}
+                `.execute(db);
+                console.log(`[Cron] Weekend pass anniversary email sent → league ${row.id}`);
+              } catch (err) {
+                console.error(`[Cron] Anniversary email failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Weekend pass anniversary query failed:', e.message);
+          }
+
+          // ── Pro annual recap ─────────────────────────────────────────────────
+          // Fires once per year on the subscription start anniversary (± 1 day).
+          // pro_recap_sent_year prevents duplicate sends within the same year.
+          try {
+            const thisYear = new Date().getFullYear();
+            const { rows: recapLeagues } = await sql`
+              SELECT l.id, l.name, l.slug, l.stripe_subscription_started_at,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.plan = 'pro'
+                AND l.stripe_subscription_started_at IS NOT NULL
+                AND (l.pro_recap_sent_year IS NULL OR l.pro_recap_sent_year < ${thisYear})
+                AND TO_CHAR(l.stripe_subscription_started_at, 'MM-DD')
+                    BETWEEN TO_CHAR(NOW() - INTERVAL '1 day', 'MM-DD')
+                         AND TO_CHAR(NOW() + INTERVAL '1 day', 'MM-DD')
+                AND u.email IS NOT NULL
+            `.execute(db);
+
+            for (const row of recapLeagues) {
+              try {
+                // Gather simple year-in-review stats
+                const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+                const { rows: [gameCount] } = await sql`
+                  SELECT COUNT(*) AS total FROM games
+                  WHERE league_id = ${row.id} AND played_at >= ${oneYearAgo}
+                `.execute(db);
+
+                const { rows: playerStats } = await sql`
+                  SELECT u2.display_name AS name,
+                         SUM(CASE WHEN gp.is_winner THEN 1 ELSE 0 END) AS wins,
+                         SUM(CASE WHEN NOT gp.is_winner THEN 1 ELSE 0 END) AS losses
+                  FROM game_participants gp
+                  JOIN games g ON g.id = gp.game_id
+                  JOIN users u2 ON u2.id = gp.user_id
+                  WHERE g.league_id = ${row.id} AND g.played_at >= ${oneYearAgo}
+                  GROUP BY gp.user_id, u2.display_name
+                  HAVING COUNT(*) >= 3
+                  ORDER BY wins DESC LIMIT 1
+                `.execute(db);
+
+                const { rows: activePlayers } = await sql`
+                  SELECT COUNT(DISTINCT gp.user_id) AS cnt
+                  FROM game_participants gp
+                  JOIN games g ON g.id = gp.game_id
+                  WHERE g.league_id = ${row.id} AND g.played_at >= ${oneYearAgo}
+                `.execute(db);
+
+                const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                await sendProAnnualRecapEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                  stats: {
+                    totalGames: Number(gameCount?.total || 0),
+                    totalPlayers: Number(activePlayers[0]?.cnt || 0),
+                    topPlayer: playerStats[0] ? {
+                      name: playerStats[0].name,
+                      wins: Number(playerStats[0].wins),
+                      losses: Number(playerStats[0].losses),
+                    } : null,
+                  },
+                });
+                await sql`
+                  UPDATE leagues SET pro_recap_sent_year = ${thisYear} WHERE id = ${row.id}
+                `.execute(db);
+                console.log(`[Cron] Pro annual recap sent → league ${row.id}`);
+              } catch (err) {
+                console.error(`[Cron] Pro recap failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Pro annual recap query failed:', e.message);
+          }
+        });
+
+        console.log(`[Backup] Daily backup scheduled at 03:00 UTC → ${BACKUP_DIR}`);
+        console.log('[Cron] Weekend pass warning + expiry + grace period + anniversary scheduled at 03:00 UTC');
+      }
+    } catch (e) {
+      // Background startup tasks failed — log but do NOT crash the server.
+      console.error('[Startup] Background init error (non-fatal):', e);
+    }
+  })().catch((e) => console.error('[Startup] Background IIFE rejected (non-fatal):', e));
 })();
 
 module.exports = app;

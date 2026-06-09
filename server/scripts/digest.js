@@ -24,10 +24,15 @@
  *                    e.g. "Hamilton, ON, Canada"
  */
 
+// Force IPv4 DNS resolution — Railway containers lack IPv6 routing and
+// Nodemailer's smtp.gmail.com lookup otherwise resolves to an IPv6 address.
+require('dns').setDefaultResultOrder('ipv4first');
+
 require('../instrument'); // Sentry init + dotenv
 const { getDb, runMigrations, sql } = require('../db');
 const { isPro }               = require('../lib/plan');
 const { sendDigestEmail }     = require('../lib/email');
+const Anthropic               = require('@anthropic-ai/sdk');
 
 // ── Week-label helper ─────────────────────────────────────────────────────────
 // Digest runs Monday 08:00. "This week" = the 7 days just completed (Mon–Sun).
@@ -37,6 +42,66 @@ function weekLabel() {
   const mon    = new Date(sun); mon.setDate(sun.getDate() - 6);   // Monday before that
   const fmt    = (d) => d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
   return `${fmt(mon)} – ${fmt(sun)}`;
+}
+
+// ── LLM copy generator ────────────────────────────────────────────────────────
+// Generates one preheader + intro paragraph per league (not per recipient).
+// Falls back gracefully if ANTHROPIC_API_KEY is missing or the call fails.
+async function generateLeagueCopy({ leagueName, games, highlights, weekLabel }) {
+  if (!process.env.ANTHROPIC_API_KEY) return { preheader: null, intro: null };
+
+  const { streakLeader, biggestMargin, topPlayer, topWins } = highlights;
+  const bullets = [];
+  if (streakLeader && streakLeader.streak >= 2) {
+    bullets.push(`${streakLeader.name} is on a ${streakLeader.streak}-game win streak`);
+  }
+  if (topPlayer && topWins >= 2) {
+    bullets.push(`${topPlayer.name} went ${topWins}-${games.length - topWins > 0 ? games.length - topWins : 0} this week`);
+  }
+  if (biggestMargin && biggestMargin.margin >= 5) {
+    const winName = biggestMargin.winners.map((p) => p.nickname || p.display_name).join(' & ');
+    bullets.push(`${winName} dominated with a ${biggestMargin.winScore}–${biggestMargin.loseScore} win`);
+  }
+  bullets.push(`${games.length} game${games.length !== 1 ? 's' : ''} played this week`);
+
+  const contextStr = bullets.map((b) => `- ${b}`).join('\n');
+
+  try {
+    const client = new Anthropic();
+    const msg = await client.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 200,
+      messages: [{
+        role: 'user',
+        content: `You are writing copy for a weekly cornhole league email digest.
+
+League: ${leagueName}
+Week: ${weekLabel}
+Highlights:
+${contextStr}
+
+Write two things:
+1. PREHEADER: A punchy ~90-character inbox preview line. Competitive, fun tone. No emoji. No "Weekly Digest". Use just the nickname portion of any name given (e.g. "The Inevitable", not 'Andrew "The Inevitable"').
+2. INTRO: One or two short sentences (max 40 words total). Energetic, trash-talk-friendly. Can use 1-2 emojis. Reference a specific highlight. Use the FULL name format provided (e.g., Andrew "The Inevitable").
+
+Reply in this exact format (nothing else):
+PREHEADER: <text>
+INTRO: <text>`,
+      }],
+    });
+
+    const text = msg.content[0]?.text || '';
+    const preheaderMatch = text.match(/^PREHEADER:\s*(.+)$/m);
+    const introMatch     = text.match(/^INTRO:\s*(.+(?:\n.+)?)$/m);
+
+    return {
+      preheader: preheaderMatch ? preheaderMatch[1].trim() : null,
+      intro:     introMatch     ? introMatch[1].trim()     : null,
+    };
+  } catch (err) {
+    console.warn('[digest] LLM copy generation failed:', err.message);
+    return { preheader: null, intro: null };
+  }
 }
 
 // ── Streak helper ─────────────────────────────────────────────────────────────
@@ -114,8 +179,15 @@ async function processLeague(league, db, label) {
 
   // ── 3. Highlights ─────────────────────────────────────────────────────────
   const playerWins  = new Map(); // uid → wins this week
-  const playerNames = new Map(); // uid → display name
+  const playerNames = new Map(); // uid → { display_name, nickname }
   let biggestMargin = null;
+
+  // Returns "Display Name" or 'Display Name "Nickname"' for use in email copy
+  function fullLabel(uid) {
+    const p = playerNames.get(uid);
+    if (!p) return 'Unknown';
+    return p.nickname ? `${p.display_name} “${p.nickname}”` : p.display_name;
+  }
 
   for (const game of games) {
     const t1 = game.teams[1] || [];
@@ -125,7 +197,7 @@ async function processLeague(league, db, label) {
     // Track names and weekly wins
     for (const team of [t1, t2]) {
       for (const p of team) {
-        playerNames.set(p.user_id, p.nickname || p.display_name);
+        playerNames.set(p.user_id, { display_name: p.display_name, nickname: p.nickname });
         if (!playerWins.has(p.user_id)) playerWins.set(p.user_id, 0);
         if (p.is_winner) playerWins.set(p.user_id, playerWins.get(p.user_id) + 1);
       }
@@ -155,7 +227,7 @@ async function processLeague(league, db, label) {
   for (const [uid, wins] of playerWins) {
     if (wins > topWins) {
       topWins   = wins;
-      topPlayer = { user_id: uid, name: playerNames.get(uid), wins };
+      topPlayer = { user_id: uid, name: fullLabel(uid), wins };
     }
   }
 
@@ -166,42 +238,56 @@ async function processLeague(league, db, label) {
     const streak = await getActiveStreak(uid, league.id, db);
     if (streak > maxStreak) {
       maxStreak    = streak;
-      streakLeader = { user_id: uid, name: playerNames.get(uid), streak };
+      streakLeader = { user_id: uid, name: fullLabel(uid), streak };
     }
   }
 
-  // ── 4. Overall standings (top 10 by wins) ────────────────────────────────
-  const { rows: standingRows } = await sql`
-    SELECT
-      gp.user_id,
-      u.display_name,
-      u.nickname,
-      COUNT(*)                       AS gp,
-      SUM(gp.is_winner::int)         AS wins,
-      COUNT(*) - SUM(gp.is_winner::int) AS losses
-    FROM game_participants gp
-    JOIN games g ON gp.game_id = g.id
-    JOIN users u ON gp.user_id = u.id
-    WHERE g.league_id = ${league.id}
-    GROUP BY gp.user_id, u.display_name, u.nickname
-    HAVING COUNT(*) >= 1
-    ORDER BY SUM(gp.is_winner::int) DESC, COUNT(*) DESC
-    LIMIT 10
-  `.execute(db);
+  // ── 4. Standings — 1v1 top 5 and 2v2 top 5 ──────────────────────────────
+  async function standingsFor(gameType) {
+    const { rows } = await sql`
+      SELECT
+        gp.user_id,
+        u.display_name,
+        COUNT(*)                          AS gp,
+        SUM(gp.is_winner::int)            AS wins,
+        COUNT(*) - SUM(gp.is_winner::int) AS losses
+      FROM game_participants gp
+      JOIN games g ON gp.game_id = g.id
+      JOIN users u ON gp.user_id = u.id
+      WHERE g.league_id = ${league.id}
+        AND g.game_type = ${gameType}
+      GROUP BY gp.user_id, u.display_name
+      HAVING COUNT(*) >= 1
+      ORDER BY SUM(gp.is_winner::int) DESC, COUNT(*) DESC
+      LIMIT 5
+    `.execute(db);
+    return rows.map((r, i) => ({
+      rank:    i + 1,
+      name:    r.display_name,
+      wins:    Number(r.wins),
+      losses:  Number(r.losses),
+      gp:      Number(r.gp),
+      win_pct: Number(r.gp) > 0 ? Math.round((Number(r.wins) / Number(r.gp)) * 100) : 0,
+    }));
+  }
 
-  const standings = standingRows.map((r, i) => ({
-    rank:    i + 1,
-    name:    r.nickname || r.display_name,
-    wins:    Number(r.wins),
-    losses:  Number(r.losses),
-    gp:      Number(r.gp),
-    win_pct: Number(r.gp) > 0 ? Math.round((Number(r.wins) / Number(r.gp)) * 100) : 0,
-  }));
+  const [standings1v1, standings2v2] = await Promise.all([
+    standingsFor('1v1'),
+    standingsFor('2v2'),
+  ]);
 
-  // ── 5. Eligible recipients ────────────────────────────────────────────────
+  // ── 5. LLM-generated copy (once per league) ──────────────────────────────
+  const { preheader, intro } = await generateLeagueCopy({
+    leagueName: league.name,
+    games,
+    highlights: { streakLeader, biggestMargin, topPlayer, topWins },
+    weekLabel:  label,
+  });
+
+  // ── 6. Eligible recipients ────────────────────────────────────────────────
   const { rows: members } = await sql`
     SELECT u.id, u.email, u.display_name, u.nickname
-    FROM league_members lm
+    FROM league_memberships lm
     JOIN users u ON lm.user_id = u.id
     WHERE lm.league_id = ${league.id}
       AND u.email IS NOT NULL
@@ -216,17 +302,20 @@ async function processLeague(league, db, label) {
 
   console.log(`[digest] ${league.slug}: ${games.length} game(s), sending to ${members.length} recipient(s)`);
 
-  // ── 6. Send ───────────────────────────────────────────────────────────────
+  // ── 7. Send ───────────────────────────────────────────────────────────────
   for (const member of members) {
     try {
       await sendDigestEmail({
         to:        member.email,
-        name:      member.nickname || member.display_name,
+        name:      member.display_name,
         userId:    member.id,
         league,
         games,
         highlights: { streakLeader, biggestMargin, topPlayer, topWins },
-        standings,
+        standings1v1,
+        standings2v2,
+        preheader,
+        intro,
         weekLabel: label,
       });
     } catch (err) {
