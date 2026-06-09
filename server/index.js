@@ -2,6 +2,19 @@
 // causes Nodemailer SMTP connections (smtp.gmail.com) to fail with ENETUNREACH.
 require('dns').setDefaultResultOrder('ipv4first');
 
+// ── Global error safety net ───────────────────────────────────────────────────
+// In Node 22, unhandled promise rejections crash the process (exit 1) by
+// default. Log them visibly so Railway logs capture the root cause before exit.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled promise rejection:', reason);
+  // Re-throw so Railway sees a non-zero exit code and Sentry captures it.
+  throw reason;
+});
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  process.exit(1);
+});
+
 // Sentry must be initialised before any other require so it can instrument Node internals.
 // instrument.js also calls dotenv.config() so we don't need to repeat it here.
 require('./instrument');
@@ -717,9 +730,9 @@ app.use(errorHandler);
       }
     } catch (e) {
       // Background startup tasks failed — log but do NOT crash the server.
-      console.error('[Startup] Background init error (non-fatal):', e.message);
+      console.error('[Startup] Background init error (non-fatal):', e);
     }
-  })();
+  })().catch((e) => console.error('[Startup] Background IIFE rejected (non-fatal):', e));
 })();
 
 module.exports = app;
