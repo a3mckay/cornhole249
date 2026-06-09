@@ -106,6 +106,11 @@ export const gamesApi = {
   create: (data) => api.post(`${leagueBase()}/games`, data).then((r) => r.data),
   update: (id, data) => api.patch(`/games/${id}`, data).then((r) => r.data),  // admin only
   delete: (id) => api.delete(`/games/${id}`, {}).then((r) => r.data),         // admin only
+  pending: () => api.get(`${leagueBase()}/games/pending`).then((r) => r.data),
+  approve: (id) => api.post(`${leagueBase()}/games/${id}/approve`).then((r) => r.data),
+  dispute: (id) => api.post(`${leagueBase()}/games/${id}/dispute`).then((r) => r.data),
+  submissions: () => api.get(`${leagueBase()}/games/submissions`).then((r) => r.data),
+  retractSubmission: (id) => api.delete(`${leagueBase()}/games/submissions/${id}`).then((r) => r.data),
 };
 
 // Comments
@@ -185,11 +190,13 @@ export const adminApi = {
 
 // Leagues (global — not league-scoped)
 export const leaguesApi = {
+  browse: (params) => api.get('/leagues', { params }).then((r) => r.data),
   mine: () => api.get('/leagues/mine').then((r) => r.data),
   create: (data) => api.post('/leagues', data).then((r) => r.data),
   get: (slug) => api.get(`/leagues/${slug}`).then((r) => r.data),
   update: (slug, data) => api.patch(`/leagues/${slug}`, data).then((r) => r.data),
   members: (slug) => api.get(`/leagues/${slug}/members`).then((r) => r.data),
+  changeMemberRole: (slug, userId, role) => api.patch(`/leagues/${slug}/members/${userId}`, { role }).then((r) => r.data),
   removeMember: (slug, userId) => api.delete(`/leagues/${slug}/members/${userId}`).then((r) => r.data),
   generateCode: (slug) => api.post(`/leagues/${slug}/join-codes`).then((r) => r.data),
   // Invite token (private leagues)
@@ -218,6 +225,9 @@ export const joinApi = {
   // Token-based (private league invite links)
   getToken: (token) => api.get(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
   joinWithToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
+  // Aliases used by FindLeague
+  acceptToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
+  accept: (code) => api.post(`/join/${code}`).then((r) => r.data),
 };
 
 // Billing (Stripe Checkout + Customer Portal)

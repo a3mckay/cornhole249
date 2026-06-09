@@ -98,8 +98,6 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// ── Legacy single-use code route (backward compat) ───────────────────────────
-
 // GET /api/join/:code — old invite codes still work for existing links
 router.get('/:code', async (req, res) => {
   try {
@@ -140,6 +138,47 @@ router.get('/:code', async (req, res) => {
       inviter_ref_token: inviterRefToken,
       ...(preview || {}),
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/join/:code — authenticated user joins via legacy code
+router.post('/:code', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const code = req.params.code.trim().toUpperCase();
+
+    const joinCode = await db
+      .selectFrom('join_codes')
+      .selectAll()
+      .where('code', '=', code)
+      .executeTakeFirst();
+
+    if (!joinCode) return res.status(404).json({ error: 'Join code not found' });
+    if (joinCode.used_by) return res.status(410).json({ error: 'This code has already been used' });
+
+    const leagueId = joinCode.league_id || 1;
+
+    // Free plan member cap
+    const { rows: leagueRows } = await sql`SELECT plan, slug FROM leagues WHERE id = ${leagueId}`.execute(db);
+    const league = leagueRows[0];
+    if (league?.plan === 'free') {
+      const { rows: countRows } = await sql`SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${leagueId}`.execute(db);
+      if (parseInt(countRows[0].n) >= 8) {
+        return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
+      }
+    }
+
+    await db
+      .insertInto('league_memberships')
+      .values({ league_id: leagueId, user_id: req.session.userId, role: 'player' })
+      .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+      .execute();
+
+    await db.updateTable('join_codes').set({ used_by: req.session.userId }).where('code', '=', code).execute();
+
+    res.json({ ok: true, slug: league?.slug });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

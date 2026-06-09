@@ -66,9 +66,20 @@ export default function LeagueSettings() {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState(null); // eslint-disable-line no-unused-vars
 
-  // Member removal
+  // Member removal / role change
   const [removingId, setRemovingId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const [changingRoleId, setChangingRoleId] = useState(null);
+
+  // Score & tournament controls
+  const [scoreSubmitPolicy, setScoreSubmitPolicy] = useState('all_members');
+  const [tournamentCreatePolicy, setTournamentCreatePolicy] = useState('admins_only');
+  const [scoreSubmitAllowedIds, setScoreSubmitAllowedIds] = useState([]);
+  const [tournamentCreateAllowedIds, setTournamentCreateAllowedIds] = useState([]);
+  const [scoreVerifyMode, setScoreVerifyMode] = useState('immediate');
+  const [controlsSaving, setControlsSaving] = useState(false);
+  const [controlsSuccess, setControlsSuccess] = useState(false);
+  const [controlsError, setControlsError] = useState('');
 
   // PWA install prompt
   const { canInstall, isIos, isStandalone, promptInstall } = useInstallPrompt();
@@ -284,6 +295,11 @@ export default function LeagueSettings() {
       setTagline(leagueData.tagline || '');
       setIsPublic(!!leagueData.is_public);
       setRules(leagueData.rules || 'hamilton');
+      setScoreSubmitPolicy(leagueData.score_submit_policy || 'all_members');
+      setTournamentCreatePolicy(leagueData.tournament_create_policy || 'admins_only');
+      try { setScoreSubmitAllowedIds(JSON.parse(leagueData.score_submit_allowed_ids || '[]')); } catch (_) {}
+      try { setTournamentCreateAllowedIds(JSON.parse(leagueData.tournament_create_allowed_ids || '[]')); } catch (_) {}
+      setScoreVerifyMode(leagueData.score_verify_mode || 'immediate');
       // Custom rules
       if (leagueData.custom_rules_json) {
         setCustomRules({ ...DEFAULT_CUSTOM_RULES, ...leagueData.custom_rules_json });
@@ -409,6 +425,39 @@ export default function LeagueSettings() {
     } finally {
       setRemovingId(null);
       setConfirmRemove(null);
+    }
+  };
+
+  const handleRoleChange = async (memberId, newRole) => {
+    setChangingRoleId(memberId);
+    try {
+      await leaguesApi.changeMemberRole(slug, memberId, newRole);
+      setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, role: newRole } : m));
+    } catch (_) {
+      // Silent fail
+    } finally {
+      setChangingRoleId(null);
+    }
+  };
+
+  const handleControlsSave = async () => {
+    setControlsSaving(true);
+    setControlsError('');
+    setControlsSuccess(false);
+    try {
+      await leaguesApi.update(slug, {
+        score_submit_policy: scoreSubmitPolicy,
+        tournament_create_policy: tournamentCreatePolicy,
+        score_submit_allowed_ids: scoreSubmitAllowedIds,
+        tournament_create_allowed_ids: tournamentCreateAllowedIds,
+        score_verify_mode: scoreVerifyMode,
+      });
+      setControlsSuccess(true);
+      setTimeout(() => setControlsSuccess(false), 2500);
+    } catch (e) {
+      setControlsError(e.response?.data?.error || 'Failed to save');
+    } finally {
+      setControlsSaving(false);
     }
   };
 
@@ -1222,6 +1271,137 @@ export default function LeagueSettings() {
         leagueId={leagueId}
       />
 
+      {/* Score & Tournament Controls */}
+      {canManage && (
+        <div className="card p-6">
+          <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+            🔒 Permissions
+          </h2>
+          <p className="font-ui text-sm mb-5" style={{ color: 'var(--color-text-secondary)' }}>
+            Control who can submit scores, start tournaments, and how scores are verified.
+          </p>
+
+          <div className="flex flex-col gap-5">
+            {/* Score submission policy */}
+            <div>
+              <label className="block font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Who can submit scores?
+              </label>
+              <select
+                value={scoreSubmitPolicy}
+                onChange={(e) => setScoreSubmitPolicy(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="all_members">All members</option>
+                <option value="admins_only">Admins only</option>
+                <option value="select_players">Select players</option>
+              </select>
+              {scoreSubmitPolicy === 'select_players' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <p className="font-ui text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Choose which players (in addition to admins) can submit scores:
+                  </p>
+                  {members.filter((m) => m.role === 'player').map((m) => (
+                    <label key={m.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={scoreSubmitAllowedIds.includes(m.id)}
+                        onChange={(e) => {
+                          setScoreSubmitAllowedIds((prev) =>
+                            e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id)
+                          );
+                        }}
+                        className="rounded"
+                      />
+                      <span className="font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>{m.display_name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Tournament creation policy */}
+            <div>
+              <label className="block font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Who can start tournaments?
+              </label>
+              <select
+                value={tournamentCreatePolicy}
+                onChange={(e) => setTournamentCreatePolicy(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="admins_only">Admins only</option>
+                <option value="all_members">All members</option>
+                <option value="select_players">Select players</option>
+              </select>
+              {tournamentCreatePolicy === 'select_players' && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <p className="font-ui text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    Choose which players (in addition to admins) can start tournaments:
+                  </p>
+                  {members.filter((m) => m.role === 'player').map((m) => (
+                    <label key={m.id} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={tournamentCreateAllowedIds.includes(m.id)}
+                        onChange={(e) => {
+                          setTournamentCreateAllowedIds((prev) =>
+                            e.target.checked ? [...prev, m.id] : prev.filter((id) => id !== m.id)
+                          );
+                        }}
+                        className="rounded"
+                      />
+                      <span className="font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>{m.display_name}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Score verification mode */}
+            <div>
+              <label className="block font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Score verification
+              </label>
+              <select
+                value={scoreVerifyMode}
+                onChange={(e) => setScoreVerifyMode(e.target.value)}
+                className="w-full rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="immediate">Immediate — scores count right away</option>
+                <option value="opponent_approve">Opponent approval — opposing team must approve</option>
+                <option value="both_submit">Both teams submit — scores must match to count</option>
+              </select>
+              {scoreVerifyMode === 'opponent_approve' && (
+                <p className="font-ui text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  One player submits the score. Any player from the opposing team can approve or dispute it.
+                </p>
+              )}
+              {scoreVerifyMode === 'both_submit' && (
+                <p className="font-ui text-xs mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  Both teams independently submit the game. When the scores match, the game becomes official. Mismatches are flagged as disputed.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-5">
+            <button
+              onClick={handleControlsSave}
+              disabled={controlsSaving}
+              className="btn btn-primary text-sm px-5 py-2 disabled:opacity-50"
+            >
+              {controlsSaving ? 'Saving…' : 'Save permissions'}
+            </button>
+            {controlsSuccess && <span className="font-ui text-sm" style={{ color: 'var(--color-primary)' }}>Saved!</span>}
+            {controlsError && <span className="font-ui text-sm" style={{ color: 'var(--color-danger)' }}>{controlsError}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Members */}
       <div className="card p-6">
         <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
@@ -1232,6 +1412,7 @@ export default function LeagueSettings() {
             const badge = ROLE_BADGE[m.role] || ROLE_BADGE.player;
             const isMe = m.id === user?.id;
             const canRemove = canManage && m.role !== 'owner' && !isMe;
+            const canChangeRole = myRole === 'owner' && m.role !== 'owner' && !isMe;
             return (
               <div
                 key={m.id}
@@ -1254,41 +1435,56 @@ export default function LeagueSettings() {
                     </div>
                   )}
                 </div>
-                <span
-                  className="text-xs font-ui font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                  style={{ background: badge.bg, color: badge.color }}
-                >
-                  {badge.label}
-                </span>
-                {canRemove && (
-                  confirmRemove === m.id ? (
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button
-                        onClick={() => handleRemove(m.id)}
-                        disabled={removingId === m.id}
-                        className="text-xs font-ui font-semibold px-2 py-1 rounded-lg text-white"
-                        style={{ background: 'var(--color-danger)' }}
-                      >
-                        {removingId === m.id ? '…' : 'Remove'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmRemove(null)}
-                        className="text-xs font-ui px-2 py-1 rounded-lg border"
-                        style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setConfirmRemove(m.id)}
-                      className="text-xs font-ui opacity-40 hover:opacity-100 flex-shrink-0 transition-opacity"
-                      style={{ color: 'var(--color-danger)' }}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {canChangeRole ? (
+                    <select
+                      value={m.role}
+                      disabled={changingRoleId === m.id}
+                      onChange={(e) => handleRoleChange(m.id, e.target.value)}
+                      className="text-xs font-ui font-semibold px-2 py-0.5 rounded-full border cursor-pointer disabled:opacity-50"
+                      style={{ background: badge.bg, color: badge.color, borderColor: badge.color + '44' }}
                     >
-                      Remove
-                    </button>
-                  )
-                )}
+                      <option value="admin">Admin</option>
+                      <option value="player">Player</option>
+                    </select>
+                  ) : (
+                    <span
+                      className="text-xs font-ui font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: badge.bg, color: badge.color }}
+                    >
+                      {badge.label}
+                    </span>
+                  )}
+                  {canRemove && (
+                    confirmRemove === m.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleRemove(m.id)}
+                          disabled={removingId === m.id}
+                          className="text-xs font-ui font-semibold px-2 py-1 rounded-lg text-white"
+                          style={{ background: 'var(--color-danger)' }}
+                        >
+                          {removingId === m.id ? '…' : 'Remove'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmRemove(null)}
+                          className="text-xs font-ui px-2 py-1 rounded-lg border"
+                          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmRemove(m.id)}
+                        className="text-xs font-ui opacity-40 hover:opacity-100 transition-opacity"
+                        style={{ color: 'var(--color-danger)' }}
+                      >
+                        Remove
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
             );
           })}

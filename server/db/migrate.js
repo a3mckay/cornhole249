@@ -27,6 +27,7 @@ const MIGRATIONS = [
   { name: '012_digest_unsubscribed',           file: './migrations/012_digest_unsubscribed' },
   { name: '013_venue_plan',                    file: './migrations/013_venue_plan' },
   { name: '014_anniversary_triggers',          file: './migrations/014_anniversary_triggers' },
+  { name: '015_league_controls',               file: './migrations/015_league_controls' },
 ];
 
 async function run(db) {
