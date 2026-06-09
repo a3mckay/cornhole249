@@ -24,7 +24,9 @@ const child = fork(script, [], { stdio: 'inherit' });
   process.on(sig, () => child.kill(sig));
 });
 
-// Mirror the child's exit code so Railway sees success/failure correctly
+// Mirror the child's exit code so Railway sees success/failure correctly.
+// SIGTERM / SIGINT = graceful shutdown requested by Railway (or Ctrl-C) — exit 0
+// so Railway doesn't mark the old deployment as "Crashed" when rotating out.
 child.on('exit', (code, signal) => {
-  process.exit(code ?? (signal ? 1 : 0));
+  process.exit(code ?? (signal === 'SIGTERM' || signal === 'SIGINT' ? 0 : 1));
 });
