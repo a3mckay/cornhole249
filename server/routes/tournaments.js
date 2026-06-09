@@ -139,7 +139,7 @@ router.post('/', requireAuth, requirePro, async (req, res) => {
 });
 
 // PATCH /api/tournament-matches/:id (admin)
-router.patch('/matches/:id', requireAdmin, async (req, res) => {
+router.patch('/matches/:id', requireAuth, async (req, res) => {
   try {
     const db = getDb();
     const matchId = parseInt(req.params.id);
