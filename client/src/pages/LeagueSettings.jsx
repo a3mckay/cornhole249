@@ -66,6 +66,11 @@ export default function LeagueSettings() {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteTokenExpiresAt, setInviteTokenExpiresAt] = useState(null); // eslint-disable-line no-unused-vars
 
+  // Short code
+  const [shortCode, setShortCode] = useState(null);
+  const [shortCodeCopied, setShortCodeCopied] = useState(false);
+  const [shortCodeRegenerating, setShortCodeRegenerating] = useState(false);
+
   // Member removal / role change
   const [removingId, setRemovingId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
@@ -300,6 +305,7 @@ export default function LeagueSettings() {
       try { setScoreSubmitAllowedIds(JSON.parse(leagueData.score_submit_allowed_ids || '[]')); } catch (_) {}
       try { setTournamentCreateAllowedIds(JSON.parse(leagueData.tournament_create_allowed_ids || '[]')); } catch (_) {}
       setScoreVerifyMode(leagueData.score_verify_mode || 'immediate');
+      setShortCode(leagueData.short_code || null);
       // Custom rules
       if (leagueData.custom_rules_json) {
         setCustomRules({ ...DEFAULT_CUSTOM_RULES, ...leagueData.custom_rules_json });
@@ -459,6 +465,25 @@ export default function LeagueSettings() {
     } finally {
       setControlsSaving(false);
     }
+  };
+
+  const handleShortCodeCopy = () => {
+    if (!shortCode) return;
+    const url = `${window.location.origin}/find-league?code=${shortCode}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShortCodeCopied(true);
+      setTimeout(() => setShortCodeCopied(false), 2000);
+    });
+  };
+
+  const handleShortCodeRegenerate = async () => {
+    if (!window.confirm('Generate a new code? The old code will stop working immediately.')) return;
+    setShortCodeRegenerating(true);
+    try {
+      const { short_code } = await leaguesApi.regenerateShortCode(slug);
+      setShortCode(short_code);
+    } catch (_) {}
+    finally { setShortCodeRegenerating(false); }
   };
 
   if (loading) {
@@ -1197,6 +1222,40 @@ export default function LeagueSettings() {
           <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
             Anyone with this link auto-joins {league?.name}.
           </p>
+
+          {shortCode && (
+            <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                Printable join code
+              </p>
+              <p className="text-xs font-ui mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                Post this at events — anyone can type it into Find a League to join instantly.
+              </p>
+              <div className="flex items-center gap-3">
+                <span
+                  className="font-mono text-2xl font-bold tracking-widest px-4 py-2 rounded-xl select-all"
+                  style={{ background: 'var(--color-bg)', border: '2px solid var(--color-border)', color: 'var(--color-text-primary)', letterSpacing: '0.2em' }}
+                >
+                  {shortCode}
+                </span>
+                <button
+                  onClick={handleShortCodeCopy}
+                  className="btn text-sm px-3 py-2"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                >
+                  {shortCodeCopied ? '✓ Copied' : 'Copy link'}
+                </button>
+                <button
+                  onClick={handleShortCodeRegenerate}
+                  disabled={shortCodeRegenerating}
+                  className="btn text-sm px-3 py-2 disabled:opacity-50"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                >
+                  {shortCodeRegenerating ? '…' : 'New code'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1214,6 +1273,40 @@ export default function LeagueSettings() {
           <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
             Anyone can find your league here and request to join. You approve each request.
           </p>
+
+          {shortCode && (
+            <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                Printable join code
+              </p>
+              <p className="text-xs font-ui mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                Post this at events — anyone can type it into Find a League to join instantly.
+              </p>
+              <div className="flex items-center gap-3">
+                <span
+                  className="font-mono text-2xl font-bold tracking-widest px-4 py-2 rounded-xl select-all"
+                  style={{ background: 'var(--color-bg)', border: '2px solid var(--color-border)', color: 'var(--color-text-primary)', letterSpacing: '0.2em' }}
+                >
+                  {shortCode}
+                </span>
+                <button
+                  onClick={handleShortCodeCopy}
+                  className="btn text-sm px-3 py-2"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)' }}
+                >
+                  {shortCodeCopied ? '✓ Copied' : 'Copy link'}
+                </button>
+                <button
+                  onClick={handleShortCodeRegenerate}
+                  disabled={shortCodeRegenerating}
+                  className="btn text-sm px-3 py-2 disabled:opacity-50"
+                  style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)' }}
+                >
+                  {shortCodeRegenerating ? '…' : 'New code'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

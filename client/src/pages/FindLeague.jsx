@@ -55,23 +55,32 @@ export default function FindLeague() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCodeLookup = async (rawCode) => {
-    const code = rawCode.trim();
+    const code = rawCode.trim().toUpperCase();
     if (!code) { setCodeResult(null); setCodeError(''); return; }
     setCodeLookingUp(true);
     setCodeError('');
     setCodeResult(null);
     try {
-      // Try invite token first (longer alphanumeric), then legacy code
       let result;
+
       if (code.length > 8) {
-        result = await joinApi.getToken(code);
-      } else {
-        result = await joinApi.getInvite(code);
+        // Long string → invite token
+        result = { ...(await joinApi.getToken(code)), _matchType: 'token', _raw: code };
+      } else if (code.length === 6) {
+        // Exactly 6 chars → try short code first (most common for typed/printed codes)
+        result = { ...(await joinApi.getShortCode(code)), _matchType: 'short_code', _raw: code };
         if (!result.valid) {
-          // Also try as token
-          result = await joinApi.getToken(code);
+          // Fall back to legacy invite code
+          result = { ...(await joinApi.getInvite(code)), _matchType: 'legacy', _raw: code };
+        }
+      } else {
+        // Other lengths → legacy invite code, then try token
+        result = { ...(await joinApi.getInvite(code)), _matchType: 'legacy', _raw: code };
+        if (!result.valid) {
+          result = { ...(await joinApi.getToken(code)), _matchType: 'token', _raw: code };
         }
       }
+
       if (!result.valid) {
         setCodeError('Code not found or has expired.');
       } else {
@@ -89,13 +98,16 @@ export default function FindLeague() {
     if (!codeResult) return;
     setCodeJoining(true);
     try {
-      // Token-based join
+      const { _matchType, _raw } = codeResult;
       let slug;
-      if (codeInput.trim().length > 8) {
-        const r = await joinApi.acceptToken(codeInput.trim());
+      if (_matchType === 'short_code') {
+        const r = await joinApi.joinWithShortCode(_raw);
+        slug = r.slug;
+      } else if (_matchType === 'token') {
+        const r = await joinApi.acceptToken(_raw);
         slug = r.slug;
       } else {
-        const r = await joinApi.accept(codeInput.trim());
+        const r = await joinApi.accept(_raw);
         slug = r.slug || codeResult.slug;
       }
       navigate(`/l/${slug}/standings`);
@@ -176,15 +188,25 @@ export default function FindLeague() {
             className="mt-4 rounded-xl p-4 flex items-center justify-between gap-4"
             style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)' }}
           >
-            <div>
+            <div className="min-w-0">
               <div className="font-display text-base" style={{ color: 'var(--color-text-primary)' }}>
-                {codeResult.name}
+                {codeResult.league_name || codeResult.name}
               </div>
               {codeResult.tagline && (
                 <div className="font-ui text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{codeResult.tagline}</div>
               )}
-              <div className="font-ui text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                {codeResult.member_count || 0} members
+              <div className="flex items-center gap-2 mt-1">
+                <span className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {codeResult.member_count || 0} members
+                </span>
+                {codeResult._matchType === 'short_code' && (
+                  <span
+                    className="text-xs font-ui font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: '#D1FAE5', color: '#065F46' }}
+                  >
+                    Direct join
+                  </span>
+                )}
               </div>
             </div>
             <button

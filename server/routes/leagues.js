@@ -33,6 +33,17 @@ const logoUpload = multer({
 });
 
 const FREE_LEAGUE_OWNER_CAP = 2;
+const SHORT_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
+
+async function generateUniqueShortCode(db) {
+  let code, attempts = 0;
+  do {
+    code = Array.from({ length: 6 }, () => SHORT_CODE_CHARS[Math.floor(Math.random() * SHORT_CODE_CHARS.length)]).join('');
+    const { rows } = await sql`SELECT id FROM leagues WHERE short_code = ${code}`.execute(db);
+    if (!rows.length) return code;
+  } while (++attempts < 20);
+  return code; // last attempt, collision extremely unlikely
+}
 
 function slugify(name) {
   return name
@@ -177,9 +188,11 @@ router.post('/', requireAuth, async (req, res) => {
       if (existing2.length) slug = `${base}-${randomSuffix()}`;
     }
 
+    const shortCode = await generateUniqueShortCode(db);
+
     const league = await db
       .insertInto('leagues')
-      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null })
+      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null, short_code: shortCode })
       .returningAll()
       .executeTakeFirstOrThrow();
 
@@ -853,5 +866,29 @@ function generateInviteToken() {
   const { randomBytes } = require('crypto');
   return randomBytes(18).toString('base64url');
 }
+
+// POST /api/leagues/:slug/short-code — regenerate the league's short code (owner/admin)
+router.post('/:slug/short-code', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const shortCode = await generateUniqueShortCode(db);
+    await db.updateTable('leagues').set({ short_code: shortCode }).where('id', '=', league.id).execute();
+
+    res.json({ short_code: shortCode });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 module.exports = router;

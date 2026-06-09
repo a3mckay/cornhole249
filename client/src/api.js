@@ -217,6 +217,7 @@ export const leaguesApi = {
     return api.post(`/leagues/${slug}/logo`, form, { headers: { 'Content-Type': 'multipart/form-data' } }).then((r) => r.data);
   },
   deleteLogo: (slug) => api.delete(`/leagues/${slug}/logo`).then((r) => r.data),
+  regenerateShortCode: (slug) => api.post(`/leagues/${slug}/short-code`).then((r) => r.data),
 };
 
 // Join / invite landing
@@ -225,6 +226,9 @@ export const joinApi = {
   // Token-based (private league invite links)
   getToken: (token) => api.get(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
   joinWithToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
+  // Short code (6-char reusable, direct join)
+  getShortCode: (code) => api.get(`/join/short/${encodeURIComponent(code)}`).then((r) => r.data),
+  joinWithShortCode: (code) => api.post(`/join/short/${encodeURIComponent(code)}`).then((r) => r.data),
   // Aliases used by FindLeague
   acceptToken: (token) => api.post(`/join?t=${encodeURIComponent(token)}`).then((r) => r.data),
   accept: (code) => api.post(`/join/${code}`).then((r) => r.data),
