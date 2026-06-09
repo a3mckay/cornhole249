@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { commentsApi } from '../api';
+import { capture } from '../lib/analytics';
 
 const MAX_CHARS = 500;
 
@@ -18,6 +19,7 @@ export default function CommentSection({ gameId, comments: initialComments }) {
     setError(null);
     try {
       const comment = await commentsApi.post(gameId, text.trim());
+      capture('comment_posted');
       setComments((c) => [...c, comment]);
       setText('');
     } catch (err) {

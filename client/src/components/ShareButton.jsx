@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { capture } from '../lib/analytics';
 
 /**
  * Universal share trigger. Click → modal with preview of the OG image and four
@@ -21,6 +22,7 @@ export default function ShareButton({
   text,
   variant = 'primary',
   className = '',
+  entityType = '',
 }) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -48,6 +50,7 @@ export default function ShareButton({
         onClick={(e) => {
           e.stopPropagation();
           setOpen(true);
+          capture('share_modal_opened', { entity_type: entityType });
         }}
         title="Share"
         aria-label="Share"
@@ -79,13 +82,14 @@ export default function ShareButton({
           imageUrl={imageUrl}
           title={title}
           text={text}
+          entityType={entityType}
         />
       )}
     </>
   );
 }
 
-function ShareModal({ onClose, shareUrl, imageUrl, title, text }) {
+function ShareModal({ onClose, shareUrl, imageUrl, title, text, entityType }) {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -99,6 +103,7 @@ function ShareModal({ onClose, shareUrl, imageUrl, title, text }) {
   const handleNativeShare = async () => {
     try {
       await navigator.share({ url: shareUrl, title, text });
+      capture('share_action_taken', { entity_type: entityType, channel: 'native_share' });
     } catch (e) {
       // user cancelled — silent
     }
@@ -109,6 +114,7 @@ function ShareModal({ onClose, shareUrl, imageUrl, title, text }) {
       await navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
+      capture('share_action_taken', { entity_type: entityType, channel: 'copy_link' });
     } catch (e) {
       alert('Copy failed — please copy manually:\n' + shareUrl);
     }
@@ -127,6 +133,7 @@ function ShareModal({ onClose, shareUrl, imageUrl, title, text }) {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
       setCopiedImage(true);
       setTimeout(() => setCopiedImage(false), 2000);
+      capture('share_action_taken', { entity_type: entityType, channel: 'copy_image' });
     } catch (e) {
       alert('This browser can\'t copy images. Use Download instead.');
     }
@@ -145,6 +152,7 @@ function ShareModal({ onClose, shareUrl, imageUrl, title, text }) {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      capture('share_action_taken', { entity_type: entityType, channel: 'download' });
     } finally {
       setDownloading(false);
     }

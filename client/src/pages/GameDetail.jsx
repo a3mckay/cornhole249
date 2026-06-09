@@ -143,6 +143,7 @@ export default function GameDetail() {
             shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/games/${game.id}` : ''}
             title={`Game #${game.id} — Cornhole249`}
             text={`${teamLabel(team1)} ${t1Score}–${t2Score} ${teamLabel(team2)}`}
+            entityType="game"
           />
           {!!user?.is_admin && (
             <>

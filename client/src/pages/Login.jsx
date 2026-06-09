@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { authApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { capture, identify } from '../lib/analytics';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -25,8 +26,10 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      await authApi.login(email.trim(), password);
+      const userData = await authApi.login(email.trim(), password);
       await refreshUser();
+      if (userData?.id) identify(userData.id);
+      capture('login_completed', { method: 'email' });
       navigate(returnTo || '/');
     } catch (err) {
       setError(err.response?.data?.error || 'Incorrect email or password');

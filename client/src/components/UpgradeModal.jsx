@@ -46,6 +46,7 @@ export default function UpgradeModal({ open, onClose, feature, leagueId }) {
 
   const handleCheckout = async (plan) => {
     if (!leagueId) return;
+    capture('checkout_started', { plan });
     setLoading(plan);
     try {
       const { url } = await billingApi.checkout(leagueId, plan);

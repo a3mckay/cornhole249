@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { tournamentsApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague } from '../contexts/LeagueContext';
+import { capture } from '../lib/analytics';
 import BracketView from '../components/BracketView';
 import ShareButton from '../components/ShareButton';
 import UpgradeModal from '../components/UpgradeModal';
@@ -120,6 +121,7 @@ function TournamentChampionModal({ tournament, onClose }) {
             shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/tournaments?id=${tournament.id}` : ''}
             title={`${championNames} wins ${tournament.name}!`}
             text={`${tournament.game_type} tournament champion — Cornhole249`}
+            entityType="tournament_champion"
           />
           <button onClick={onClose} className="btn btn-ghost text-sm">
             View Bracket
@@ -190,6 +192,7 @@ export default function Tournaments() {
         teams,
       });
 
+      capture('tournament_created', { format: created.format, game_type: created.game_type });
       const t = await tournamentsApi.list();
       setTournaments(t);
       setShowCreate(false);
@@ -410,6 +413,7 @@ export default function Tournaments() {
                 shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/tournaments?id=${selected.id}` : ''}
                 title={`${selected.name} — Cornhole249`}
                 text={`${selected.game_type} tournament`}
+                entityType="tournament"
               />
             </div>
           </div>

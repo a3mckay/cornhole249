@@ -219,6 +219,7 @@ export default function PlayerProfile() {
               shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/players/${player.id}` : ''}
               title={`${player.display_name} — Cornhole249`}
               text={`${career.wins}–${career.losses} all-time`}
+              entityType="player"
             />
             {canEdit && (
               <button onClick={openEdit} className="btn btn-ghost text-sm">✏️ Edit</button>
