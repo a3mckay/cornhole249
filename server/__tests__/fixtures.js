@@ -31,6 +31,11 @@ const SCHEMA_SQL = `
     stripe_subscription_id TEXT,
     stripe_price_id TEXT,
     stripe_current_period_end TEXT,
+    -- migration 014: anniversary triggers
+    weekend_pass_purchased_at TEXT,
+    pass_anniversary_sent_at TEXT,
+    stripe_subscription_started_at TEXT,
+    pro_recap_sent_year INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   INSERT OR IGNORE INTO leagues (id, slug, name, plan) VALUES (1, 'cornhole249', 'Cornhole249', 'pro');
@@ -76,6 +81,14 @@ const SCHEMA_SQL = `
     password_reset_expires_at TEXT,
     google_id TEXT UNIQUE,
     google_email TEXT,
+    -- migration 006: Stripe billing
+    stripe_customer_id TEXT,
+    -- migration 012: digest opt-out
+    digest_unsubscribed_at TEXT,
+    -- migration 013: Venue Plan
+    venue_plan TEXT,
+    venue_stripe_subscription_id TEXT,
+    venue_stripe_period_end TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS venues (
