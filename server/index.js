@@ -563,7 +563,7 @@ app.use(errorHandler);
         const cron = require('node-cron');
         const { runBackup, BACKUP_DIR } = require('./lib/backup');
         const { getDb, sql } = require('./db');
-        const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail, sendGraceWarningEmail } = require('./lib/email');
+        const { sendWeekendPassWarningEmail, sendWeekendPassExpiredEmail, sendGraceWarningEmail, sendWeekendPassAnniversaryEmail, sendProAnnualRecapEmail } = require('./lib/email');
 
         // 03:00 UTC every day
         cron.schedule('0 3 * * *', async () => {
@@ -723,10 +723,134 @@ app.use(errorHandler);
           } catch (e) {
             console.error('[Cron] Grace warning query failed:', e.message);
           }
+
+          // ── Weekend pass: 11-month anniversary re-engagement ──────────────────
+          // Fires ~11 months after purchase. "Run it back?" CTA to buy another pass.
+          // Skipped if the league has since upgraded to Pro (they don't need it).
+          try {
+            const { rows: anniversary } = await sql`
+              SELECT l.id, l.name, l.slug, l.weekend_pass_purchased_at,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.weekend_pass_purchased_at IS NOT NULL
+                AND l.weekend_pass_purchased_at <= NOW() - INTERVAL '330 days'
+                AND l.weekend_pass_purchased_at >= NOW() - INTERVAL '340 days'
+                AND l.pass_anniversary_sent_at IS NULL
+                AND l.plan != 'pro'
+                AND u.email IS NOT NULL
+            `.execute(db);
+
+            for (const row of anniversary) {
+              try {
+                // Find the most recent tournament name to personalise the email
+                const { rows: [tournament] } = await sql`
+                  SELECT name FROM tournaments
+                  WHERE league_id = ${row.id}
+                  ORDER BY created_at DESC LIMIT 1
+                `.execute(db);
+
+                const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                await sendWeekendPassAnniversaryEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                  tournamentName: tournament?.name || null,
+                });
+                await sql`
+                  UPDATE leagues SET pass_anniversary_sent_at = NOW() WHERE id = ${row.id}
+                `.execute(db);
+                console.log(`[Cron] Weekend pass anniversary email sent → league ${row.id}`);
+              } catch (err) {
+                console.error(`[Cron] Anniversary email failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Weekend pass anniversary query failed:', e.message);
+          }
+
+          // ── Pro annual recap ─────────────────────────────────────────────────
+          // Fires once per year on the subscription start anniversary (± 1 day).
+          // pro_recap_sent_year prevents duplicate sends within the same year.
+          try {
+            const thisYear = new Date().getFullYear();
+            const { rows: recapLeagues } = await sql`
+              SELECT l.id, l.name, l.slug, l.stripe_subscription_started_at,
+                     u.email, u.display_name
+              FROM leagues l
+              JOIN league_memberships lm ON lm.league_id = l.id AND lm.role = 'owner'
+              JOIN users u ON u.id = lm.user_id
+              WHERE l.plan = 'pro'
+                AND l.stripe_subscription_started_at IS NOT NULL
+                AND (l.pro_recap_sent_year IS NULL OR l.pro_recap_sent_year < ${thisYear})
+                AND TO_CHAR(l.stripe_subscription_started_at, 'MM-DD')
+                    BETWEEN TO_CHAR(NOW() - INTERVAL '1 day', 'MM-DD')
+                         AND TO_CHAR(NOW() + INTERVAL '1 day', 'MM-DD')
+                AND u.email IS NOT NULL
+            `.execute(db);
+
+            for (const row of recapLeagues) {
+              try {
+                // Gather simple year-in-review stats
+                const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+                const { rows: [gameCount] } = await sql`
+                  SELECT COUNT(*) AS total FROM games
+                  WHERE league_id = ${row.id} AND played_at >= ${oneYearAgo}
+                `.execute(db);
+
+                const { rows: playerStats } = await sql`
+                  SELECT u2.display_name AS name,
+                         SUM(CASE WHEN gp.is_winner THEN 1 ELSE 0 END) AS wins,
+                         SUM(CASE WHEN NOT gp.is_winner THEN 1 ELSE 0 END) AS losses
+                  FROM game_participants gp
+                  JOIN games g ON g.id = gp.game_id
+                  JOIN users u2 ON u2.id = gp.user_id
+                  WHERE g.league_id = ${row.id} AND g.played_at >= ${oneYearAgo}
+                  GROUP BY gp.user_id, u2.display_name
+                  HAVING COUNT(*) >= 3
+                  ORDER BY wins DESC LIMIT 1
+                `.execute(db);
+
+                const { rows: activePlayers } = await sql`
+                  SELECT COUNT(DISTINCT gp.user_id) AS cnt
+                  FROM game_participants gp
+                  JOIN games g ON g.id = gp.game_id
+                  WHERE g.league_id = ${row.id} AND g.played_at >= ${oneYearAgo}
+                `.execute(db);
+
+                const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                await sendProAnnualRecapEmail({
+                  to: row.email,
+                  userName: row.display_name,
+                  leagueName: row.name,
+                  leagueUrl,
+                  stats: {
+                    totalGames: Number(gameCount?.total || 0),
+                    totalPlayers: Number(activePlayers[0]?.cnt || 0),
+                    topPlayer: playerStats[0] ? {
+                      name: playerStats[0].name,
+                      wins: Number(playerStats[0].wins),
+                      losses: Number(playerStats[0].losses),
+                    } : null,
+                  },
+                });
+                await sql`
+                  UPDATE leagues SET pro_recap_sent_year = ${thisYear} WHERE id = ${row.id}
+                `.execute(db);
+                console.log(`[Cron] Pro annual recap sent → league ${row.id}`);
+              } catch (err) {
+                console.error(`[Cron] Pro recap failed for league ${row.id}:`, err.message);
+              }
+            }
+          } catch (e) {
+            console.error('[Cron] Pro annual recap query failed:', e.message);
+          }
         });
 
         console.log(`[Backup] Daily backup scheduled at 03:00 UTC → ${BACKUP_DIR}`);
-        console.log('[Cron] Weekend pass warning + expiry + grace period scheduled at 03:00 UTC');
+        console.log('[Cron] Weekend pass warning + expiry + grace period + anniversary scheduled at 03:00 UTC');
       }
     } catch (e) {
       // Background startup tasks failed — log but do NOT crash the server.

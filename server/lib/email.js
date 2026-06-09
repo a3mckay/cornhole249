@@ -450,6 +450,81 @@ async function sendGraceWarningEmail({ to, userName, leagueName, leagueUrl, grac
   });
 }
 
+/**
+ * Sent ~11 months after a Weekend Pass purchase as a re-engagement nudge.
+ * Reminds the owner what they ran last year and invites them to do it again.
+ */
+async function sendWeekendPassAnniversaryEmail({ to, userName, leagueName, leagueUrl, tournamentName }) {
+  const eventLabel = tournamentName || leagueName;
+  await sendEmail({
+    to,
+    subject: `Run it back? You ran ${eventLabel} a year ago`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        About a year ago you ran <strong>${eventLabel}</strong> on Cornhole249.
+        If there's another tournament, bachelor party, or backyard showdown coming up —
+        your league is still here, waiting.
+      </p>
+      <table style="font-family:sans-serif;border-collapse:collapse;width:100%;max-width:400px">
+        <tr>
+          <td style="padding:6px 0">
+            <a href="${leagueUrl}/settings?plan=weekend_pass" style="display:inline-block;padding:10px 20px;background:#3A6B35;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              Get another Weekend Pass — CAD $12
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 0 6px">
+            <a href="${leagueUrl}" style="display:inline-block;padding:10px 20px;background:#1a4a80;color:#fff;font-weight:bold;text-decoration:none;border-radius:6px">
+              View ${leagueName} →
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="font-family:sans-serif;color:#888;font-size:12px;margin-top:16px">
+        All your old game history is still there. Nothing was deleted.
+      </p>
+    `,
+  });
+}
+
+/**
+ * Sent once per year on a Pro subscription's anniversary. Celebrates the
+ * league's year and reinforces the value of the subscription.
+ */
+async function sendProAnnualRecapEmail({ to, userName, leagueName, leagueUrl, stats }) {
+  const { totalGames = 0, topPlayer = null, totalPlayers = 0 } = stats || {};
+  const topPlayerLine = topPlayer
+    ? `<li style="font-family:sans-serif">🏅 Best record: <strong>${topPlayer.name}</strong> (${topPlayer.wins}–${topPlayer.losses})</li>`
+    : '';
+  await sendEmail({
+    to,
+    subject: `${leagueName}'s year in review — happy anniversary 🎉`,
+    html: `
+      <p style="font-family:sans-serif">Hey ${userName},</p>
+      <p style="font-family:sans-serif">
+        It's been a full year since <strong>${leagueName}</strong> went Pro on Cornhole249.
+        Here's what your crew got up to:
+      </p>
+      <ul style="font-family:sans-serif;padding-left:1.2em;line-height:2">
+        <li>🎯 <strong>${totalGames}</strong> games logged</li>
+        <li>👥 <strong>${totalPlayers}</strong> active players</li>
+        ${topPlayerLine}
+      </ul>
+      <p style="font-family:sans-serif">
+        Thanks for being a Pro member. The board is judging — keep playing.
+      </p>
+      <p style="font-family:sans-serif">
+        <a href="${leagueUrl}" style="color:#3A6B35;font-weight:bold">View ${leagueName} →</a>
+      </p>
+      <p style="font-family:sans-serif;color:#888;font-size:12px">
+        Your subscription renews automatically. Manage it any time from League Settings.
+      </p>
+    `,
+  });
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
@@ -463,6 +538,8 @@ module.exports = {
   sendWeekendPassExpiredEmail,
   sendGraceStartEmail,
   sendGraceWarningEmail,
+  sendWeekendPassAnniversaryEmail,
+  sendProAnnualRecapEmail,
   sendContactEmail,
   sendDigestEmail,
 };

@@ -312,6 +312,14 @@ router.post('/webhook', async (req, res) => {
           const sub = await stripe.subscriptions.retrieve(session.subscription);
           const periodEnd = new Date(sub.current_period_end * 1000).toISOString();
 
+          // Fetch the existing league to check if this is a first-time subscription
+          // (vs a reactivation). Only set stripe_subscription_started_at once.
+          const existingLeague = await db
+            .selectFrom('leagues')
+            .select(['stripe_subscription_started_at'])
+            .where('id', '=', leagueId)
+            .executeTakeFirst();
+
           await db
             .updateTable('leagues')
             .set({
@@ -319,6 +327,11 @@ router.post('/webhook', async (req, res) => {
               stripe_subscription_id: session.subscription,
               stripe_price_id: sub.items.data[0]?.price.id || null,
               stripe_current_period_end: periodEnd,
+              // Only stamp the start date the very first time a subscription is created.
+              // Preserving the original date lets the anniversary cron fire annually.
+              ...(existingLeague?.stripe_subscription_started_at ? {} : {
+                stripe_subscription_started_at: new Date().toISOString(),
+              }),
             })
             .where('id', '=', leagueId)
             .execute();
@@ -332,6 +345,9 @@ router.post('/webhook', async (req, res) => {
             .set({
               plan: 'weekend_pass',
               expires_at: weekendPassExpiresAt,
+              // Persisted permanently so the 11-month anniversary cron can find this league.
+              weekend_pass_purchased_at: new Date().toISOString(),
+              pass_anniversary_sent_at: null, // reset in case of repeat purchase
             })
             .where('id', '=', leagueId)
             .execute();
