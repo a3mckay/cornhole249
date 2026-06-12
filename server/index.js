@@ -104,6 +104,10 @@ if (process.env.GOOGLE_CLIENT_ID) {
         callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
         scope: ['profile', 'email'],
         passReqToCallback: true,
+        // Required when running behind Railway's reverse proxy: ensures the
+        // callback URL is resolved using X-Forwarded-Proto/Host so it always
+        // matches the HTTPS public URL sent to Google in the auth request.
+        proxy: true,
       },
       async (req, accessToken, refreshToken, profile, done) => {
         try {
@@ -210,23 +214,26 @@ app.get('/auth/google', (req, res, next) => {
   next();
 }, passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
 
-app.get(
-  '/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login?error=google_failed' }),
-  (req, res) => {
-    // req.user is set by Passport — manually write to our express-session
-    req.session.userId = req.user.id;
-    req.session.isAdmin = req.user.is_admin === 1;
+app.get('/auth/google/callback', (req, res, next) => {
+  // Use the custom-callback form so that errors thrown by passport-oauth2
+  // (e.g. TokenError from a failed code exchange) are caught here and result
+  // in a clean redirect rather than falling through to the JSON error handler.
+  // The standard failureRedirect option only handles self.fail(), not self.error().
+  passport.authenticate('google', { session: false }, (err, user) => {
+    if (err || !user) {
+      console.error('[Google OAuth] Authentication error:', err || 'no user returned');
+      return res.redirect('/login?error=google_failed');
+    }
 
-    // Redirect to the post-auth destination.
-    // New Google users (no prior account) go to league creation unless a
-    // specific returnTo was set (e.g. arriving from an invite link).
-    const dest = req.session.authRedirect
-      || (req.user._isNewAccount ? '/leagues/new' : '/');
+    req.session.userId = user.id;
+    req.session.isAdmin = user.is_admin === 1;
+
+    // New Google users go to league creation unless a specific returnTo was set.
+    const dest = req.session.authRedirect || (user._isNewAccount ? '/leagues/new' : '/');
     delete req.session.authRedirect;
-    res.redirect(dest);
-  }
-);
+    return res.redirect(dest);
+  })(req, res, next);
+});
 
 // ── League context: set req.leagueId = 1 (Cornhole249) for all requests.
 // League-scoped /api/l/:slug/... routes will override it via leagueMiddleware.
