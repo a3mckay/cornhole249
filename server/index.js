@@ -96,20 +96,19 @@ app.use(session({
 // Using passport.initialize() only — NOT passport.session().
 // After Google auth, we set req.session.userId manually, just like email/password login.
 if (process.env.GOOGLE_CLIENT_ID) {
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
-        scope: ['profile', 'email'],
-        passReqToCallback: true,
-        // Required when running behind Railway's reverse proxy: ensures the
-        // callback URL is resolved using X-Forwarded-Proto/Host so it always
-        // matches the HTTPS public URL sent to Google in the auth request.
-        proxy: true,
-      },
-      async (req, accessToken, refreshToken, profile, done) => {
+  const _googleStrategy = new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
+      scope: ['profile', 'email'],
+      passReqToCallback: true,
+      // Required when running behind Railway's reverse proxy: ensures the
+      // callback URL is resolved using X-Forwarded-Proto/Host so it always
+      // matches the HTTPS public URL sent to Google in the auth request.
+      proxy: true,
+    },
+    async (req, accessToken, refreshToken, profile, done) => {
         try {
           const db = getDb();
           const googleId = profile.id;
@@ -204,6 +203,20 @@ if (process.env.GOOGLE_CLIENT_ID) {
       }
     )
   );
+
+  // Intercept token exchange to log exact params sent to Google — remove once invalid_grant is resolved.
+  const _origGetToken = _googleStrategy._oauth2.getOAuthAccessToken.bind(_googleStrategy._oauth2);
+  _googleStrategy._oauth2.getOAuthAccessToken = function (code, params, callback) {
+    console.log('[Google OAuth Debug] Token exchange params:', JSON.stringify({
+      redirect_uri: params.redirect_uri,
+      grant_type: params.grant_type,
+      client_id_prefix: this._clientId?.slice(0, 20),
+      code_prefix: code?.slice(0, 12),
+    }));
+    return _origGetToken(code, params, callback);
+  };
+
+  passport.use(_googleStrategy);
 }
 
 app.use(passport.initialize()); // Note: no passport.session() — we use express-session directly
