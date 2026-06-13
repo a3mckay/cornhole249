@@ -201,8 +201,7 @@ if (process.env.GOOGLE_CLIENT_ID) {
           done(e);
         }
       }
-    )
-  );
+    );
 
   // Intercept token exchange to log exact params sent to Google — remove once invalid_grant is resolved.
   const _origGetToken = _googleStrategy._oauth2.getOAuthAccessToken.bind(_googleStrategy._oauth2);
