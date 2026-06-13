@@ -203,18 +203,6 @@ if (process.env.GOOGLE_CLIENT_ID) {
       }
     );
 
-  // Intercept token exchange to log exact params sent to Google — remove once invalid_grant is resolved.
-  const _origGetToken = _googleStrategy._oauth2.getOAuthAccessToken.bind(_googleStrategy._oauth2);
-  _googleStrategy._oauth2.getOAuthAccessToken = function (code, params, callback) {
-    console.log('[Google OAuth Debug] Token exchange params:', JSON.stringify({
-      redirect_uri: params.redirect_uri,
-      grant_type: params.grant_type,
-      client_id_prefix: this._clientId?.slice(0, 20),
-      code_prefix: code?.slice(0, 12),
-    }));
-    return _origGetToken(code, params, callback);
-  };
-
   passport.use(_googleStrategy);
 }
 
