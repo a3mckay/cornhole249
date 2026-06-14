@@ -36,8 +36,13 @@ export default function GameDetail() {
   const handleDelete = async () => {
     if (!confirm('Delete this game? This cannot be undone.')) return;
     setDeleting(true);
-    await gamesApi.delete(id);
-    navigate('/games');
+    try {
+      await gamesApi.delete(id);
+      navigate('/games');
+    } catch (err) {
+      setEditError(err.response?.data?.error || 'Failed to delete game');
+      setDeleting(false);
+    }
   };
 
   // Convert a UTC ISO string ("2026-05-21T00:00:00.000Z") into a datetime-local

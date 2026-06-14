@@ -206,7 +206,13 @@ app.use(passport.initialize()); // Note: no passport.session() — we use expres
 
 // Google OAuth routes
 app.get('/auth/google', (req, res, next) => {
-  if (req.query.returnTo) req.session.authRedirect = req.query.returnTo;
+  if (req.query.returnTo) {
+    const rTo = req.query.returnTo;
+    // Only allow relative paths — reject protocol-relative (//host) or full URLs
+    if (typeof rTo === 'string' && rTo.startsWith('/') && !rTo.startsWith('//')) {
+      req.session.authRedirect = rTo;
+    }
+  }
   next();
 }, passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
 
@@ -752,6 +758,10 @@ app.use(errorHandler);
                 `.execute(db);
 
                 const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                // Mark sent before sending — prevents duplicate emails if email succeeds but DB update fails on retry
+                await sql`
+                  UPDATE leagues SET pass_anniversary_sent_at = NOW() WHERE id = ${row.id}
+                `.execute(db);
                 await sendWeekendPassAnniversaryEmail({
                   to: row.email,
                   userName: row.display_name,
@@ -759,9 +769,6 @@ app.use(errorHandler);
                   leagueUrl,
                   tournamentName: tournament?.name || null,
                 });
-                await sql`
-                  UPDATE leagues SET pass_anniversary_sent_at = NOW() WHERE id = ${row.id}
-                `.execute(db);
                 console.log(`[Cron] Weekend pass anniversary email sent → league ${row.id}`);
               } catch (err) {
                 console.error(`[Cron] Anniversary email failed for league ${row.id}:`, err.message);
@@ -785,9 +792,17 @@ app.use(errorHandler);
               WHERE l.plan = 'pro'
                 AND l.stripe_subscription_started_at IS NOT NULL
                 AND (l.pro_recap_sent_year IS NULL OR l.pro_recap_sent_year < ${thisYear})
-                AND TO_CHAR(l.stripe_subscription_started_at, 'MM-DD')
-                    BETWEEN TO_CHAR(NOW() - INTERVAL '1 day', 'MM-DD')
-                         AND TO_CHAR(NOW() + INTERVAL '1 day', 'MM-DD')
+                AND (
+                  TO_CHAR(l.stripe_subscription_started_at, 'MM-DD') IN (
+                    TO_CHAR(NOW() - INTERVAL '1 day', 'MM-DD'),
+                    TO_CHAR(NOW(), 'MM-DD'),
+                    TO_CHAR(NOW() + INTERVAL '1 day', 'MM-DD')
+                  )
+                  OR (
+                    TO_CHAR(l.stripe_subscription_started_at, 'MM-DD') = '02-29'
+                    AND TO_CHAR(NOW(), 'MM-DD') = '02-28'
+                  )
+                )
                 AND u.email IS NOT NULL
             `.execute(db);
 
@@ -821,6 +836,10 @@ app.use(errorHandler);
                 `.execute(db);
 
                 const leagueUrl = `${baseUrl}${row.slug === 'cornhole249' ? '' : `/l/${row.slug}`}`;
+                // Mark sent before sending — prevents duplicate emails if email succeeds but DB update fails on retry
+                await sql`
+                  UPDATE leagues SET pro_recap_sent_year = ${thisYear} WHERE id = ${row.id}
+                `.execute(db);
                 await sendProAnnualRecapEmail({
                   to: row.email,
                   userName: row.display_name,
@@ -836,9 +855,6 @@ app.use(errorHandler);
                     } : null,
                   },
                 });
-                await sql`
-                  UPDATE leagues SET pro_recap_sent_year = ${thisYear} WHERE id = ${row.id}
-                `.execute(db);
                 console.log(`[Cron] Pro annual recap sent → league ${row.id}`);
               } catch (err) {
                 console.error(`[Cron] Pro recap failed for league ${row.id}:`, err.message);

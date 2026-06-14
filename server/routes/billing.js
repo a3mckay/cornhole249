@@ -207,6 +207,10 @@ router.post('/webhook', async (req, res) => {
   if (!process.env.STRIPE_SECRET_KEY) {
     return res.status(503).send('Billing not configured');
   }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.error('[Billing] STRIPE_WEBHOOK_SECRET not configured — rejecting webhook');
+    return res.status(500).send('Webhook secret not configured');
+  }
 
   const sig = req.headers['stripe-signature'];
   let event;
@@ -283,17 +287,30 @@ router.post('/webhook', async (req, res) => {
               AND l.plan = 'pro'
           `.execute(db);
 
+          // Cancel each Stripe subscription individually (can't be transactional with external API)
+          const successfullyCancelled = [];
           for (const proLeague of proLeagues) {
             try {
               await stripe.subscriptions.cancel(proLeague.stripe_subscription_id, { prorate: true });
-              await db
-                .updateTable('leagues')
-                .set({ plan: 'free', stripe_subscription_id: null, stripe_price_id: null, stripe_current_period_end: null })
-                .where('id', '=', proLeague.id)
-                .execute();
-              console.log(`[Billing] Cancelled per-league Pro sub for league ${proLeague.id} (venue upgrade, prorated credit applied)`);
+              successfullyCancelled.push(proLeague.id);
             } catch (err) {
               console.error(`[Billing] Failed to cancel league ${proLeague.id} sub during venue upgrade:`, err.message);
+            }
+          }
+
+          // Update all successfully-cancelled leagues in one transaction
+          if (successfullyCancelled.length > 0) {
+            await db.transaction().execute(async (trx) => {
+              for (const lgId of successfullyCancelled) {
+                await trx
+                  .updateTable('leagues')
+                  .set({ plan: 'free', stripe_subscription_id: null, stripe_price_id: null, stripe_current_period_end: null })
+                  .where('id', '=', lgId)
+                  .execute();
+              }
+            });
+            for (const lgId of successfullyCancelled) {
+              console.log(`[Billing] Cancelled per-league Pro sub for league ${lgId} (venue upgrade, prorated credit applied)`);
             }
           }
 
@@ -340,14 +357,24 @@ router.post('/webhook', async (req, res) => {
           console.log(`[Billing] League ${leagueId} → Pro (sub ${session.subscription})`);
         } else if (session.mode === 'payment' && plan === 'weekend_pass') {
           weekendPassExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+          const existingPass = await db
+            .selectFrom('leagues')
+            .select(['weekend_pass_purchased_at'])
+            .where('id', '=', leagueId)
+            .executeTakeFirst();
+
           await db
             .updateTable('leagues')
             .set({
               plan: 'weekend_pass',
               expires_at: weekendPassExpiresAt,
-              // Persisted permanently so the 11-month anniversary cron can find this league.
-              weekend_pass_purchased_at: new Date().toISOString(),
-              pass_anniversary_sent_at: null, // reset in case of repeat purchase
+              // Only stamp purchase date the first time — preserves original date for anniversary cron.
+              // Reset anniversary flag in case of repeat purchase so the cron fires again.
+              ...(existingPass?.weekend_pass_purchased_at ? {} : {
+                weekend_pass_purchased_at: new Date().toISOString(),
+              }),
+              pass_anniversary_sent_at: null,
             })
             .where('id', '=', leagueId)
             .execute();
@@ -501,14 +528,20 @@ router.post('/webhook', async (req, res) => {
               .execute();
 
             if (venueOwner?.email) {
-              sendGraceStartEmail({
-                to: venueOwner.email,
-                userName: venueOwner.display_name,
-                leagueName: ownedLeague.name,
-                leagueUrl: `${APP_URL}/l/${ownedLeague.slug}`,
-                graceEndsAt,
-                memberCount,
-              }).catch((e) => console.error('[Billing] Grace start email failed:', e.message));
+              (async () => {
+                try {
+                  await sendGraceStartEmail({
+                    to: venueOwner.email,
+                    userName: venueOwner.display_name,
+                    leagueName: ownedLeague.name,
+                    leagueUrl: `${APP_URL}/l/${ownedLeague.slug}`,
+                    graceEndsAt,
+                    memberCount,
+                  });
+                } catch (e) {
+                  console.error('[Billing] Grace start email failed:', e.message);
+                }
+              })();
             }
 
             console.log(`[Billing] League ${ownedLeague.id} → grace period (venue cancelled, ${memberCount} members)`);
@@ -557,13 +590,16 @@ router.post('/webhook', async (req, res) => {
         `.execute(db);
         const memberCount = parseInt(memberRows[0].n);
 
-        if (memberCount > 8 && !league?.grace_period_ends_at) {
+        if (memberCount > 8) {
           const graceEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-          await db
+          // Conditional update: only set grace period if not already set (idempotent under retries)
+          const graceResult = await db
             .updateTable('leagues')
             .set({ grace_period_ends_at: graceEndsAt })
             .where('id', '=', leagueId)
-            .execute();
+            .where('grace_period_ends_at', 'is', null)
+            .executeTakeFirst();
+          if (!graceResult?.numUpdatedRows) break; // already set by a concurrent handler
 
           const { rows: ownerRows } = await sql`
             SELECT u.email, u.display_name

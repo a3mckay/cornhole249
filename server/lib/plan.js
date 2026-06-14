@@ -57,11 +57,8 @@ function isPro(league) {
 function hasVenuePlan(user) {
   if (!user?.venue_plan || user.venue_plan !== 'venue') return false;
   if (!user.venue_stripe_subscription_id) return false;
-  if (user.venue_stripe_period_end) {
-    const end = new Date(user.venue_stripe_period_end);
-    if (end < new Date()) return false;
-  }
-  return true;
+  if (!user.venue_stripe_period_end) return false;
+  return new Date(user.venue_stripe_period_end) > new Date();
 }
 
 module.exports = { effectivePlan, isPro, hasVenuePlan };

@@ -85,7 +85,7 @@ export default function GameNew({ onAchievement }) {
         setGeoLoading(false);
       },
       () => {
-        alert('Could not get your location. Please allow location access and try again.');
+        setErrors(['Could not get your location. Please allow location access and try again.']);
         setGeoLoading(false);
       }
     );
@@ -104,13 +104,13 @@ export default function GameNew({ onAchievement }) {
           setExistingVenueLng(lng);
           setVenues((vs) => vs.map((v) => v.id === parseInt(venueId) ? { ...v, lat, lng } : v));
         } catch (e) {
-          alert('Failed to update venue location');
+          setErrors(['Failed to update venue location']);
         } finally {
           setUpdatingVenueLocation(false);
         }
       },
       () => {
-        alert('Could not get your location. Please allow location access and try again.');
+        setErrors(['Could not get your location. Please allow location access and try again.']);
         setGeoLoading(false);
       }
     );
@@ -150,6 +150,7 @@ export default function GameNew({ onAchievement }) {
           return;
         }
         const v = await venuesApi.create({ name: newVenueName.trim(), lat: newVenueLat, lng: newVenueLng });
+        if (!v?.id) throw new Error('Venue creation failed — no id returned');
         finalVenueId = v.id;
       }
 

@@ -69,7 +69,7 @@ async function evaluateAchievements(gameId) {
 
     // first_blood: first game ever recorded in the league
     const { rows: totalRows } = await sql`SELECT COUNT(*) as c FROM games WHERE league_id = ${leagueId}`.execute(db);
-    const totalGames = parseInt(totalRows[0].c);
+    const totalGames = parseInt(totalRows[0]?.c) || 0;
     if (totalGames === 1) {
       if (await awardAchievement(userId, 'first_blood', leagueId)) awarded.push({ userId, key: 'first_blood' });
     }
@@ -110,8 +110,14 @@ async function evaluateAchievements(gameId) {
       const { rows: oppRows } = await sql`
         SELECT SUM(score) as total FROM game_participants WHERE game_id = ${gameId} AND team = ${opponentTeam}
       `.execute(db);
-      if (oppRows[0] && parseInt(oppRows[0].total) === 0) {
+      const oppTotal = parseInt(oppRows[0]?.total) || 0;
+      if (oppTotal === 0) {
         if (await awardAchievement(userId, 'shutout', leagueId)) awarded.push({ userId, key: 'shutout' });
+      }
+
+      // comeback_kid: won a game where opponent scored 10+ (proxy — no intermediate score tracking)
+      if (oppTotal >= 10) {
+        if (await awardAchievement(userId, 'comeback_kid', leagueId)) awarded.push({ userId, key: 'comeback_kid' });
       }
 
       // giant_slayer: beat a 70%+ win-rate player when you're under 40%
@@ -140,7 +146,7 @@ async function evaluateAchievements(gameId) {
               OR g.weather_json LIKE '%"condition":"Drizzle%'
               OR g.weather_json LIKE '%"condition":"Heavy Rain%')
           `.execute(db);
-          if (parseInt(rainRows[0].c) >= 3) {
+          if ((parseInt(rainRows[0]?.c) || 0) >= 3) {
             if (await awardAchievement(userId, 'rain_warrior', leagueId)) awarded.push({ userId, key: 'rain_warrior' });
           }
         }
@@ -174,7 +180,7 @@ async function evaluateAchievements(gameId) {
       JOIN game_participants gp ON c.game_id = gp.game_id
       WHERE gp.user_id = ${userId} AND c.league_id = ${leagueId}
     `.execute(db);
-    if (parseInt(hypeRows[0].c) >= 50) {
+    if ((parseInt(hypeRows[0]?.c) || 0) >= 50) {
       if (await awardAchievement(userId, 'hype_machine', leagueId)) awarded.push({ userId, key: 'hype_machine' });
     }
   }

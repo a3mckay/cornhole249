@@ -34,7 +34,7 @@ export default function CommentSection({ gameId, comments: initialComments }) {
       await commentsApi.delete(commentId);
       setComments((c) => c.filter((x) => x.id !== commentId));
     } catch (err) {
-      alert('Could not delete comment');
+      setError(err.response?.data?.error || 'Could not delete comment');
     }
   };
 

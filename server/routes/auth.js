@@ -85,7 +85,6 @@ router.post('/login', authLimiter, async (req, res) => {
 
     // ── Legacy PIN login ──────────────────────────────────────────────────────
     if (user_id) {
-      if (!user_id) return res.status(400).json({ error: 'user_id required' });
       const user = await db
         .selectFrom('users')
         .select(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'pin', 'email', 'google_id'])
@@ -201,7 +200,7 @@ router.post('/register', async (req, res) => {
     // Generate ref_token for new user
     let newRefToken;
     do {
-      newRefToken = randomBytes(4).toString('hex');
+      newRefToken = randomBytes(8).toString('hex');
       const ex = await db.selectFrom('users').select(['id']).where('ref_token', '=', newRefToken).executeTakeFirst();
       if (!ex) break;
     } while (true); // eslint-disable-line no-constant-condition

@@ -11,14 +11,17 @@ router.post('/games/:id/comments', requireAuth, async (req, res) => {
     if (!body || !body.trim()) return res.status(400).json({ error: 'Comment body required' });
     if (body.length > 500) return res.status(400).json({ error: 'Comment too long (max 500 chars)' });
 
-    // Frozen members cannot comment
+    // Must be a member of this league (and not frozen)
     const membership = await db
       .selectFrom('league_memberships')
       .select(['frozen_at'])
       .where('league_id', '=', req.leagueId)
       .where('user_id', '=', req.session.userId)
       .executeTakeFirst();
-    if (membership?.frozen_at) {
+    if (!membership) {
+      return res.status(403).json({ error: 'You are not a member of this league.' });
+    }
+    if (membership.frozen_at) {
       return res.status(403).json({ error: 'Your access to this league is limited. Ask the league owner to re-upgrade to Pro.' });
     }
 

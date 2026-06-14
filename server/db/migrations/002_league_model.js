@@ -56,8 +56,8 @@ async function up(db) {
     ON CONFLICT (slug) DO NOTHING
   `.execute(db);
 
-  // Ensure the sequence starts above 1 so the next auto-generated id won't collide
-  await sql`SELECT setval('leagues_id_seq', 1, TRUE)`.execute(db);
+  // Ensure the sequence starts above the current max id to avoid PK collisions
+  await sql`SELECT setval('leagues_id_seq', GREATEST(1, (SELECT COALESCE(MAX(id), 1) FROM leagues)), TRUE)`.execute(db);
 
   // Backfill league_id = 1 on all existing rows
   for (const table of tables) {

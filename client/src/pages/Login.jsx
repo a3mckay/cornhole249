@@ -32,7 +32,7 @@ export default function Login() {
       capture('login_completed', { method: 'email' });
       navigate(returnTo || '/');
     } catch (err) {
-      setError(err.response?.data?.error || 'Incorrect email or password');
+      setError(err.response?.data?.error || (err.request ? 'Network error — check your connection' : 'Incorrect email or password'));
     } finally {
       setLoading(false);
     }

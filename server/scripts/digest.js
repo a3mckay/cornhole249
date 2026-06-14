@@ -37,10 +37,10 @@ const Anthropic               = require('@anthropic-ai/sdk');
 // ── Week-label helper ─────────────────────────────────────────────────────────
 // Digest runs Monday 08:00. "This week" = the 7 days just completed (Mon–Sun).
 function weekLabel() {
-  const now    = new Date();
-  const sun    = new Date(now); sun.setDate(now.getDate() - 1);   // yesterday = Sunday
-  const mon    = new Date(sun); mon.setDate(sun.getDate() - 6);   // Monday before that
-  const fmt    = (d) => d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  const now = new Date();
+  const sun = new Date(now.getTime() - 24 * 60 * 60 * 1000);         // yesterday = Sunday
+  const mon = new Date(sun.getTime() - 6 * 24 * 60 * 60 * 1000);     // Monday before that
+  const fmt = (d) => d.toLocaleDateString('en-CA', { timeZone: 'UTC', month: 'short', day: 'numeric' });
   return `${fmt(mon)} – ${fmt(sun)}`;
 }
 

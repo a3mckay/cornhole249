@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // GET /api/users
 router.get('/', async (req, res) => {
@@ -157,12 +157,10 @@ router.patch('/:id', requireAuth, async (req, res) => {
 });
 
 // DELETE /api/users/:id (admin only, cannot delete yourself)
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const db = getDb();
     const targetId = parseInt(req.params.id);
-
-    if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin required' });
     if (req.session.userId === targetId) return res.status(400).json({ error: 'Cannot delete your own account' });
 
     const user = await db.selectFrom('users').select(['id']).where('id', '=', targetId).executeTakeFirst();

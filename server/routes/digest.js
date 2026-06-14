@@ -50,10 +50,10 @@ router.get('/unsubscribe', async (req, res) => {
 // ── GET /api/digest/resubscribe ───────────────────────────────────────────────
 // Lets a user re-enable the digest from Settings (no token needed — must be logged in).
 router.post('/resubscribe', async (req, res) => {
-  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+  if (!req.session?.userId) return res.status(401).json({ error: 'Not authenticated' });
   const db = getDb();
   await sql`
-    UPDATE users SET digest_unsubscribed_at = NULL WHERE id = ${req.user.id}
+    UPDATE users SET digest_unsubscribed_at = NULL WHERE id = ${req.session.userId}
   `.execute(db);
   res.json({ success: true });
 });

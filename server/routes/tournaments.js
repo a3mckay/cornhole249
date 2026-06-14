@@ -158,7 +158,7 @@ router.patch('/matches/:id', requireAdmin, async (req, res) => {
       .where('id', '=', match.tournament_id)
       .executeTakeFirst();
 
-    if (matchT1Ids.length && matchT2Ids.length && score_team1 != null && score_team2 != null) {
+    if (matchT1Ids.length && matchT2Ids.length && score_team1 !== null && score_team1 !== undefined && score_team2 !== null && score_team2 !== undefined) {
       const s1 = parseInt(score_team1);
       const s2 = parseInt(score_team2);
 
@@ -191,9 +191,15 @@ router.patch('/matches/:id', requireAdmin, async (req, res) => {
       // Link game back to match
       await db.updateTable('tournament_matches').set({ game_id: gameId }).where('id', '=', matchId).execute();
 
-      // Update Elos
-      const { rows: allGames } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
-      const { rows: allParts } = await sql`SELECT * FROM game_participants`.execute(db);
+      // Update Elos (league-scoped to avoid cross-league contamination)
+      const { rows: allGames } = await sql`
+        SELECT * FROM games WHERE league_id = ${req.leagueId} ORDER BY played_at ASC
+      `.execute(db);
+      const { rows: allParts } = await sql`
+        SELECT gp.* FROM game_participants gp
+        JOIN games g ON gp.game_id = g.id
+        WHERE g.league_id = ${req.leagueId}
+      `.execute(db);
       const newElos = recalculateAllElos(allGames, allParts);
       await db.transaction().execute(async (trx) => {
         for (const [uid, elo] of Object.entries(newElos)) {

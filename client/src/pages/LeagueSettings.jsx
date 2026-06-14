@@ -277,7 +277,7 @@ export default function LeagueSettings() {
         leaguesApi.get(slug),
         leaguesApi.members(slug),
       ]);
-      billingApi.status().then((s) => setVenueActive(!!s.venue)).catch(() => {});
+      billingApi.status().then((s) => setVenueActive(!!s.venue)).catch((e) => console.warn('[LeagueSettings] billing status failed:', e.message));
       setLeague(leagueData);
       setMembers(membersData);
       setName(leagueData.name);

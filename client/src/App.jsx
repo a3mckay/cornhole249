@@ -116,8 +116,10 @@ function EmailVerificationBanner() {
       await authApi.resendVerification();
       setResent(true);
       setTimeout(() => setResent(false), 5000);
-    } catch {
-      // Ignore rate-limit errors silently
+    } catch (err) {
+      if (err.response?.status !== 429) {
+        console.warn('[App] resendVerification failed:', err.message);
+      }
     }
   };
 

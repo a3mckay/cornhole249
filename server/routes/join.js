@@ -129,7 +129,8 @@ router.get('/:code', async (req, res) => {
       }
     }
 
-    const leagueId = joinCode.league_id || 1;
+    if (!joinCode.league_id) return res.status(400).json({ valid: false, error: 'Invalid invite code' });
+    const leagueId = joinCode.league_id;
     const preview = await leaguePreview(db, leagueId);
 
     res.json({

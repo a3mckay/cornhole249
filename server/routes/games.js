@@ -255,7 +255,7 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     // Update Elos
-    await updateElosAfterGame(gameId, db);
+    await updateElosAfterGame(req.leagueId, db);
 
     // Fetch weather (non-blocking)
     if (venue_id) {
@@ -308,7 +308,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
       if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) {
         return res.status(400).json({ error: 'Scores must be non-negative integers' });
       }
-      if (s1 > 10 || s2 > 10) return res.status(400).json({ error: 'Maximum score is 10 (Hamilton rules)' });
+      if (s1 > 99 || s2 > 99) return res.status(400).json({ error: 'Score seems too high' });
       if (s1 === s2) return res.status(400).json({ error: 'Games cannot end in a tie' });
 
       const t1Won = s1 > s2;
@@ -323,7 +323,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
         .where('team', '=', 2)
         .execute();
 
-      await updateElosAfterGame(gameId, db);
+      await updateElosAfterGame(req.leagueId, db);
     }
 
     const updated = await db.selectFrom('games').selectAll().where('id', '=', gameId).executeTakeFirstOrThrow();
@@ -365,9 +365,15 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   }
 });
 
-async function updateElosAfterGame(gameId, db) {
-  const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
-  const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
+async function updateElosAfterGame(leagueId, db) {
+  const { rows: games } = await sql`
+    SELECT * FROM games WHERE league_id = ${leagueId} ORDER BY played_at ASC
+  `.execute(db);
+  const { rows: participants } = await sql`
+    SELECT gp.* FROM game_participants gp
+    JOIN games g ON gp.game_id = g.id
+    WHERE g.league_id = ${leagueId}
+  `.execute(db);
   const newElos = recalculateAllElos(games, participants);
 
   await db.transaction().execute(async (trx) => {

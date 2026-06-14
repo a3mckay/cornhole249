@@ -80,12 +80,14 @@ router.get('/:slug', async (req, res) => {
 
     // Fetch an active join code if the requester is an owner/admin
     let joinCode = null;
+    let isOwnerOrAdmin = false;
     if (req.session?.userId) {
       const { rows: memberRows } = await sql`
         SELECT role FROM league_memberships
         WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
       `.execute(db);
       if (memberRows[0] && ['owner', 'admin'].includes(memberRows[0].role)) {
+        isOwnerOrAdmin = true;
         const { rows: codeRows } = await sql`
           SELECT code FROM join_codes
           WHERE league_id = ${league.id} AND used_by IS NULL
@@ -105,7 +107,14 @@ router.get('/:slug', async (req, res) => {
       userPendingRequest = reqRows.length > 0;
     }
 
-    res.json({ ...league, member_count: parseInt(league.member_count), join_code: joinCode, user_pending_request: userPendingRequest });
+    const billingFields = ['stripe_subscription_id', 'stripe_price_id', 'stripe_current_period_end',
+      'stripe_subscription_started_at', 'plan_override', 'grace_period_ends_at',
+      'weekend_pass_purchased_at', 'pass_warning_sent_at', 'pass_anniversary_sent_at'];
+    const safeLeague = { ...league };
+    if (!isOwnerOrAdmin) {
+      for (const f of billingFields) delete safeLeague[f];
+    }
+    res.json({ ...safeLeague, member_count: parseInt(league.member_count), join_code: joinCode, user_pending_request: userPendingRequest });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
