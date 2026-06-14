@@ -29,6 +29,8 @@ const MIGRATIONS = [
   { name: '014_anniversary_triggers',          file: './migrations/014_anniversary_triggers' },
   { name: '015_league_controls',               file: './migrations/015_league_controls' },
   { name: '016_league_short_code',             file: './migrations/016_league_short_code' },
+  { name: '017_missing_fk_indexes',            file: './migrations/017_missing_fk_indexes' },
+  { name: '018_leagues_seq_fix',               file: './migrations/018_leagues_seq_fix' },
 ];
 
 async function run(db) {
