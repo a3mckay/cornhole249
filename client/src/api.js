@@ -144,6 +144,13 @@ export const statsApi = {
   weatherPerformers: () => api.get(`${leagueBase()}/stats/weather-performers`).then((r) => r.data),
 };
 
+// Cross-sport "house" stats (global — keyed by league owner, not league-scoped).
+export const houseApi = {
+  overview: (ownerId) => api.get(`/house/${ownerId}/overview`).then((r) => r.data),
+  h2h: (ownerId, p1, p2) => api.get(`/house/${ownerId}/h2h/${p1}/${p2}`).then((r) => r.data),
+  nemesis: (ownerId, userId) => api.get(`/house/${ownerId}/nemesis/${userId}`).then((r) => r.data),
+};
+
 // Odds
 export const oddsApi = {
   calculate: (data) => api.post(`${leagueBase()}/odds`, data).then((r) => r.data),

@@ -258,6 +258,7 @@ app.use('/api/games', require('./routes/games'));
 app.use('/api', require('./routes/comments'));
 app.use('/api/standings', require('./routes/standings'));
 app.use('/api/stats', require('./routes/stats'));
+app.use('/api/house', require('./routes/house'));
 app.use('/api/odds', require('./routes/odds'));
 app.use('/api/venues', require('./routes/venues'));
 app.use('/api/weather', require('./routes/weather'));

@@ -36,6 +36,7 @@ const Tournaments   = lazy(() => import('./pages/Tournaments'));
 const Odds          = lazy(() => import('./pages/Odds'));
 const HallOfFame    = lazy(() => import('./pages/HallOfFame'));
 const Rules         = lazy(() => import('./pages/Rules'));
+const House         = lazy(() => import('./pages/House'));
 const TrashTalk     = lazy(() => import('./pages/TrashTalk'));
 const Admin         = lazy(() => import('./pages/Admin'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -209,6 +210,8 @@ export default function App() {
               <Route path="/hall-of-fame" element={<PageWrapper><HallOfFame /></PageWrapper>} />
               <Route path="/rules" element={<PageWrapper><Rules /></PageWrapper>} />
               <Route path="/trash-talk" element={<PageWrapper><TrashTalk /></PageWrapper>} />
+              <Route path="/house" element={<PageWrapper><House /></PageWrapper>} />
+              <Route path="/house/:ownerId" element={<PageWrapper><House /></PageWrapper>} />
               <Route path="/settings" element={<PageWrapper><LeagueSettings /></PageWrapper>} />
             </Route>
 
