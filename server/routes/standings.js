@@ -93,11 +93,13 @@ async function computeLast5(userId, db, season, leagueId) {
 router.get('/1v1', async (req, res) => {
   try {
     const db = getDb();
-    const { season } = req.query;
+    const { season, variant } = req.query;
     const seasonInt = season ? parseInt(season) : null;
     const leagueId = req.leagueId;
+    // Optional pool variant filter (e.g. ?variant=eight_ball). Cornhole ignores.
+    const variantFilter = variant && variant !== 'all' ? variant : null;
 
-    const cacheKey = `${leagueId}:1v1:${seasonInt ?? ''}`;
+    const cacheKey = `${leagueId}:1v1:${seasonInt ?? ''}:${variantFilter ?? ''}`;
     const cached = getCache(cacheKey);
     if (cached) return res.json(cached);
 
@@ -113,6 +115,7 @@ router.get('/1v1', async (req, res) => {
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id AND g.game_type = '1v1' AND g.league_id = ${leagueId}
         ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
+        ${variantFilter ? sql`AND g.game_variant = ${variantFilter}` : sql``}
       JOIN users u ON gp.user_id = u.id
       LEFT JOIN (
         SELECT game_id, SUM(score) as opp_score FROM game_participants WHERE team = 2 GROUP BY game_id
@@ -154,11 +157,12 @@ router.get('/1v1', async (req, res) => {
 router.get('/2v2', async (req, res) => {
   try {
     const db = getDb();
-    const { season } = req.query;
+    const { season, variant } = req.query;
     const seasonInt = season ? parseInt(season) : null;
     const leagueId = req.leagueId;
+    const variantFilter = variant && variant !== 'all' ? variant : null;
 
-    const cacheKey = `${leagueId}:2v2:${seasonInt ?? ''}`;
+    const cacheKey = `${leagueId}:2v2:${seasonInt ?? ''}:${variantFilter ?? ''}`;
     const cached = getCache(cacheKey);
     if (cached) return res.json(cached);
 
@@ -172,6 +176,7 @@ router.get('/2v2', async (req, res) => {
       JOIN users u ON gp.user_id = u.id
       WHERE g.game_type = '2v2' AND g.league_id = ${leagueId}
       ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
+      ${variantFilter ? sql`AND g.game_variant = ${variantFilter}` : sql``}
       ORDER BY g.played_at ASC, gp.team
     `.execute(db);
 
@@ -225,6 +230,57 @@ router.get('/2v2', async (req, res) => {
         last5: await computePairLast5(pair.user_ids, db, seasonInt, leagueId),
       }))
     );
+
+    setCache(cacheKey, result);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── GET /api/standings/cutthroat ─────────────────────────────────────────────
+// Per-player W/L for pool cutthroat games (winner = team1, losers = team2).
+// No scores; ranked by wins then win %.
+router.get('/cutthroat', async (req, res) => {
+  try {
+    const db = getDb();
+    const { season } = req.query;
+    const seasonInt = season ? parseInt(season) : null;
+    const leagueId = req.leagueId;
+
+    const cacheKey = `${leagueId}:cutthroat:${seasonInt ?? ''}`;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json(cached);
+
+    const { rows } = await sql`
+      SELECT
+        gp.user_id,
+        u.display_name, u.nickname, u.avatar_url, u.elo_rating,
+        COUNT(*) as gp,
+        SUM(gp.is_winner) as wins,
+        COUNT(*) - SUM(gp.is_winner) as losses
+      FROM game_participants gp
+      JOIN games g ON gp.game_id = g.id
+        AND g.game_type = 'cutthroat' AND g.league_id = ${leagueId}
+        ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
+      JOIN users u ON gp.user_id = u.id
+      GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url, u.elo_rating
+      ORDER BY SUM(gp.is_winner) DESC, SUM(gp.is_winner) * 1.0 / COUNT(*) DESC
+    `.execute(db);
+
+    const result = rows.map((r, i) => ({
+      rank: i + 1,
+      user_id: r.user_id,
+      display_name: r.display_name,
+      nickname: r.nickname,
+      avatar_url: r.avatar_url,
+      elo_rating: r.elo_rating,
+      gp: parseInt(r.gp),
+      wins: parseInt(r.wins),
+      losses: parseInt(r.losses),
+      pts: parseInt(r.wins) * 2,
+      win_pct: parseInt(r.gp) > 0 ? Math.round((parseInt(r.wins) / parseInt(r.gp)) * 1000) / 10 : 0,
+    }));
 
     setCache(cacheKey, result);
     res.json(result);

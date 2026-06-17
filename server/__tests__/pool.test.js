@@ -146,6 +146,51 @@ describe('Pool sport gating', () => {
   });
 });
 
+describe('Pool variant standings', () => {
+  async function submitPool(agent, body) {
+    return agent.post('/api/games').send(body);
+  }
+
+  test('1v1 standings filter by variant', async () => {
+    setSport('pool');
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    // One 8-ball game (Alice beats Bob) and one 9-ball game (Bob beats Alice).
+    await submitPool(agent, { game_type: '1v1', game_variant: 'eight_ball', team1: [{ user_id: 1, score: 1 }], team2: [{ user_id: 2, score: 0 }] });
+    await submitPool(agent, { game_type: '1v1', game_variant: 'nine_ball', team1: [{ user_id: 2, score: 1 }], team2: [{ user_id: 1, score: 0 }] });
+
+    const eight = await agent.get('/api/standings/1v1?variant=eight_ball');
+    expect(eight.status).toBe(200);
+    const aliceEight = eight.body.find((r) => r.user_id === 1);
+    expect(aliceEight.wins).toBe(1);
+    expect(aliceEight.gp).toBe(1); // 9-ball game excluded
+
+    const all = await agent.get('/api/standings/1v1');
+    const aliceAll = all.body.find((r) => r.user_id === 1);
+    expect(aliceAll.gp).toBe(2); // both variants counted
+  });
+
+  test('cutthroat standings: winner has the win, losers the losses', async () => {
+    setSport('pool');
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    await submitPool(agent, {
+      game_type: 'cutthroat', game_variant: 'cutthroat',
+      team1: [{ user_id: 1 }],
+      team2: [{ user_id: 2 }, { user_id: 3 }],
+    });
+
+    const res = await agent.get('/api/standings/cutthroat');
+    expect(res.status).toBe(200);
+    const winner = res.body.find((r) => r.user_id === 1);
+    const loser = res.body.find((r) => r.user_id === 2);
+    expect(winner.wins).toBe(1);
+    expect(winner.losses).toBe(0);
+    expect(loser.wins).toBe(0);
+    expect(loser.losses).toBe(1);
+  });
+});
+
 describe('Pool ELO margin model', () => {
   test('ballsRemainingMultiplier: 0 balls = 1.0x, 5 = 1.5x cap', () => {
     expect(ballsRemainingMultiplier(0)).toBeCloseTo(1.0);

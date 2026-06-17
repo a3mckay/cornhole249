@@ -5,20 +5,37 @@ import { useStandings } from '../hooks/useStandings';
 import StandingsTable from '../components/StandingsTable';
 import ShareButton from '../components/ShareButton';
 import { standingsApi } from '../api';
+import { useLeague } from '../contexts/LeagueContext';
+
+// Pool variant tabs (sport === 'pool' only).
+const POOL_VARIANT_TABS = [
+  { key: 'all',           label: 'All' },
+  { key: 'eight_ball',    label: '8-Ball' },
+  { key: 'nine_ball',     label: '9-Ball' },
+  { key: 'straight_pool', label: 'Straight' },
+  { key: 'cutthroat',     label: 'Cutthroat' },
+];
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 const PLAYER_COLORS = ['#3A6B35','#D48B2D','#B94040','#6366F1','#EC4899','#14B8A6','#F59E0B','#8B5CF6','#06B6D4','#84CC16'];
 
 export default function Standings() {
+  const { sport } = useLeague();
+  const isPool = sport === 'pool';
   const [searchParams, setSearchParams] = useSearchParams();
   const [type, setTypeState] = useState(searchParams.get('type') || '1v1');
   const setType = (t) => {
     setTypeState(t);
     setSearchParams({ type: t });
   };
+  // Pool variant filter. Cutthroat is its own format (no 1v1/2v2 toggle).
+  const [variant, setVariant] = useState('all');
+  const isCutthroatTab = isPool && variant === 'cutthroat';
+  // When the cutthroat variant is picked, force the standings type to cutthroat.
+  const effectiveType = isCutthroatTab ? 'cutthroat' : type;
   const [season, setSeason] = useState(Math.max(...SEASONS));
-  const { data, loading, error } = useStandings(type, season);
+  const { data, loading, error } = useStandings(effectiveType, season, isPool ? variant : null);
   const [historyData, setHistoryData] = useState([]);
   const [histLoading, setHistLoading] = useState(false);
 
@@ -27,8 +44,11 @@ export default function Standings() {
     setHistoryData([]);
   }, [type]);
 
-  // Load win% history for chart (both 1v1 and 2v2)
+  // Load win% history for chart (both 1v1 and 2v2).
+  // Pool variant views are skipped — the history endpoints don't filter by
+  // variant yet, so the chart would mix variants. (Future enhancement.)
   useEffect(() => {
+    if (isPool) { setHistoryData([]); return; }
     if (!data.length) return;
     // Guard: wait for data matching the current type
     if (type === '1v1' && !data[0].user_id) return;
@@ -98,28 +118,50 @@ export default function Standings() {
         />
       </div>
 
-      {/* Controls */}
-      <div className="flex gap-3 flex-wrap mb-5 items-center">
-        {/* Type toggle */}
-        <div className="flex rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
-          {['1v1', '2v2'].map((t) => (
+      {/* Pool variant tabs */}
+      {isPool && (
+        <div className="flex gap-2 flex-wrap mb-3">
+          {POOL_VARIANT_TABS.map((v) => (
             <button
-              key={t}
-              onClick={() => setType(t)}
-              className={`px-5 py-1.5 font-ui font-semibold text-sm transition-colors ${
-                type === t
-                  ? 'text-white'
-                  : ''
-              }`}
+              key={v.key}
+              onClick={() => setVariant(v.key)}
+              className="px-4 py-1.5 rounded-full font-ui font-semibold text-sm transition-colors border"
               style={{
-                background: type === t ? 'var(--color-primary)' : 'var(--color-surface)',
-                color: type === t ? 'white' : 'var(--color-text-secondary)',
+                background: variant === v.key ? 'var(--color-primary)' : 'var(--color-surface)',
+                color: variant === v.key ? 'white' : 'var(--color-text-secondary)',
+                borderColor: variant === v.key ? 'var(--color-primary)' : 'var(--color-border)',
               }}
             >
-              {t}
+              {v.label}
             </button>
           ))}
         </div>
+      )}
+
+      {/* Controls */}
+      <div className="flex gap-3 flex-wrap mb-5 items-center">
+        {/* Type toggle (hidden for cutthroat — it's 1-winner-vs-2) */}
+        {!isCutthroatTab && (
+          <div className="flex rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+            {['1v1', '2v2'].map((t) => (
+              <button
+                key={t}
+                onClick={() => setType(t)}
+                className={`px-5 py-1.5 font-ui font-semibold text-sm transition-colors ${
+                  type === t
+                    ? 'text-white'
+                    : ''
+                }`}
+                style={{
+                  background: type === t ? 'var(--color-primary)' : 'var(--color-surface)',
+                  color: type === t ? 'white' : 'var(--color-text-secondary)',
+                }}
+              >
+                {isPool ? (t === '1v1' ? 'Singles' : 'Doubles') : t}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Season selector */}
         <select
@@ -144,7 +186,7 @@ export default function Standings() {
       ) : error ? (
         <div className="card text-center py-8 font-ui" style={{ color: 'var(--color-danger)' }}>{error}</div>
       ) : (
-        <StandingsTable data={data} type={type} />
+        <StandingsTable data={data} type={isCutthroatTab ? '1v1' : type} />
       )}
 
       {/* Win% Over Time Chart */}

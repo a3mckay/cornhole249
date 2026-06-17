@@ -123,6 +123,7 @@ export const commentsApi = {
 export const standingsApi = {
   oneVone: (params) => api.get(`${leagueBase()}/standings/1v1`, { params }).then((r) => r.data),
   twoVtwo: (params) => api.get(`${leagueBase()}/standings/2v2`, { params }).then((r) => r.data),
+  cutthroat: (params) => api.get(`${leagueBase()}/standings/cutthroat`, { params }).then((r) => r.data),
   history: (userId, params) => api.get(`${leagueBase()}/standings/history/${userId}`, { params }).then((r) => r.data),
   team: (p1, p2, params) => api.get(`${leagueBase()}/standings/team/${p1}/${p2}`, { params }).then((r) => r.data),
 };
