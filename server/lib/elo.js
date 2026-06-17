@@ -1,3 +1,5 @@
+const { getSport, pointMarginMultiplier, DEFAULT_SPORT } = require('./sports');
+
 const K = 32;
 
 /**
@@ -26,8 +28,10 @@ function winProbability(eloA, eloB) {
  *   11-9  → margin  2 → 1.10×
  */
 function marginMultiplier(winnerScore, loserScore) {
-  const margin = Math.max(0, (winnerScore || 0) - (loserScore || 0));
-  return Math.min(1.5, 1 + (margin / 22) * 1.1);
+  // Backward-compat alias. The canonical points-margin math now lives in
+  // sports.js (cornhole's marginFn). Kept identical so existing imports and
+  // cornhole ratings are byte-for-byte unchanged.
+  return pointMarginMultiplier(winnerScore, loserScore);
 }
 
 /**
@@ -53,8 +57,16 @@ function updateElo(eloA, eloB, scoreA, winnerPoints, loserPoints) {
 /**
  * Replay all game history to recalculate Elo ratings from scratch.
  * Returns a map of userId -> eloRating
+ *
+ * `resolveSport(game) -> sportKey` is optional. It lets multi-sport callers
+ * pick the per-game margin model (each league carries a `sport`). When omitted
+ * every game resolves to cornhole, so existing two-arg callers are byte-for-byte
+ * unchanged. The resolved sport's `marginFn(winnerRow, loserRow, game)` supplies
+ * the K multiplier.
  */
-function recalculateAllElos(games, participants) {
+function recalculateAllElos(games, participants, resolveSport) {
+  const getSportKey =
+    typeof resolveSport === 'function' ? resolveSport : () => DEFAULT_SPORT;
   // Build map: gameId -> participants
   const gameMap = {};
   for (const p of participants) {
@@ -94,10 +106,13 @@ function recalculateAllElos(games, participants) {
     const exp1 = expectedScore(avgElo1, avgElo2);
     const exp2 = 1 - exp1;
 
-    // Margin multiplier using actual game scores
-    const winnerScore = team1Won ? team1[0].score : team2[0].score;
-    const loserScore  = team1Won ? team2[0].score : team1[0].score;
-    const mult = marginMultiplier(winnerScore, loserScore);
+    // Per-sport margin multiplier. Cornhole = point margin off the winner/loser
+    // participant rows; other sports read their own fields (e.g. pool's
+    // balls_remaining) via the registry marginFn.
+    const winnerRow = team1Won ? team1[0] : team2[0];
+    const loserRow  = team1Won ? team2[0] : team1[0];
+    const sport = getSport(getSportKey(game));
+    const mult = sport.marginFn(winnerRow, loserRow, game);
     const k = K * mult;
 
     const delta1 = k * (score1 - exp1);
