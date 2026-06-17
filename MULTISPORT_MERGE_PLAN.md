@@ -110,9 +110,10 @@ Replace/augment the existing digest (`server/routes/digest.js`, `server/scripts/
 
 ## 5. Roadmap — one sport at a time
 
-- [ ] **Phase 0 — Safety.** Commit pool249 variant WIP; push pool249 to a backup remote; confirm cornhole backups intact.
-- [ ] **Phase 1 — Foundation.** `019_league_sport` migration; sport-config registry; ELO generalization (cornhole regression-tested identical); light-theming hook. *No new sport yet — cornhole unchanged in behavior.*
-- [ ] **Phase 2 — Pool (sport #2).** Port pool249's variant model generalized: per-sport game-extension migration (`game_variant`, `eight_ball_end_condition`, `balls_remaining`), pool registry entry, variant UI (picker, "Racks won", 8-ball extras, cutthroat), pool standings split by variant. **+ straight pool (1.4).** **+ Race-to-N per-league admin setting (1.2, pending confirm).** Singles default, doubles optional (1.1).
+- [x] **Phase 0 — Safety.** pool249 variant WIP committed; pushed to private `a3mckay/pool249` backup remote; cornhole backups intact.
+- [x] **Phase 1 — Foundation.** `019_league_sport` migration; sport-config registry (`server/lib/sports.js` + `client/src/sports.js`); ELO generalized via per-sport `marginFn` (cornhole byte-identical, regression-tested); light-theming hook (sport accent under per-league `theme_json`). Cornhole behavior unchanged. *(commits ff61eff, 89db22f)*
+- [~] **Phase 2 — Pool (sport #2).** **Shipped:** migration `020_pool_game_variants` (`game_variant` nullable/no-default, `eight_ball_end_condition`, `balls_remaining`, widened `game_type` CHECK for cutthroat); pool registry entry; sport-gated `/api/games` POST (cutthroat 1-winner/2-loser, variant fields, balls clamp); per-game sport resolution in `updateElosAfterGame`; variant marginFn (cutthroat 1×, 8-ball balls proxy, 9-ball/straight racks margin); variant UI (5-tile picker, Singles/Doubles, "Racks won", 8-ball extras, cutthroat layout); variant badges (GameCard/GameDetail); per-variant standings (`?variant=` filter + `/cutthroat` endpoint, variant tabs). Singles default + doubles (1.1) ✅; straight pool in picker (1.4) ✅. *(commits 4c662c0, e221902, 43f2a4b, 1c69752; 69/69 tests)*
+  **Still open:** Race-to-N per-league admin setting (1.2, **pending Andrew's confirm**); pool-specific rules page / achievements / OG image colors; variant-aware win% history chart (currently skipped on pool views).
 - [ ] **Phase 3 — Ping-pong (sport #3).** Registry entry + score model (race-to-11, win-by-2 — confirm), minimal UI reuse.
 - [ ] **Phase 4 — Cross-sport stats.** House rankings, sport affinity, H2H across sports, best-at-everything, nemesis, jack-of-all-trades + house landing view.
 - [ ] **Phase 5 — Consolidated digest.** Per-sports-played email.
