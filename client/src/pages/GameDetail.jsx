@@ -6,6 +6,7 @@ import WeatherBadge from '../components/WeatherBadge';
 import CommentSection from '../components/CommentSection';
 import OddsBar from '../components/OddsBar';
 import ShareButton from '../components/ShareButton';
+import { variantLabel } from '../sports';
 
 export default function GameDetail() {
   const { id } = useParams();
@@ -132,6 +133,12 @@ export default function GameDetail() {
               style={{ background: game.game_type === '1v1' ? '#DBEAFE' : '#F3E8FF', color: game.game_type === '1v1' ? '#1E40AF' : '#7E22CE' }}>
               {game.game_type}
             </span>
+            {variantLabel(game.game_variant) && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
+                style={{ background: 'rgba(31,92,61,0.12)', color: 'var(--color-primary)' }}>
+                {variantLabel(game.game_variant)}
+              </span>
+            )}
             <span className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
               {new Date(game.played_at).toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </span>

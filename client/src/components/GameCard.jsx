@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import WeatherBadge from './WeatherBadge';
+import { variantLabel } from '../sports';
 
 function TeamDisplay({ players, score, isWinner }) {
   return (
@@ -62,6 +63,14 @@ export default function GameCard({ game }) {
             >
               {game.game_type.toUpperCase()}
             </span>
+            {variantLabel(game.game_variant) && (
+              <span
+                className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
+                style={{ background: 'rgba(31,92,61,0.12)', color: 'var(--color-primary)' }}
+              >
+                {variantLabel(game.game_variant)}
+              </span>
+            )}
             <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
               {new Date(game.played_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>

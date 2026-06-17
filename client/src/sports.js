@@ -26,6 +26,21 @@ export const SPORTS = {
 
 export const DEFAULT_SPORT = 'cornhole';
 
+// Display metadata for pool variants (used by GameCard/GameDetail badges, etc).
+export const POOL_VARIANT_LABELS = {
+  eight_ball:    { label: '8-Ball',        emoji: '🎱' },
+  nine_ball:     { label: '9-Ball',        emoji: '9️⃣' },
+  cutthroat:     { label: 'Cutthroat',     emoji: '🔪' },
+  straight_pool: { label: 'Straight Pool', emoji: '🎯' },
+};
+
+/** Short human label for a game variant, or null if none/unknown. */
+export function variantLabel(variant) {
+  if (!variant) return null;
+  const v = POOL_VARIANT_LABELS[variant];
+  return v ? `${v.emoji} ${v.label}` : null;
+}
+
 export function getSport(key) {
   return SPORTS[key] || SPORTS[DEFAULT_SPORT];
 }

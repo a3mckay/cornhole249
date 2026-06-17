@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { Outlet, useParams, Link } from 'react-router-dom';
 import { setCurrentLeague, leaguesApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { getSport, DEFAULT_SPORT } from '../sports';
 
 // Default custom rules (Hamilton-equivalent)
 export const DEFAULT_CUSTOM_RULES = {
@@ -15,7 +16,7 @@ export const DEFAULT_CUSTOM_RULES = {
   tiebreaker: 'tie_stands',
 };
 
-const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false, leagueRules: 'hamilton', customRules: null, theme: null });
+const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false, leagueRules: 'hamilton', customRules: null, theme: null, sport: 'cornhole' });
 
 /**
  * React Router v6 layout route component.
@@ -53,6 +54,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const [leagueRules, setLeagueRules] = useState('hamilton');
   const [customRules, setCustomRules] = useState(null);
   const [theme, setTheme] = useState(null);
+  const [sport, setSport] = useState(DEFAULT_SPORT);
 
   // Track which CSS variable overrides we've applied so we can clean them up on unmount / slug change
   const appliedThemeRef = useRef(null);
@@ -67,6 +69,7 @@ export function LeagueProvider({ slug: slugProp }) {
         setLeagueRules(league?.rules || 'hamilton');
         setCustomRules(league?.custom_rules_json || null);
         setTheme(league?.theme_json || null);
+        setSport(league?.sport || DEFAULT_SPORT);
         if (slug !== 'cornhole249') {
           setLeagueId(league?.id ?? null);
           setPlan(league?.plan_override || league?.plan || 'free');
@@ -81,6 +84,7 @@ export function LeagueProvider({ slug: slugProp }) {
         setLeagueRules('hamilton');
         setCustomRules(null);
         setTheme(null);
+        setSport(DEFAULT_SPORT);
       });
   }, [slug]);
 
@@ -96,16 +100,26 @@ export function LeagueProvider({ slug: slugProp }) {
       appliedThemeRef.current = null;
     }
 
-    if (!theme) return;
-
     const applied = [];
-    if (theme.primary_color) {
-      root.style.setProperty('--color-primary', theme.primary_color);
-      applied.push('--color-primary');
+
+    // Light theming: apply the sport's accent as the base layer. An explicit
+    // per-league theme_json (below) overrides these on top.
+    const accent = getSport(sport).accent;
+    if (sport && sport !== DEFAULT_SPORT) {
+      root.style.setProperty('--color-primary', accent.primary);
+      root.style.setProperty('--color-secondary', accent.secondary);
+      applied.push('--color-primary', '--color-secondary');
     }
-    if (theme.accent_color) {
-      root.style.setProperty('--color-secondary', theme.accent_color);
-      applied.push('--color-secondary');
+
+    if (theme) {
+      if (theme.primary_color) {
+        root.style.setProperty('--color-primary', theme.primary_color);
+        if (!applied.includes('--color-primary')) applied.push('--color-primary');
+      }
+      if (theme.accent_color) {
+        root.style.setProperty('--color-secondary', theme.accent_color);
+        if (!applied.includes('--color-secondary')) applied.push('--color-secondary');
+      }
     }
     appliedThemeRef.current = applied.length ? applied : null;
 
@@ -116,7 +130,7 @@ export function LeagueProvider({ slug: slugProp }) {
       }
       appliedThemeRef.current = null;
     };
-  }, [theme]);
+  }, [theme, sport]);
 
   // Current user's frozen status in this league (from useAuth's /leagues/mine data)
   const myMembership = leagues?.find((l) => l.slug === slug);
@@ -131,7 +145,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
 
   return (
-    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest, leagueRules, customRules, theme }}>
+    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest, leagueRules, customRules, theme, sport }}>
       {isFrozen && (
         <div
           className="px-4 py-2.5 text-sm font-ui flex items-center gap-3"

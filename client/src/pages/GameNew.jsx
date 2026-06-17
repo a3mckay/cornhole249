@@ -27,11 +27,26 @@ function PlayerSelect({ players, value, onChange, exclude, label }) {
   );
 }
 
+// Pool variant metadata for the picker (sport === 'pool' only).
+const POOL_VARIANTS = [
+  { key: 'eight_ball',    label: '8-Ball',       emoji: '🎱', hint: 'Sink the 8 to win' },
+  { key: 'nine_ball',     label: '9-Ball',       emoji: '9️⃣', hint: 'Lowest ball, sink the 9' },
+  { key: 'straight_pool', label: 'Straight Pool', emoji: '🎯', hint: 'Race to a point total' },
+  { key: 'cutthroat',     label: 'Cutthroat',    emoji: '🔪', hint: '1 winner vs 2 losers' },
+];
+
 export default function GameNew({ onAchievement }) {
   const { user } = useAuth();
-  const { leagueRules, customRules } = useLeague();
+  const { leagueRules, customRules, sport } = useLeague();
+  const isPool = sport === 'pool';
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+
+  // Pool-only state. For pool, gameType is derived from variant + singles/doubles.
+  const [gameVariant, setGameVariant] = useState('eight_ball');
+  const [poolDoubles, setPoolDoubles] = useState(false); // singles is the default
+  const [ballsRemaining, setBallsRemaining] = useState('');
+  const [endCondition, setEndCondition] = useState(''); // '' | 'sunk' | 'scratch'
 
   const [gameType, setGameType] = useState('1v1');
   const [t1p1, setT1p1] = useState('');
@@ -66,8 +81,17 @@ export default function GameNew({ onAchievement }) {
     });
   }, [user]);
 
+  // For pool, the effective game_type is derived from the variant + singles/
+  // doubles toggle. Cutthroat = 1 winner (team1) + 2 losers (team2).
+  const isCutthroat = isPool && gameVariant === 'cutthroat';
+  const effectiveType = isPool
+    ? (isCutthroat ? 'cutthroat' : (poolDoubles ? '2v2' : '1v1'))
+    : gameType;
+  const scoreLabel = isPool ? 'Racks won' : 'Score';
+
   const allSelected = () => {
-    if (gameType === '1v1') return t1p1 && t2p1;
+    if (isCutthroat) return t1p1 && t2p1 && t2p2;
+    if (effectiveType === '1v1') return t1p1 && t2p1;
     return t1p1 && t1p2 && t2p1 && t2p2;
   };
 
@@ -124,11 +148,14 @@ export default function GameNew({ onAchievement }) {
     const errs = [];
     if (!allSelected()) errs.push('Select all players');
     if (hasDuplicates) errs.push('A player cannot be on both teams');
-    const s1 = parseInt(t1score);
-    const s2 = parseInt(t2score);
-    if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) errs.push('Scores must be non-negative integers');
-    if (s1 > 99 || s2 > 99) errs.push('Score seems too high');
-    if (s1 === s2) errs.push('Games cannot end in a tie');
+    // Cutthroat has no numeric scores — the winner is whoever is in team1.
+    if (!isCutthroat) {
+      const s1 = parseInt(t1score);
+      const s2 = parseInt(t2score);
+      if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) errs.push(`${scoreLabel} must be non-negative integers`);
+      if (s1 > 99 || s2 > 99) errs.push(`${scoreLabel} seems too high`);
+      if (s1 === s2) errs.push('Games cannot end in a tie');
+    }
     if (newVenueNeedsLocation) errs.push('Location is required to track weather for this game');
     return errs;
   };
@@ -156,24 +183,38 @@ export default function GameNew({ onAchievement }) {
       const s1 = parseInt(t1score);
       const s2 = parseInt(t2score);
 
-      const team1 = gameType === '1v1'
-        ? [{ user_id: t1p1, score: s1 }]
-        : [{ user_id: t1p1, score: s1 }, { user_id: t1p2, score: s1 }];
+      let team1, team2;
+      if (isCutthroat) {
+        // 1 winner (team1) vs 2 losers (team2); no scores.
+        team1 = [{ user_id: t1p1 }];
+        team2 = [{ user_id: t2p1 }, { user_id: t2p2 }];
+      } else if (effectiveType === '1v1') {
+        team1 = [{ user_id: t1p1, score: s1 }];
+        team2 = [{ user_id: t2p1, score: s2 }];
+      } else {
+        team1 = [{ user_id: t1p1, score: s1 }, { user_id: t1p2, score: s1 }];
+        team2 = [{ user_id: t2p1, score: s2 }, { user_id: t2p2, score: s2 }];
+      }
 
-      const team2 = gameType === '1v1'
-        ? [{ user_id: t2p1, score: s2 }]
-        : [{ user_id: t2p1, score: s2 }, { user_id: t2p2, score: s2 }];
-
-      const game = await gamesApi.create({
-        game_type: gameType,
+      const payload = {
+        game_type: effectiveType,
         played_at: new Date(playedAt).toISOString(),
         season: new Date(playedAt).getFullYear(),
         venue_id: finalVenueId || null,
         team1,
         team2,
-      });
+      };
+      if (isPool) {
+        payload.game_variant = gameVariant;
+        if (gameVariant === 'eight_ball') {
+          payload.eight_ball_end_condition = endCondition || null;
+          payload.balls_remaining = ballsRemaining !== '' ? parseInt(ballsRemaining) : null;
+        }
+      }
 
-      capture('game_logged', { game_type: gameType });
+      const game = await gamesApi.create(payload);
+
+      capture('game_logged', { game_type: effectiveType, sport, variant: isPool ? gameVariant : undefined });
       // pending = submitted to both_submit queue, no game id yet
       if (game.pending) {
         navigate('/games', { state: { pendingSubmission: true } });
@@ -229,7 +270,7 @@ export default function GameNew({ onAchievement }) {
 
       <div className="card">
         {/* Step 1: Game Type */}
-        {step === 1 && (
+        {step === 1 && !isPool && (
           <div>
             <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>Select Game Type</h2>
             <div className="grid grid-cols-2 gap-4">
@@ -256,62 +297,166 @@ export default function GameNew({ onAchievement }) {
           </div>
         )}
 
+        {/* Step 1 (pool): Variant picker + singles/doubles */}
+        {step === 1 && isPool && (
+          <div>
+            <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>Select Variant</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {POOL_VARIANTS.map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => setGameVariant(v.key)}
+                  className={`p-4 rounded-2xl border-2 text-center transition-all ${gameVariant === v.key ? 'border-primary' : 'border-border'}`}
+                  style={{
+                    background: gameVariant === v.key ? 'rgba(31,92,61,0.10)' : 'var(--color-surface)',
+                    borderColor: gameVariant === v.key ? 'var(--color-primary)' : 'var(--color-border)',
+                  }}
+                >
+                  <div className="text-3xl mb-1">{v.emoji}</div>
+                  <div className="font-display text-xl" style={{ color: 'var(--color-text-primary)' }}>{v.label}</div>
+                  <div className="text-xs font-ui mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{v.hint}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Singles / doubles toggle (cutthroat is fixed 1 vs 2) */}
+            {!isCutthroat && (
+              <div className="mt-5">
+                <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Format</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[{ k: false, label: 'Singles', hint: 'One on one' }, { k: true, label: 'Doubles', hint: 'Two vs two' }].map((f) => (
+                    <button
+                      key={String(f.k)}
+                      onClick={() => setPoolDoubles(f.k)}
+                      className={`p-4 rounded-2xl border-2 text-center transition-all ${poolDoubles === f.k ? 'border-primary' : 'border-border'}`}
+                      style={{
+                        background: poolDoubles === f.k ? 'rgba(31,92,61,0.10)' : 'var(--color-surface)',
+                        borderColor: poolDoubles === f.k ? 'var(--color-primary)' : 'var(--color-border)',
+                      }}
+                    >
+                      <div className="font-display text-lg" style={{ color: 'var(--color-text-primary)' }}>{f.label}</div>
+                      <div className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>{f.hint}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isCutthroat && (
+              <div className="mt-4 p-3 rounded-xl text-sm font-ui" style={{ background: 'rgba(31,92,61,0.07)', border: '1px solid rgba(31,92,61,0.2)', color: 'var(--color-text-secondary)' }}>
+                🔪 Cutthroat: pick the <strong>winner</strong> first, then the two players who lost. No scores recorded.
+              </div>
+            )}
+
+            <button onClick={() => setStep(2)} className="btn btn-primary w-full mt-6">
+              Next →
+            </button>
+          </div>
+        )}
+
         {/* Step 2: Players & Scores */}
         {step === 2 && (
           <div>
             <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>Players & Score</h2>
 
-            {/* Team 1 */}
+            {/* Team 1 (cutthroat: the lone winner) */}
             <div className="mb-4">
-              <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-primary)' }}>Team 1</div>
+              <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-primary)' }}>{isCutthroat ? 'Winner' : 'Team 1'}</div>
               <div className="flex gap-2 flex-wrap">
                 <div className="flex-1 min-w-[140px]">
                   <PlayerSelect players={players} value={t1p1} onChange={setT1p1} exclude={[t1p2, t2p1, t2p2].filter(Boolean)} label="Player 1" />
                 </div>
-                {gameType === '2v2' && (
+                {effectiveType === '2v2' && (
                   <div className="flex-1 min-w-[140px]">
                     <PlayerSelect players={players} value={t1p2} onChange={setT1p2} exclude={[t1p1, t2p1, t2p2].filter(Boolean)} label="Player 2" />
                   </div>
                 )}
               </div>
-              <input
-                type="number"
-                min="0"
-                max="99"
-                value={t1score}
-                onChange={(e) => setT1score(e.target.value)}
-                placeholder="Score"
-                className="mt-2 w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl font-bold"
-                style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-primary)' }}
-              />
+              {!isCutthroat && (
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  value={t1score}
+                  onChange={(e) => setT1score(e.target.value)}
+                  placeholder={scoreLabel}
+                  className="mt-2 w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl font-bold"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-primary)' }}
+                />
+              )}
             </div>
 
             <div className="text-center text-xl font-display mb-4" style={{ color: 'var(--color-text-secondary)' }}>vs</div>
 
-            {/* Team 2 */}
+            {/* Team 2 (cutthroat: the two losers) */}
             <div className="mb-4">
-              <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-secondary)' }}>Team 2</div>
+              <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-secondary)' }}>{isCutthroat ? 'Losers' : 'Team 2'}</div>
               <div className="flex gap-2 flex-wrap">
                 <div className="flex-1 min-w-[140px]">
                   <PlayerSelect players={players} value={t2p1} onChange={setT2p1} exclude={[t1p1, t1p2, t2p2].filter(Boolean)} label="Player 1" />
                 </div>
-                {gameType === '2v2' && (
+                {(effectiveType === '2v2' || isCutthroat) && (
                   <div className="flex-1 min-w-[140px]">
                     <PlayerSelect players={players} value={t2p2} onChange={setT2p2} exclude={[t1p1, t1p2, t2p1].filter(Boolean)} label="Player 2" />
                   </div>
                 )}
               </div>
-              <input
-                type="number"
-                min="0"
-                max="99"
-                value={t2score}
-                onChange={(e) => setT2score(e.target.value)}
-                placeholder="Score"
-                className="mt-2 w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl font-bold"
-                style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-secondary)' }}
-              />
+              {!isCutthroat && (
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  value={t2score}
+                  onChange={(e) => setT2score(e.target.value)}
+                  placeholder={scoreLabel}
+                  className="mt-2 w-full px-3 py-2 rounded-xl border font-ui text-center text-2xl font-bold"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-secondary)' }}
+                />
+              )}
             </div>
+
+            {/* 8-ball extras: how it ended + loser's balls left on the table */}
+            {isPool && gameVariant === 'eight_ball' && (
+              <div className="mb-4 p-3 rounded-xl" style={{ background: 'rgba(31,92,61,0.06)', border: '1px solid rgba(31,92,61,0.18)' }}>
+                <div className="text-sm font-ui font-bold mb-2" style={{ color: 'var(--color-primary)' }}>🎱 8-Ball details (optional)</div>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>How did it end?</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[{ k: 'sunk', label: 'Sank the 8' }, { k: 'scratch', label: 'Loser scratched' }].map((c) => (
+                        <button
+                          key={c.k}
+                          type="button"
+                          onClick={() => setEndCondition(endCondition === c.k ? '' : c.k)}
+                          className="p-2 rounded-lg border-2 text-sm font-ui transition-all"
+                          style={{
+                            background: endCondition === c.k ? 'rgba(31,92,61,0.12)' : 'var(--color-surface)',
+                            borderColor: endCondition === c.k ? 'var(--color-primary)' : 'var(--color-border)',
+                            color: 'var(--color-text-primary)',
+                          }}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                      Loser's balls left on table (0–7) — bigger margin = bigger ELO swing
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="7"
+                      value={ballsRemaining}
+                      onChange={(e) => setBallsRemaining(e.target.value)}
+                      placeholder="e.g. 3"
+                      className="w-full px-3 py-2 rounded-xl border font-ui text-sm"
+                      style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Custom rules reminder */}
             {leagueRules === 'custom' && customRules && (
@@ -342,9 +487,9 @@ export default function GameNew({ onAchievement }) {
               <button onClick={() => setStep(1)} className="btn btn-ghost flex-1">← Back</button>
               <button
                 onClick={() => setStep(3)}
-                disabled={!allSelected() || hasDuplicates || !t1score || !t2score}
+                disabled={!allSelected() || hasDuplicates || (!isCutthroat && (!t1score || !t2score))}
                 className="btn btn-primary flex-2 flex-1"
-                style={{ opacity: (!allSelected() || !t1score || !t2score) ? 0.5 : 1 }}
+                style={{ opacity: (!allSelected() || (!isCutthroat && (!t1score || !t2score))) ? 0.5 : 1 }}
               >
                 Next →
               </button>
