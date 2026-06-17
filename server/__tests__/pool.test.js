@@ -26,7 +26,7 @@ jest.mock('../db', () => {
 jest.mock('../seed', () => ({ seedIfEmpty: jest.fn() }));
 
 const request = require('supertest');
-const { ballsRemainingMultiplier, pointMarginMultiplier } = require('../lib/sports');
+const { ballsRemainingMultiplier, pointMarginMultiplier, getSport } = require('../lib/sports');
 const app = require('../index');
 
 beforeEach(() => {
@@ -202,5 +202,16 @@ describe('Pool ELO margin model', () => {
   test('pointMarginMultiplier unchanged for cornhole', () => {
     expect(pointMarginMultiplier(21, 21)).toBeCloseTo(1.0);
     expect(pointMarginMultiplier(21, 0)).toBeCloseTo(1.5); // capped
+  });
+
+  test('pool marginFn routes by variant', () => {
+    const pool = getSport('pool');
+    // cutthroat = flat 1x
+    expect(pool.marginFn({ score: 1 }, { score: 0 }, { game_variant: 'cutthroat' })).toBe(1);
+    // 8-ball = balls_remaining proxy
+    expect(pool.marginFn({}, { balls_remaining: 3 }, { game_variant: 'eight_ball' })).toBeCloseTo(1.3);
+    // 9-ball / straight = racks (point) margin, NOT a flat 1x
+    expect(pool.marginFn({ score: 5 }, { score: 0 }, { game_variant: 'nine_ball' })).toBeGreaterThan(1.0);
+    expect(pool.marginFn({ score: 100 }, { score: 0 }, { game_variant: 'straight_pool' })).toBeCloseTo(1.5);
   });
 });

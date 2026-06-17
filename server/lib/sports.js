@@ -74,8 +74,19 @@ const SPORTS = {
     formats: ['1v1', '2v2'],
     variants: ['eight_ball', 'nine_ball', 'cutthroat', 'straight_pool'],
     marginFn(winnerRow, loserRow, game) {
-      if (game && game.game_variant === 'cutthroat') return 1;
-      return ballsRemainingMultiplier(loserRow ? loserRow.balls_remaining : 0);
+      const variant = game && game.game_variant;
+      // Cutthroat: pure win/loss, no margin.
+      if (variant === 'cutthroat') return 1;
+      // 8-ball: margin proxy is the loser's balls left on the table.
+      if (variant === 'eight_ball') {
+        return ballsRemainingMultiplier(loserRow ? loserRow.balls_remaining : 0);
+      }
+      // 9-ball / straight pool (and any future racks-based variant): margin is
+      // the racks/points gap, reusing the cornhole points curve.
+      return pointMarginMultiplier(
+        winnerRow ? winnerRow.score : 0,
+        loserRow ? loserRow.score : 0
+      );
     },
   },
 };
