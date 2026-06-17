@@ -31,6 +31,7 @@ const MIGRATIONS = [
   { name: '016_league_short_code',             file: './migrations/016_league_short_code' },
   { name: '017_missing_fk_indexes',            file: './migrations/017_missing_fk_indexes' },
   { name: '018_leagues_seq_fix',               file: './migrations/018_leagues_seq_fix' },
+  { name: '019_league_sport',                  file: './migrations/019_league_sport' },
 ];
 
 async function run(db) {

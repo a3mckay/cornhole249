@@ -36,6 +36,16 @@ const SCHEMA_SQL = `
     pass_anniversary_sent_at TEXT,
     stripe_subscription_started_at TEXT,
     pro_recap_sent_year INTEGER,
+    -- migration 015: league controls
+    score_submit_policy TEXT NOT NULL DEFAULT 'all_members',
+    tournament_create_policy TEXT NOT NULL DEFAULT 'admins_only',
+    score_submit_allowed_ids TEXT NOT NULL DEFAULT '[]',
+    tournament_create_allowed_ids TEXT NOT NULL DEFAULT '[]',
+    score_verify_mode TEXT NOT NULL DEFAULT 'immediate',
+    -- migration 016: league short code
+    short_code TEXT UNIQUE,
+    -- migration 019: multi-sport foundation
+    sport TEXT NOT NULL DEFAULT 'cornhole',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   INSERT OR IGNORE INTO leagues (id, slug, name, plan) VALUES (1, 'cornhole249', 'Cornhole249', 'pro');
@@ -109,6 +119,8 @@ const SCHEMA_SQL = `
     submitted_by_user_id INTEGER,
     tournament_match_id INTEGER,
     league_id INTEGER NOT NULL DEFAULT 1,
+    -- migration 015: score verification status
+    status TEXT NOT NULL DEFAULT 'official',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS game_participants (
