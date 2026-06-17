@@ -13,8 +13,14 @@ const ROLE_BADGE = {
   player: { label: 'Player', bg: 'var(--color-bg)', color: 'var(--color-text-secondary)' },
 };
 
+// Suggested race-to-N target when an admin first enables it. Real-world pool
+// guidance: casual 8-ball races to ~5, 9-ball league play to 7–9; 7 is a
+// sensible league-standard default. Admin can change it freely.
+const RACE_TO_SUGGESTED = 7;
+
 export default function LeagueSettings() {
-  const { slug } = useLeague();
+  const { slug, sport } = useLeague();
+  const isPool = sport === 'pool';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, leagues, refreshUser } = useAuth();
@@ -82,6 +88,8 @@ export default function LeagueSettings() {
   const [scoreSubmitAllowedIds, setScoreSubmitAllowedIds] = useState([]);
   const [tournamentCreateAllowedIds, setTournamentCreateAllowedIds] = useState([]);
   const [scoreVerifyMode, setScoreVerifyMode] = useState('immediate');
+  // Race-to-N (pool): null = off. When toggled on we seed the suggested target.
+  const [raceToTarget, setRaceToTarget] = useState(null);
   const [controlsSaving, setControlsSaving] = useState(false);
   const [controlsSuccess, setControlsSuccess] = useState(false);
   const [controlsError, setControlsError] = useState('');
@@ -305,6 +313,9 @@ export default function LeagueSettings() {
       try { setScoreSubmitAllowedIds(JSON.parse(leagueData.score_submit_allowed_ids || '[]')); } catch (_) {}
       try { setTournamentCreateAllowedIds(JSON.parse(leagueData.tournament_create_allowed_ids || '[]')); } catch (_) {}
       setScoreVerifyMode(leagueData.score_verify_mode || 'immediate');
+      setRaceToTarget(
+        leagueData.race_to_target != null ? Number(leagueData.race_to_target) : null
+      );
       setShortCode(leagueData.short_code || null);
       // Custom rules
       if (leagueData.custom_rules_json) {
@@ -457,6 +468,7 @@ export default function LeagueSettings() {
         score_submit_allowed_ids: scoreSubmitAllowedIds,
         tournament_create_allowed_ids: tournamentCreateAllowedIds,
         score_verify_mode: scoreVerifyMode,
+        ...(isPool ? { race_to_target: raceToTarget } : {}),
       });
       setControlsSuccess(true);
       setTimeout(() => setControlsSuccess(false), 2500);
@@ -1479,6 +1491,54 @@ export default function LeagueSettings() {
                 </p>
               )}
             </div>
+
+            {/* Race to N — pool only. Off by default; admins opt in and tune the target. */}
+            {isPool && (
+              <div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                      🎱 Race to N
+                    </label>
+                    <p className="font-ui text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                      Set a target number of racks to win a match. Off by default.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRaceToTarget((v) => (v == null ? RACE_TO_SUGGESTED : null))}
+                    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0"
+                    style={{ background: raceToTarget != null ? 'var(--color-primary)' : 'var(--color-border)' }}
+                    aria-pressed={raceToTarget != null}
+                  >
+                    <span
+                      className="inline-block h-4 w-4 rounded-full bg-white transition-transform"
+                      style={{ transform: raceToTarget != null ? 'translateX(22px)' : 'translateX(2px)' }}
+                    />
+                  </button>
+                </div>
+                {raceToTarget != null && (
+                  <div className="mt-3 flex items-center gap-3">
+                    <span className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>First to</span>
+                    <input
+                      type="number" min="1" max="99"
+                      value={raceToTarget}
+                      onChange={(e) => {
+                        const n = parseInt(e.target.value, 10);
+                        setRaceToTarget(Number.isNaN(n) ? '' : Math.min(99, Math.max(1, n)));
+                      }}
+                      onBlur={() => { if (raceToTarget === '' || raceToTarget == null) setRaceToTarget(RACE_TO_SUGGESTED); }}
+                      className="w-20 px-3 py-1.5 rounded-lg border font-ui text-sm text-center"
+                      style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                    />
+                    <span className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>racks wins</span>
+                    <span className="font-ui text-xs opacity-60" style={{ color: 'var(--color-text-secondary)' }}>
+                      (suggested {RACE_TO_SUGGESTED})
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3 mt-5">

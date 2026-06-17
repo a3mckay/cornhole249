@@ -37,7 +37,7 @@ const POOL_VARIANTS = [
 
 export default function GameNew({ onAchievement }) {
   const { user } = useAuth();
-  const { leagueRules, customRules, sport } = useLeague();
+  const { leagueRules, customRules, sport, raceToTarget } = useLeague();
   const isPool = sport === 'pool';
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -88,6 +88,10 @@ export default function GameNew({ onAchievement }) {
     ? (isCutthroat ? 'cutthroat' : (poolDoubles ? '2v2' : '1v1'))
     : gameType;
   const scoreLabel = isPool ? 'Racks won' : 'Score';
+  // Race-to-N is a racks-based target — only meaningful for rack/point variants
+  // (not cutthroat, and not 8-ball which is scored single-rack via balls left).
+  const raceActive =
+    isPool && raceToTarget != null && !isCutthroat && gameVariant !== 'eight_ball';
 
   const allSelected = () => {
     if (isCutthroat) return t1p1 && t2p1 && t2p2;
@@ -357,6 +361,26 @@ export default function GameNew({ onAchievement }) {
         {step === 2 && (
           <div>
             <h2 className="font-display text-2xl mb-4" style={{ color: 'var(--color-text-primary)' }}>Players & Score</h2>
+
+            {/* Race-to-N hint: this league plays first-to-N racks. */}
+            {raceActive && (
+              <div
+                className="mb-4 px-3 py-2 rounded-xl text-sm font-ui flex items-center gap-2"
+                style={{ background: 'rgba(31,92,61,0.08)', border: '1px solid rgba(31,92,61,0.2)', color: 'var(--color-primary)' }}
+              >
+                <span>🎱</span>
+                <span>Race to <strong>{raceToTarget}</strong> — the winner should reach {raceToTarget} racks.</span>
+                {t1score === '' && t2score === '' && (
+                  <button
+                    type="button"
+                    onClick={() => setT1score(String(raceToTarget))}
+                    className="ml-auto font-semibold underline"
+                  >
+                    Fill {raceToTarget}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Team 1 (cutthroat: the lone winner) */}
             <div className="mb-4">

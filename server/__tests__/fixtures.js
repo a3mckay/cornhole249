@@ -46,6 +46,8 @@ const SCHEMA_SQL = `
     short_code TEXT UNIQUE,
     -- migration 019: multi-sport foundation
     sport TEXT NOT NULL DEFAULT 'cornhole',
+    -- migration 021: per-league race-to-N target (NULL = off)
+    race_to_target INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   INSERT OR IGNORE INTO leagues (id, slug, name, plan) VALUES (1, 'cornhole249', 'Cornhole249', 'pro');

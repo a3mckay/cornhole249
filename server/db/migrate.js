@@ -33,6 +33,7 @@ const MIGRATIONS = [
   { name: '018_leagues_seq_fix',               file: './migrations/018_leagues_seq_fix' },
   { name: '019_league_sport',                  file: './migrations/019_league_sport' },
   { name: '020_pool_game_variants',            file: './migrations/020_pool_game_variants' },
+  { name: '021_league_race_to_target',         file: './migrations/021_league_race_to_target' },
 ];
 
 async function run(db) {

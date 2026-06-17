@@ -249,7 +249,7 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       name, is_public, rules, use_case, tagline, custom_rules_json, theme_json,
       score_submit_policy, tournament_create_policy,
       score_submit_allowed_ids, tournament_create_allowed_ids,
-      score_verify_mode,
+      score_verify_mode, race_to_target,
     } = req.body;
     const updates = {};
     if (name !== undefined) {
@@ -299,6 +299,18 @@ router.patch('/:slug', requireAuth, async (req, res) => {
     if (score_verify_mode !== undefined) {
       if (!validVerifyModes.includes(score_verify_mode)) return res.status(400).json({ error: 'Invalid score_verify_mode' });
       updates.score_verify_mode = score_verify_mode;
+    }
+    // Race-to-N target: null/empty = off; otherwise an integer 1..99.
+    if (race_to_target !== undefined) {
+      if (race_to_target === null || race_to_target === '') {
+        updates.race_to_target = null;
+      } else {
+        const n = parseInt(race_to_target, 10);
+        if (!Number.isInteger(n) || n < 1 || n > 99) {
+          return res.status(400).json({ error: 'race_to_target must be an integer between 1 and 99, or null' });
+        }
+        updates.race_to_target = n;
+      }
     }
 
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'No fields to update' });

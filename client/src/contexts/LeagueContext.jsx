@@ -16,7 +16,7 @@ export const DEFAULT_CUSTOM_RULES = {
   tiebreaker: 'tie_stands',
 };
 
-const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false, leagueRules: 'hamilton', customRules: null, theme: null, sport: 'cornhole' });
+const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'free', userPendingRequest: false, leagueRules: 'hamilton', customRules: null, theme: null, sport: 'cornhole', raceToTarget: null });
 
 /**
  * React Router v6 layout route component.
@@ -55,6 +55,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const [customRules, setCustomRules] = useState(null);
   const [theme, setTheme] = useState(null);
   const [sport, setSport] = useState(DEFAULT_SPORT);
+  const [raceToTarget, setRaceToTarget] = useState(null);
 
   // Track which CSS variable overrides we've applied so we can clean them up on unmount / slug change
   const appliedThemeRef = useRef(null);
@@ -70,6 +71,7 @@ export function LeagueProvider({ slug: slugProp }) {
         setCustomRules(league?.custom_rules_json || null);
         setTheme(league?.theme_json || null);
         setSport(league?.sport || DEFAULT_SPORT);
+        setRaceToTarget(league?.race_to_target != null ? Number(league.race_to_target) : null);
         if (slug !== 'cornhole249') {
           setLeagueId(league?.id ?? null);
           setPlan(league?.plan_override || league?.plan || 'free');
@@ -85,6 +87,7 @@ export function LeagueProvider({ slug: slugProp }) {
         setCustomRules(null);
         setTheme(null);
         setSport(DEFAULT_SPORT);
+        setRaceToTarget(null);
       });
   }, [slug]);
 
@@ -145,7 +148,7 @@ export function LeagueProvider({ slug: slugProp }) {
   const passExpired = daysRemaining !== null && daysRemaining <= 0;
 
   return (
-    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest, leagueRules, customRules, theme, sport }}>
+    <LeagueContext.Provider value={{ slug, leagueId, plan, expiresAt, graceEndsAt, leagueName, tagline, createdAt, userPendingRequest, leagueRules, customRules, theme, sport, raceToTarget }}>
       {isFrozen && (
         <div
           className="px-4 py-2.5 text-sm font-ui flex items-center gap-3"
