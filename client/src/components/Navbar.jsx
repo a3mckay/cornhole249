@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { authApi } from '../api';
 import { leaguePath } from '../contexts/LeagueContext';
+import { getSport, DEFAULT_SPORT } from '../sports';
 import { QRCodeSVG } from 'qrcode.react';
 
 function ProLock() {
@@ -92,6 +93,18 @@ export default function Navbar() {
               alt={currentLeague?.name || currentSlug}
               className="h-8 w-8 rounded-lg object-contain bg-white/10"
             />
+            <span className="font-display text-lg text-amber-100 hidden sm:inline">
+              {currentLeague?.name || currentSlug}
+            </span>
+          </Link>
+        ) : currentSlug !== 'cornhole249' ? (
+          // Non-cornhole league without a custom logo: show the sport emoji +
+          // league name (themed identity) rather than the umbrella wordmark.
+          <Link
+            to={leagueHome(currentSlug)}
+            className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
+          >
+            <span className="text-2xl leading-none">{getSport(currentLeague?.sport || DEFAULT_SPORT).emoji}</span>
             <span className="font-display text-lg text-amber-100 hidden sm:inline">
               {currentLeague?.name || currentSlug}
             </span>

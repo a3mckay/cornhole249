@@ -15,12 +15,23 @@ export const SPORTS = {
     displayName: 'Cornhole',
     emoji: '🌽',
     accent: { primary: '#3A6B35', secondary: '#D48B2D' },
+    // Document-head / chrome theming (browser tab + navbar).
+    chrome: {
+      navbar: '#4A3728',     // wood-brown rail (shared default)
+      themeColor: '#4A3728', // <meta name="theme-color">
+      favicon: '/favicon.svg',
+    },
   },
   pool: {
     key: 'pool',
     displayName: 'Pool',
     emoji: '🎱',
     accent: { primary: '#1f5c3d', secondary: '#caa45a' },
+    chrome: {
+      navbar: '#14342a',     // dark felt-green rail
+      themeColor: '#14342a',
+      favicon: '/favicon-pool.svg',
+    },
   },
 };
 

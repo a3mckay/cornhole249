@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useLeague } from '../contexts/LeagueContext';
+import PoolRules from '../components/PoolRules';
 
 const RULESETS = {
   hamilton: {
@@ -39,8 +41,12 @@ const RULESETS = {
 };
 
 export default function Rules() {
+  const { sport } = useLeague();
   const [ruleset, setRuleset] = useState('hamilton');
   const r = RULESETS[ruleset];
+
+  // Pool leagues get their own variant-aware rules page.
+  if (sport === 'pool') return <PoolRules />;
 
   return (
     <div className="max-w-2xl mx-auto">

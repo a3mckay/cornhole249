@@ -114,6 +114,13 @@ export function LeagueProvider({ slug: slugProp }) {
       applied.push('--color-primary', '--color-secondary');
     }
 
+    // Per-sport navbar/rail colour (part of "themed in its entirety"). A custom
+    // theme_json doesn't currently set navbar, so the sport value stands.
+    if (sport && sport !== DEFAULT_SPORT) {
+      root.style.setProperty('--color-navbar', getSport(sport).chrome.navbar);
+      applied.push('--color-navbar');
+    }
+
     if (theme) {
       if (theme.primary_color) {
         root.style.setProperty('--color-primary', theme.primary_color);
@@ -134,6 +141,36 @@ export function LeagueProvider({ slug: slugProp }) {
       appliedThemeRef.current = null;
     };
   }, [theme, sport]);
+
+  // Document-head theming: favicon, tab title, and theme-color follow the sport
+  // so the browser chrome is "pool-themed in its entirety" on a pool league.
+  useEffect(() => {
+    const s = getSport(sport);
+    const isDefault = !sport || sport === DEFAULT_SPORT;
+
+    // Favicon swap (revert to cornhole default on cleanup / slug change).
+    const iconEl = document.querySelector('link[rel="icon"]');
+    const prevIcon = iconEl?.getAttribute('href') ?? null;
+    if (iconEl && s.chrome?.favicon) iconEl.setAttribute('href', s.chrome.favicon);
+
+    // theme-color meta (browser/PWA chrome).
+    const metaEl = document.querySelector('meta[name="theme-color"]');
+    const prevTheme = metaEl?.getAttribute('content') ?? null;
+    if (metaEl && s.chrome?.themeColor) metaEl.setAttribute('content', s.chrome.themeColor);
+
+    // Tab title: "<emoji> <league name>" on a non-cornhole sport, else leave the
+    // default umbrella title (branding stays cornhole249).
+    const prevTitle = document.title;
+    if (!isDefault && leagueName) {
+      document.title = `${s.emoji} ${leagueName}`;
+    }
+
+    return () => {
+      if (iconEl && prevIcon != null) iconEl.setAttribute('href', prevIcon);
+      if (metaEl && prevTheme != null) metaEl.setAttribute('content', prevTheme);
+      document.title = prevTitle;
+    };
+  }, [sport, leagueName]);
 
   // Current user's frozen status in this league (from useAuth's /leagues/mine data)
   const myMembership = leagues?.find((l) => l.slug === slug);
