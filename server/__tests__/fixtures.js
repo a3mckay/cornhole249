@@ -121,6 +121,9 @@ const SCHEMA_SQL = `
     league_id INTEGER NOT NULL DEFAULT 1,
     -- migration 015: score verification status
     status TEXT NOT NULL DEFAULT 'official',
+    -- migration 020: pool game variants (NULL for cornhole games)
+    game_variant TEXT,
+    eight_ball_end_condition TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS game_participants (
@@ -129,7 +132,9 @@ const SCHEMA_SQL = `
     user_id INTEGER NOT NULL,
     team INTEGER NOT NULL,
     score INTEGER NOT NULL DEFAULT 0,
-    is_winner INTEGER NOT NULL DEFAULT 0
+    is_winner INTEGER NOT NULL DEFAULT 0,
+    -- migration 020: balls left on table for loser (pool ELO margin)
+    balls_remaining INTEGER
   );
   CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

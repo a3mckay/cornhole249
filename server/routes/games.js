@@ -4,6 +4,7 @@ const { getDb, sql } = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { evaluateAchievements } = require('../lib/achievements');
 const { recalculateAllElos } = require('../lib/elo');
+const { DEFAULT_SPORT } = require('../lib/sports');
 const { fetchWeatherForGame } = require('./weather');
 
 // played_at is stored as UTC ISO / TIMESTAMPTZ. The league plays in Hamilton, ON,
@@ -225,10 +226,27 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireAuth, async (req, res) => {
   try {
     const db = getDb();
-    const { game_type, played_at, season, venue_id, team1, team2 } = req.body;
+    const {
+      game_type, played_at, season, venue_id, team1, team2,
+      // Pool variant fields (ignored for cornhole leagues).
+      game_variant = null,
+      eight_ball_end_condition = null,
+      balls_remaining = null,
+    } = req.body;
 
-    if (!game_type || !['1v1', '2v2'].includes(game_type)) {
+    // Resolve the league's sport up-front. Pool leagues unlock the 'cutthroat'
+    // game_type and variant fields; cornhole leagues keep the original
+    // 1v1/2v2-only behavior with no variant data.
+    const { rows: sportRows } = await sql`SELECT sport FROM leagues WHERE id = ${req.leagueId}`.execute(db);
+    const leagueSport = sportRows[0]?.sport || DEFAULT_SPORT;
+    const isPool = leagueSport === 'pool';
+
+    const allowedTypes = isPool ? ['1v1', '2v2', 'cutthroat'] : ['1v1', '2v2'];
+    if (!game_type || !allowedTypes.includes(game_type)) {
       return res.status(400).json({ error: 'Invalid game_type' });
+    }
+    if (isPool && game_variant && !['eight_ball', 'nine_ball', 'cutthroat', 'straight_pool'].includes(game_variant)) {
+      return res.status(400).json({ error: 'Invalid game_variant' });
     }
     if (!team1 || !team2 || !Array.isArray(team1) || !Array.isArray(team2)) {
       return res.status(400).json({ error: 'team1 and team2 required as arrays' });
@@ -255,18 +273,45 @@ router.post('/', requireAuth, async (req, res) => {
       return res.status(403).json({ error: `${names} cannot participate — their access to this league is limited.` });
     }
 
-    const t1Score = team1[0]?.score ?? 0;
-    const t2Score = team2[0]?.score ?? 0;
+    // Cutthroat (pool): 1 winner (team1) + 2 losers (team2), no numeric scores.
+    const isCutthroat = game_type === 'cutthroat';
+    let t1Score = 0;
+    let t2Score = 0;
 
-    if (team1.some((p) => (p.score || 0) < 0) || team2.some((p) => (p.score || 0) < 0)) {
-      return res.status(400).json({ error: 'Scores must be non-negative' });
+    if (isCutthroat) {
+      if (team1.length !== 1 || team2.length !== 2) {
+        return res.status(400).json({ error: 'Cutthroat requires exactly 1 winner (team1) and 2 losers (team2)' });
+      }
+    } else {
+      t1Score = team1[0]?.score ?? 0;
+      t2Score = team2[0]?.score ?? 0;
+
+      if (team1.some((p) => (p.score || 0) < 0) || team2.some((p) => (p.score || 0) < 0)) {
+        return res.status(400).json({ error: 'Scores must be non-negative' });
+      }
+      if (team1.some((p) => (p.score || 0) > 99) || team2.some((p) => (p.score || 0) > 99)) {
+        return res.status(400).json({ error: 'Score seems too high' });
+      }
+      if (t1Score === t2Score) {
+        return res.status(400).json({ error: 'Games cannot end in a tie' });
+      }
     }
-    if (team1.some((p) => (p.score || 0) > 99) || team2.some((p) => (p.score || 0) > 99)) {
-      return res.status(400).json({ error: 'Score seems too high' });
-    }
-    if (t1Score === t2Score) {
-      return res.status(400).json({ error: 'Games cannot end in a tie' });
-    }
+
+    // team1 always holds the winner for cutthroat; otherwise higher score wins.
+    const isTeam1Winner = isCutthroat ? true : (t1Score > t2Score);
+
+    // Pool 8-ball extras. Only meaningful for pool eight_ball games; null else.
+    const validatedBallsRemaining =
+      balls_remaining !== null && balls_remaining !== undefined && !isNaN(parseInt(balls_remaining))
+        ? Math.min(7, Math.max(0, parseInt(balls_remaining)))
+        : null;
+    const endCondition =
+      isPool && game_variant === 'eight_ball' && ['sunk', 'scratch'].includes(eight_ball_end_condition)
+        ? eight_ball_end_condition
+        : null;
+    // Persisted variant + per-loser balls_remaining helpers.
+    const persistVariant = isPool ? (game_variant || null) : null;
+    const loserBalls = (isPool && game_variant === 'eight_ball') ? validatedBallsRemaining : null;
 
     // ── Fetch league settings (rules + policies) ─────────────────────────────
     const { rows: leagueRows } = await sql`
@@ -292,7 +337,7 @@ router.post('/', requireAuth, async (req, res) => {
     // ── Custom rules validation ──────────────────────────────────────────────
     const leagueRules = league.rules;
     const customRules = league.custom_rules_json;
-    if (leagueRules === 'custom' && customRules) {
+    if (!isCutthroat && leagueRules === 'custom' && customRules) {
       const target = customRules.target_score;
       const winBy  = customRules.win_by ?? 1;
       const winner = Math.max(t1Score, t2Score);
@@ -369,12 +414,13 @@ router.post('/', requireAuth, async (req, res) => {
         : (t1Score === sub.team1_score && t2Score === sub.team2_score);
 
       const gameStatus = scoresMatch ? 'official' : 'disputed';
-      const isTeam1Winner = t1Score > t2Score;
 
       const newGame = await db
         .insertInto('games')
         .values({
           game_type,
+          game_variant: persistVariant,
+          eight_ball_end_condition: endCondition,
           played_at: gameDate.toISOString(),
           season: gameSeason,
           venue_id: venue_id || null,
@@ -387,10 +433,10 @@ router.post('/', requireAuth, async (req, res) => {
 
       const gameId = newGame.id;
       for (const p of team1) {
-        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: p.score || 0, is_winner: isTeam1Winner ? 1 : 0 }).execute();
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: null }).execute();
       }
       for (const p of team2) {
-        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: p.score || 0, is_winner: isTeam1Winner ? 0 : 1 }).execute();
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null }).execute();
       }
 
       // Remove both matched submissions
@@ -416,12 +462,13 @@ router.post('/', requireAuth, async (req, res) => {
 
     // ── opponent_approve or immediate ────────────────────────────────────────
     const gameStatus = verifyMode === 'opponent_approve' ? 'pending_approval' : 'official';
-    const isTeam1Winner = t1Score > t2Score;
 
     const newGame = await db
       .insertInto('games')
       .values({
         game_type,
+        game_variant: persistVariant,
+        eight_ball_end_condition: endCondition,
         played_at: gameDate.toISOString(),
         season: gameSeason,
         venue_id: venue_id || null,
@@ -435,10 +482,10 @@ router.post('/', requireAuth, async (req, res) => {
     const gameId = newGame.id;
 
     for (const p of team1) {
-      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: p.score || 0, is_winner: isTeam1Winner ? 1 : 0 }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: null }).execute();
     }
     for (const p of team2) {
-      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: p.score || 0, is_winner: isTeam1Winner ? 0 : 1 }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null }).execute();
     }
 
     if (gameStatus === 'official') {
@@ -623,7 +670,16 @@ async function updateElosAfterGame(gameId, db) {
   const officialIds = new Set(games.map((g) => g.id));
   const { rows: allParticipants } = await sql`SELECT * FROM game_participants`.execute(db);
   const participants = allParticipants.filter((p) => officialIds.has(p.game_id));
-  const newElos = recalculateAllElos(games, participants);
+
+  // Resolve each game's sport from its league so the per-sport ELO marginFn is
+  // used (pool reads balls_remaining; cornhole reads point margin). Default to
+  // cornhole for any game whose league sport can't be resolved — keeps existing
+  // cornhole ratings byte-identical.
+  const { rows: leagueRows } = await sql`SELECT id, sport FROM leagues`.execute(db);
+  const sportByLeague = new Map(leagueRows.map((l) => [l.id, l.sport]));
+  const resolveSport = (game) => sportByLeague.get(game.league_id) || DEFAULT_SPORT;
+
+  const newElos = recalculateAllElos(games, participants, resolveSport);
 
   await db.transaction().execute(async (trx) => {
     for (const [userId, elo] of Object.entries(newElos)) {
