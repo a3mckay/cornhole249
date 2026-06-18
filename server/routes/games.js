@@ -437,7 +437,7 @@ router.post('/', requireAuth, async (req, res) => {
 
       const gameId = newGame.id;
       for (const p of team1) {
-        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: null }).execute();
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: isTeam1Winner ? null : loserBalls }).execute();
       }
       for (const p of team2) {
         await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null }).execute();
@@ -486,7 +486,7 @@ router.post('/', requireAuth, async (req, res) => {
     const gameId = newGame.id;
 
     for (const p of team1) {
-      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: null }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: isTeam1Winner ? null : loserBalls }).execute();
     }
     for (const p of team2) {
       await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null }).execute();

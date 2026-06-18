@@ -112,6 +112,48 @@ describe('Pool sport gating', () => {
     expect(loser.balls_remaining).toBe(4);
   });
 
+  test('team2 wins 8-ball: loser balls stored on team1 (losing) row', async () => {
+    setSport('pool');
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    // Bob (team2) wins; Alice (team1) is the loser and entered 5 balls left.
+    const res = await agent.post('/api/games').send({
+      game_type: '1v1',
+      game_variant: 'eight_ball',
+      eight_ball_end_condition: 'sunk',
+      balls_remaining: 5,
+      team1: [{ user_id: 1, score: 0 }],
+      team2: [{ user_id: 2, score: 1 }],
+    });
+    expect(res.status).toBe(201);
+
+    const winner = rawTestDb.prepare('SELECT is_winner, balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 2').get(res.body.id);
+    const loser = rawTestDb.prepare('SELECT is_winner, balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 1').get(res.body.id);
+    // Winner (team2/Bob) has no balls; loser (team1/Alice) carries the entered value.
+    expect(winner.is_winner).toBe(1);
+    expect(winner.balls_remaining).toBeNull();
+    expect(loser.is_winner).toBe(0);
+    expect(loser.balls_remaining).toBe(5);
+  });
+
+  test('team2-win 8-ball: loser balls drive the ELO margin (not flat 1x)', async () => {
+    setSport('pool');
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    // Bob beats Alice; Alice left 5 balls → a big-margin loss → larger rating swing.
+    const res = await agent.post('/api/games').send({
+      game_type: '1v1',
+      game_variant: 'eight_ball',
+      balls_remaining: 5,
+      team1: [{ user_id: 1, score: 0 }],
+      team2: [{ user_id: 2, score: 1 }],
+    });
+    expect(res.status).toBe(201);
+    const bob = rawTestDb.prepare(`SELECT rating FROM user_sport_ratings WHERE sport = 'pool' AND user_id = 2`).get();
+    // Flat 1x would give Bob 1016; a 1.5x margin (5 balls capped) gives 1024.
+    expect(bob.rating).toBeGreaterThan(1016);
+  });
+
   test('balls_remaining clamps to 0..7', async () => {
     setSport('pool');
     const agent = request.agent(app);
