@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
+import { getSport } from '../sports';
 
 const TAB_DEFS = [
   {
@@ -43,8 +44,20 @@ const TAB_DEFS = [
 ];
 
 export default function BottomNav() {
-  const { slug } = useLeague();
-  const tabs = TAB_DEFS.map((t) => ({ ...t, to: leaguePath(slug, t.key) }));
+  const { slug, sport } = useLeague();
+  // Per-sport icon overrides (registry). Today only the Games tab swaps — pool
+  // shows 🎱 instead of the cornhole-board SVG. Falls back to the built-in icon.
+  const sportIcons = getSport(sport).icons || {};
+  const tabs = TAB_DEFS.map((t) => {
+    const override = sportIcons[t.key];
+    return {
+      ...t,
+      to: leaguePath(slug, t.key),
+      icon: override
+        ? <span className="text-xl leading-none" aria-hidden="true">{override}</span>
+        : t.icon,
+    };
+  });
 
   return (
     <nav

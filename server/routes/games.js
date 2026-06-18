@@ -4,7 +4,7 @@ const { getDb, sql } = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { evaluateAchievements } = require('../lib/achievements');
 const { recalculateAllElos } = require('../lib/elo');
-const { DEFAULT_SPORT } = require('../lib/sports');
+const { DEFAULT_SPORT, getSport } = require('../lib/sports');
 const { fetchWeatherForGame } = require('./weather');
 
 // played_at is stored as UTC ISO / TIMESTAMPTZ. The league plays in Hamilton, ON,
@@ -240,6 +240,9 @@ router.post('/', requireAuth, async (req, res) => {
     const { rows: sportRows } = await sql`SELECT sport FROM leagues WHERE id = ${req.leagueId}`.execute(db);
     const leagueSport = sportRows[0]?.sport || DEFAULT_SPORT;
     const isPool = leagueSport === 'pool';
+    // Indoor sports (pool, …) skip weather entirely. Treat an undefined flag as
+    // outdoor so existing/unknown sports keep fetching weather (cornhole = true).
+    const isOutdoor = getSport(leagueSport).outdoor !== false;
 
     const allowedTypes = isPool ? ['1v1', '2v2', 'cutthroat'] : ['1v1', '2v2'];
     if (!game_type || !allowedTypes.includes(game_type)) {
@@ -447,7 +450,7 @@ router.post('/', requireAuth, async (req, res) => {
         evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
       }
 
-      if (venue_id) {
+      if (venue_id && isOutdoor) {
         const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', venue_id).executeTakeFirst();
         if (venue?.lat && venue?.lng) {
           fetchWeatherForGame(venue.lat, venue.lng, gameDate.toISOString()).then(async (weather) => {
@@ -493,7 +496,7 @@ router.post('/', requireAuth, async (req, res) => {
       evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
     }
 
-    if (venue_id) {
+    if (venue_id && isOutdoor) {
       const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', venue_id).executeTakeFirst();
       if (venue?.lat && venue?.lng) {
         fetchWeatherForGame(venue.lat, venue.lng, gameDate.toISOString()).then(async (weather) => {
@@ -628,9 +631,13 @@ router.patch('/:id', requireAdmin, async (req, res) => {
 
     const updated = await db.selectFrom('games').selectAll().where('id', '=', gameId).executeTakeFirstOrThrow();
 
+    // Indoor sports skip weather (see create path). Resolve from the game's league.
+    const { rows: editSportRows } = await sql`SELECT sport FROM leagues WHERE id = ${game.league_id}`.execute(db);
+    const editIsOutdoor = getSport(editSportRows[0]?.sport || DEFAULT_SPORT).outdoor !== false;
+
     const venueChanged = venue_id !== undefined && (venue_id || null) !== (game.venue_id || null);
     const dateChanged = played_at !== undefined && played_at !== game.played_at;
-    if (venueChanged || dateChanged) {
+    if ((venueChanged || dateChanged) && editIsOutdoor) {
       if (updated.venue_id) {
         const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', updated.venue_id).executeTakeFirst();
         if (venue && venue.lat && venue.lng) {
