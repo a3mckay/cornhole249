@@ -13,7 +13,7 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Teams must have at least one player' });
     }
 
-    const result = await calculateOdds(team1, team2);
+    const result = await calculateOdds(team1, team2, req.league?.sport);
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });

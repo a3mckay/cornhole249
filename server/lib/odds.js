@@ -1,12 +1,16 @@
 const { winProbability } = require('./elo');
 const { getDb, sql } = require('../db');
+const { DEFAULT_SPORT } = require('./sports');
+const { getSportRating } = require('./sportRatings');
 
 /**
  * Calculate matchup odds between two teams.
  * team1Ids, team2Ids: arrays of user IDs
+ * sport: optional league sport — non-cornhole uses per-sport ELO (WS-E); cornhole
+ *        (default/omitted) keeps using users.elo_rating, so it's unchanged.
  * Returns { team1_pct, team2_pct, confidence, method, explanation }
  */
-async function calculateOdds(team1Ids, team2Ids) {
+async function calculateOdds(team1Ids, team2Ids, sport = DEFAULT_SPORT) {
   const db = getDb();
 
   // Get current Elo for each player
@@ -23,6 +27,15 @@ async function calculateOdds(team1Ids, team2Ids) {
         .where('id', 'in', team2Ids)
         .execute()
     : [];
+
+  // Swap in per-sport ratings for non-cornhole leagues (cornhole's elo_rating
+  // mirror is authoritative, so we skip the lookups and stay byte-identical).
+  if (sport && sport !== DEFAULT_SPORT) {
+    for (const p of [...team1Players, ...team2Players]) {
+      const r = await getSportRating(db, p.id, sport);
+      if (r != null) p.elo_rating = r;
+    }
+  }
 
   if (!team1Players.length || !team2Players.length) {
     return {

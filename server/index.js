@@ -418,20 +418,24 @@ app.use(errorHandler);
   // Background work — runs after listen(); errors are logged but never crash the process.
   (async () => {
     try {
-      const { recalculateAllElos } = require('./lib/elo');
+      const { recalculateAllElosBySport } = require('./lib/elo');
+      const { persistSportRatings } = require('./lib/sportRatings');
+      const { DEFAULT_SPORT } = require('./lib/sports');
       const db = getDb();
 
-      // Recalculate all Elo ratings on startup to apply the latest formula
+      // Recalculate all Elo ratings on startup to apply the latest formula.
+      // Per-sport (WS-E): each sport replays in isolation, so pool never moves
+      // cornhole. Also backfills user_sport_ratings after the migration.
       const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
       const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
       if (games.length > 0) {
-        const newElos = recalculateAllElos(games, participants);
-        await db.transaction().execute(async (trx) => {
-          for (const [userId, elo] of Object.entries(newElos)) {
-            await trx.updateTable('users').set({ elo_rating: elo }).where('id', '=', parseInt(userId)).execute();
-          }
-        });
-        console.log(`[Elo] Recalculated ratings for ${Object.keys(newElos).length} players`);
+        const { rows: leagueRows } = await sql`SELECT id, sport FROM leagues`.execute(db);
+        const sportByLeague = new Map(leagueRows.map((l) => [l.id, l.sport]));
+        const resolveSport = (game) => sportByLeague.get(game.league_id) || DEFAULT_SPORT;
+        const bySport = recalculateAllElosBySport(games, participants, resolveSport);
+        await persistSportRatings(db, bySport);
+        const playerCount = new Set(Object.values(bySport).flatMap((m) => Object.keys(m))).size;
+        console.log(`[Elo] Recalculated per-sport ratings for ${playerCount} players across ${Object.keys(bySport).length} sport(s)`);
       }
 
       // One-time venue/weather fixes and weather backfill

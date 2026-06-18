@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
+const { DEFAULT_SPORT } = require('../lib/sports');
+// Per-sport ELO (WS-E): non-cornhole leagues read user_sport_ratings; cornhole
+// keeps reading users.elo_rating (the byte-identical mirror) — the helpers emit
+// the original snippets for cornhole, so those queries are unchanged.
+const { eloExpr, eloJoin, eloGroup, applySportElo } = require('../lib/sportRatings');
 
 // ── Simple in-memory TTL cache ────────────────────────────────────────────────
 // Standings are expensive to compute (streak + last-5 queries per player).
@@ -99,6 +104,8 @@ router.get('/1v1', async (req, res) => {
     // Optional pool variant filter (e.g. ?variant=eight_ball). Cornhole ignores.
     const variantFilter = variant && variant !== 'all' ? variant : null;
 
+    const leagueSport = req.league?.sport || DEFAULT_SPORT;
+
     const cacheKey = `${leagueId}:1v1:${seasonInt ?? ''}:${variantFilter ?? ''}`;
     const cached = getCache(cacheKey);
     if (cached) return res.json(cached);
@@ -106,7 +113,7 @@ router.get('/1v1', async (req, res) => {
     const { rows } = await sql`
       SELECT
         gp.user_id,
-        u.display_name, u.nickname, u.avatar_url, u.elo_rating,
+        u.display_name, u.nickname, u.avatar_url, ${eloExpr(leagueSport)} AS elo_rating,
         COUNT(*) as gp,
         SUM(gp.is_winner) as wins,
         COUNT(*) - SUM(gp.is_winner) as losses,
@@ -117,13 +124,14 @@ router.get('/1v1', async (req, res) => {
         ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
         ${variantFilter ? sql`AND g.game_variant = ${variantFilter}` : sql``}
       JOIN users u ON gp.user_id = u.id
+      ${eloJoin(leagueSport)}
       LEFT JOIN (
         SELECT game_id, SUM(score) as opp_score FROM game_participants WHERE team = 2 GROUP BY game_id
       ) opp ON opp.game_id = gp.game_id AND gp.team = 1
       LEFT JOIN (
         SELECT game_id, SUM(score) as opp_score FROM game_participants WHERE team = 1 GROUP BY game_id
       ) opp2 ON opp2.game_id = gp.game_id AND gp.team = 2
-      GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url, u.elo_rating
+      GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url, u.elo_rating${eloGroup(leagueSport)}
       ORDER BY SUM(gp.is_winner) * 2 DESC, SUM(gp.is_winner) * 1.0 / COUNT(*) DESC
     `.execute(db);
 
@@ -247,6 +255,7 @@ router.get('/cutthroat', async (req, res) => {
     const { season } = req.query;
     const seasonInt = season ? parseInt(season) : null;
     const leagueId = req.leagueId;
+    const leagueSport = req.league?.sport || DEFAULT_SPORT;
 
     const cacheKey = `${leagueId}:cutthroat:${seasonInt ?? ''}`;
     const cached = getCache(cacheKey);
@@ -255,7 +264,7 @@ router.get('/cutthroat', async (req, res) => {
     const { rows } = await sql`
       SELECT
         gp.user_id,
-        u.display_name, u.nickname, u.avatar_url, u.elo_rating,
+        u.display_name, u.nickname, u.avatar_url, ${eloExpr(leagueSport)} AS elo_rating,
         COUNT(*) as gp,
         SUM(gp.is_winner) as wins,
         COUNT(*) - SUM(gp.is_winner) as losses
@@ -264,7 +273,8 @@ router.get('/cutthroat', async (req, res) => {
         AND g.game_type = 'cutthroat' AND g.league_id = ${leagueId}
         ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
       JOIN users u ON gp.user_id = u.id
-      GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url, u.elo_rating
+      ${eloJoin(leagueSport)}
+      GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url, u.elo_rating${eloGroup(leagueSport)}
       ORDER BY SUM(gp.is_winner) DESC, SUM(gp.is_winner) * 1.0 / COUNT(*) DESC
     `.execute(db);
 
@@ -304,6 +314,7 @@ router.get('/team/:p1/:p2', async (req, res) => {
       db.selectFrom('users').select(['id', 'display_name', 'nickname', 'avatar_url', 'elo_rating']).where('id', '=', p2).executeTakeFirst(),
     ]);
     if (!u1 || !u2) return res.status(404).json({ error: 'Player not found' });
+    await applySportElo(db, req, [u1, u2]);
 
     const { season } = req.query;
     const seasonInt = season ? parseInt(season) : null;

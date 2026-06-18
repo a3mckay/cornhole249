@@ -198,6 +198,12 @@ const SCHEMA_SQL = `
     key TEXT PRIMARY KEY,
     value TEXT
   );
+  CREATE TABLE IF NOT EXISTS user_sport_ratings (
+    user_id INTEGER NOT NULL,
+    sport TEXT NOT NULL,
+    rating REAL NOT NULL DEFAULT 1000,
+    PRIMARY KEY (user_id, sport)
+  );
 `;
 
 function getRawDb() {

@@ -3,7 +3,9 @@ const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { requirePro } = require('../middleware/planAccess');
-const { recalculateAllElos } = require('../lib/elo');
+const { recalculateAllElosBySport } = require('../lib/elo');
+const { persistSportRatings } = require('../lib/sportRatings');
+const { DEFAULT_SPORT } = require('../lib/sports');
 const { evaluateAchievements } = require('../lib/achievements');
 
 // GET /api/tournaments
@@ -208,15 +210,16 @@ router.patch('/matches/:id', requireAuth, async (req, res) => {
       // Link game back to match
       await db.updateTable('tournament_matches').set({ game_id: gameId }).where('id', '=', matchId).execute();
 
-      // Update Elos
+      // Update Elos — per-sport (WS-E), so a tournament result only moves the
+      // rating for its own sport. persistSportRatings mirrors cornhole into
+      // users.elo_rating.
       const { rows: allGames } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
       const { rows: allParts } = await sql`SELECT * FROM game_participants`.execute(db);
-      const newElos = recalculateAllElos(allGames, allParts);
-      await db.transaction().execute(async (trx) => {
-        for (const [uid, elo] of Object.entries(newElos)) {
-          await trx.updateTable('users').set({ elo_rating: elo }).where('id', '=', parseInt(uid)).execute();
-        }
-      });
+      const { rows: leagueRows } = await sql`SELECT id, sport FROM leagues`.execute(db);
+      const sportByLeague = new Map(leagueRows.map((l) => [l.id, l.sport]));
+      const resolveSport = (game) => sportByLeague.get(game.league_id) || DEFAULT_SPORT;
+      const bySport = recalculateAllElosBySport(allGames, allParts, resolveSport);
+      await persistSportRatings(db, bySport);
 
       // Evaluate achievements
       try { await evaluateAchievements(gameId); } catch (e) { console.warn('[Achievements]', e.message); }

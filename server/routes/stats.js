@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
+const { DEFAULT_SPORT } = require('../lib/sports');
+// Per-sport ELO (WS-E): cornhole reads stay on users.elo_rating (byte-identical);
+// non-cornhole leagues resolve the rating from user_sport_ratings.
+const { eloExpr, eloJoin, applySportElo } = require('../lib/sportRatings');
 
 // GET /api/stats/rivals?type=1v1|2v2
 router.get('/rivals', async (req, res) => {
@@ -140,6 +144,7 @@ router.get('/head-to-head', async (req, res) => {
       db.selectFrom('users').select(['id', 'display_name', 'nickname', 'avatar_url', 'elo_rating']).where('id', '=', p1).executeTakeFirst(),
       db.selectFrom('users').select(['id', 'display_name', 'nickname', 'avatar_url', 'elo_rating']).where('id', '=', p2).executeTakeFirst(),
     ]);
+    await applySportElo(db, req, [u1, u2]);
 
     res.json({ player1: u1, player2: u2, total_games: games.length, p1_wins, p2_wins, last5: games.slice(0, 5) });
   } catch (e) {
@@ -446,12 +451,14 @@ router.get('/venue-kings', async (req, res) => {
 router.get('/elo-leaders', async (req, res) => {
   try {
     const db = getDb();
+    const leagueSport = req.league?.sport || DEFAULT_SPORT;
     const { rows } = await sql`
-      SELECT u.id, u.display_name, u.avatar_url, u.elo_rating,
+      SELECT u.id, u.display_name, u.avatar_url, ${eloExpr(leagueSport)} AS elo_rating,
         (SELECT COUNT(*) FROM game_participants gp JOIN games g ON gp.game_id = g.id WHERE gp.user_id = u.id AND g.league_id = ${req.leagueId}) as gp
       FROM users u
+      ${eloJoin(leagueSport)}
       WHERE (SELECT COUNT(*) FROM game_participants gp JOIN games g ON gp.game_id = g.id WHERE gp.user_id = u.id AND g.league_id = ${req.leagueId}) > 0
-      ORDER BY u.elo_rating DESC
+      ORDER BY ${eloExpr(leagueSport)} DESC
     `.execute(db);
     res.json(rows.map((r) => ({ ...r, gp: parseInt(r.gp) })));
   } catch (e) {

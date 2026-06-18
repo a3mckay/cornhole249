@@ -1,4 +1,4 @@
-const { expectedScore, winProbability, updateElo, recalculateAllElos } = require('../lib/elo');
+const { expectedScore, winProbability, updateElo, recalculateAllElos, recalculateAllElosBySport } = require('../lib/elo');
 
 describe('Elo engine', () => {
   test('expectedScore: equal ratings give 50%', () => {
@@ -60,5 +60,60 @@ describe('Elo engine', () => {
     expect(elos[3]).toBeLessThan(1000);
     expect(elos[1]).toBeGreaterThan(elos[2]);
     expect(elos[2]).toBeGreaterThan(elos[3]);
+  });
+});
+
+describe('Per-sport Elo (WS-E)', () => {
+  // user1 wins both cornhole games but LOSES the pool game in between.
+  const games = [
+    { id: 1, played_at: '2025-01-01T00:00:00Z', league_id: 1 }, // cornhole
+    { id: 2, played_at: '2025-01-02T00:00:00Z', league_id: 3 }, // pool
+    { id: 3, played_at: '2025-01-03T00:00:00Z', league_id: 1 }, // cornhole
+  ];
+  const participants = [
+    { game_id: 1, user_id: 1, team: 1, is_winner: 1 },
+    { game_id: 1, user_id: 2, team: 2, is_winner: 0 },
+    { game_id: 2, user_id: 1, team: 1, is_winner: 0 }, // user1 loses pool
+    { game_id: 2, user_id: 2, team: 2, is_winner: 1 },
+    { game_id: 3, user_id: 1, team: 1, is_winner: 1 },
+    { game_id: 3, user_id: 2, team: 2, is_winner: 0 },
+  ];
+  const resolveSport = (g) => (g.league_id === 3 ? 'pool' : 'cornhole');
+
+  test('partitions ratings by sport', () => {
+    const bySport = recalculateAllElosBySport(games, participants, resolveSport);
+    expect(Object.keys(bySport).sort()).toEqual(['cornhole', 'pool']);
+    // user1 swept cornhole → up; user2 lost both → down
+    expect(bySport.cornhole[1]).toBeGreaterThan(1000);
+    expect(bySport.cornhole[2]).toBeLessThan(1000);
+    // user1 lost the pool game → pool rating down (opposite of cornhole)
+    expect(bySport.pool[1]).toBeLessThan(1000);
+    expect(bySport.pool[2]).toBeGreaterThan(1000);
+  });
+
+  test('cornhole ratings are byte-identical to a cornhole-only replay', () => {
+    const bySport = recalculateAllElosBySport(games, participants, resolveSport);
+    const cornholeGames = games.filter((g) => resolveSport(g) === 'cornhole');
+    const ids = new Set(cornholeGames.map((g) => g.id));
+    const cornholeParts = participants.filter((p) => ids.has(p.game_id));
+    const baseline = recalculateAllElos(cornholeGames, cornholeParts);
+    expect(bySport.cornhole).toEqual(baseline);
+  });
+
+  test('adding/removing a pool game never moves a cornhole rating', () => {
+    const withPool = recalculateAllElosBySport(games, participants, resolveSport);
+    const withoutPool = recalculateAllElosBySport(
+      games.filter((g) => g.id !== 2),
+      participants.filter((p) => p.game_id !== 2),
+      resolveSport,
+    );
+    expect(withPool.cornhole).toEqual(withoutPool.cornhole);
+  });
+
+  test('defaults every game to cornhole when no resolver is given', () => {
+    const bySport = recalculateAllElosBySport(games, participants);
+    expect(Object.keys(bySport)).toEqual(['cornhole']);
+    // Equivalent to the legacy single-bucket recalc.
+    expect(bySport.cornhole).toEqual(recalculateAllElos(games, participants));
   });
 });

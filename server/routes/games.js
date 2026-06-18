@@ -3,7 +3,8 @@ const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { evaluateAchievements } = require('../lib/achievements');
-const { recalculateAllElos } = require('../lib/elo');
+const { recalculateAllElosBySport } = require('../lib/elo');
+const { persistSportRatings } = require('../lib/sportRatings');
 const { DEFAULT_SPORT, getSport } = require('../lib/sports');
 const { fetchWeatherForGame } = require('./weather');
 
@@ -686,13 +687,11 @@ async function updateElosAfterGame(gameId, db) {
   const sportByLeague = new Map(leagueRows.map((l) => [l.id, l.sport]));
   const resolveSport = (game) => sportByLeague.get(game.league_id) || DEFAULT_SPORT;
 
-  const newElos = recalculateAllElos(games, participants, resolveSport);
-
-  await db.transaction().execute(async (trx) => {
-    for (const [userId, elo] of Object.entries(newElos)) {
-      await trx.updateTable('users').set({ elo_rating: elo }).where('id', '=', parseInt(userId)).execute();
-    }
-  });
+  // Per-sport ratings (WS-E): each sport's history replays in isolation so a
+  // pool result never moves a cornhole rating. persistSportRatings writes the
+  // table and mirrors cornhole into users.elo_rating.
+  const bySport = recalculateAllElosBySport(games, participants, resolveSport);
+  await persistSportRatings(db, bySport);
 }
 
 module.exports = router;

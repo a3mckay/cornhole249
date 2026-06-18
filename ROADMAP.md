@@ -103,7 +103,22 @@ Build green, 100/100 server tests pass. Remaining: manual eyeball on device.
 recalc blends every sport into it → pool wins move cornhole ELO. Move to
 **per-sport ratings** (storage + recalc + display). Sequenced last because it's a
 schema/data change; cornhole ratings must stay byte-identical after the split.
-**Effort:** L. **Status:** `[ ]`
+**Effort:** L. **Status:** `[x]` — per-sport ratings live in new
+`user_sport_ratings(user_id, sport, rating)` (migration 022, idempotent). The
+recalc is split: `recalculateAllElosBySport(games, participants, resolveSport)`
+partitions games by each league's `sport` and replays every sport in isolation,
+so a pool result only moves pool ratings. **Locked decision: `users.elo_rating`
+stays the cornhole mirror** — `persistSportRatings` writes the cornhole bucket to
+both the table and that column, so every existing cornhole read is byte-identical
+(verified by a test asserting cornhole == cornhole-only replay). Non-cornhole
+leagues read the table via `eloExpr/eloJoin/eloGroup` SQL helpers (emit the exact
+original `u.elo_rating` snippets for cornhole → no join/COALESCE) and
+`applySportElo`/`getSportRating` (no-ops for cornhole). Wired through games,
+tournaments, startup recalc, standings, stats (elo-leaders + h2h), and odds. New
+table mirrored into the test fixtures. 5 new tests (4 unit in elo.test.js: per-
+sport partition, cornhole byte-identical, pool add/remove never moves cornhole,
+default→cornhole; 1 integration in pool.test.js: pool game writes 2 pool rows +
+0 cornhole rows + leaves both mirrors at 1000). 105/105 green; client build OK.
 
 ### WS-F — Proper sport picker (removes the manual DB step)
 Carried over from 2026-06-17. Add a sport selector to league creation and accept

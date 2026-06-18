@@ -30,7 +30,7 @@ const { ballsRemainingMultiplier, pointMarginMultiplier, getSport } = require('.
 const app = require('../index');
 
 beforeEach(() => {
-  rawTestDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM users; DELETE FROM achievements;');
+  rawTestDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM users; DELETE FROM achievements; DELETE FROM user_sport_ratings;');
   rawTestDb.prepare(`INSERT INTO users (id, display_name, elo_rating) VALUES (1, 'Alice', 1000), (2, 'Bob', 1000), (3, 'Carol', 1000)`).run();
   // Default league back to cornhole; pool tests opt in explicitly.
   rawTestDb.prepare(`UPDATE leagues SET sport = 'cornhole' WHERE id = 1`).run();
@@ -143,6 +143,39 @@ describe('Pool sport gating', () => {
     expect(res.body.game_variant).toBeNull();
     const loser = rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 2').get(res.body.id);
     expect(loser.balls_remaining).toBeNull();
+  });
+});
+
+describe('Per-sport ELO persistence (WS-E)', () => {
+  test('a pool game writes pool ratings and leaves the cornhole elo_rating mirror untouched', async () => {
+    setSport('pool');
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    // Alice (1) beats Bob (2) at 8-ball.
+    const res = await agent.post('/api/games').send({
+      game_type: '1v1',
+      game_variant: 'eight_ball',
+      balls_remaining: 3,
+      team1: [{ user_id: 1, score: 1 }],
+      team2: [{ user_id: 2, score: 0 }],
+    });
+    expect(res.status).toBe(201);
+
+    // Pool ratings recorded for both players; winner up, loser down.
+    const poolRows = rawTestDb.prepare(`SELECT user_id, rating FROM user_sport_ratings WHERE sport = 'pool'`).all();
+    expect(poolRows.length).toBe(2);
+    const r1 = poolRows.find((r) => r.user_id === 1).rating;
+    const r2 = poolRows.find((r) => r.user_id === 2).rating;
+    expect(r1).toBeGreaterThan(1000);
+    expect(r2).toBeLessThan(1000);
+
+    // No cornhole games → no cornhole rows, and the cornhole-facing mirror
+    // (users.elo_rating) stays at the 1000 default for both players.
+    const cornholeCount = rawTestDb.prepare(`SELECT COUNT(*) c FROM user_sport_ratings WHERE sport = 'cornhole'`).get();
+    expect(cornholeCount.c).toBe(0);
+    const elos = rawTestDb.prepare('SELECT id, elo_rating FROM users WHERE id IN (1,2) ORDER BY id').all();
+    expect(elos[0].elo_rating).toBe(1000);
+    expect(elos[1].elo_rating).toBe(1000);
   });
 });
 

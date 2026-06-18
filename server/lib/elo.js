@@ -129,4 +129,34 @@ function recalculateAllElos(games, participants, resolveSport) {
   return elos;
 }
 
-module.exports = { expectedScore, winProbability, updateElo, marginMultiplier, recalculateAllElos };
+/**
+ * Per-sport ELO recalc (ROADMAP WS-E). Partitions games by sport (via
+ * `resolveSport(game) -> sportKey`) and replays each sport's history in
+ * isolation, returning `{ sportKey: { userId: rating } }`.
+ *
+ * Replaying cornhole's games alone yields exactly the numbers the original
+ * single-sport algorithm always produced — so cornhole ratings are byte-for-byte
+ * unchanged by the split. A pool result only moves pool ratings, never cornhole.
+ */
+function recalculateAllElosBySport(games, participants, resolveSport) {
+  const getSportKey =
+    typeof resolveSport === 'function' ? resolveSport : () => DEFAULT_SPORT;
+
+  const gamesBySport = {};
+  for (const g of games) {
+    const key = getSportKey(g);
+    (gamesBySport[key] ||= []).push(g);
+  }
+
+  const result = {};
+  for (const [sport, sportGames] of Object.entries(gamesBySport)) {
+    const ids = new Set(sportGames.map((g) => g.id));
+    const sportParts = participants.filter((p) => ids.has(p.game_id));
+    // Constant sport key → the replay uses just this sport's margin model and
+    // only returns players who actually played it.
+    result[sport] = recalculateAllElos(sportGames, sportParts, () => sport);
+  }
+  return result;
+}
+
+module.exports = { expectedScore, winProbability, updateElo, marginMultiplier, recalculateAllElos, recalculateAllElosBySport };
