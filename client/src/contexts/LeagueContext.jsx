@@ -231,6 +231,20 @@ export function useLeague() {
 }
 
 /**
+ * Hook returning a path-builder bound to the active league.
+ * Use for ALL intra-app links/navigations so league context is preserved:
+ *   const lp = useLeaguePath();
+ *   <Link to={lp('games')} />            // cornhole249 → '/games', pool → '/l/pool/games'
+ *   navigate(lp(`players/${id}`))
+ * Bare paths (e.g. to="/games") silently resolve to the default Cornhole249
+ * league and bounce the user out of any other league — always go through this.
+ */
+export function useLeaguePath() {
+  const { slug } = useLeague();
+  return (subpath = 'standings') => leaguePath(slug, subpath);
+}
+
+/**
  * Returns a path relative to the correct league root.
  * Cornhole249 uses root-level paths; other leagues are under /l/:slug/.
  *

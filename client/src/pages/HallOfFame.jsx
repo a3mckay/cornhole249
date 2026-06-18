@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { standingsApi, achievementsApi, usersApi } from '../api';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 function AchievementModal({ leader, onClose }) {
   if (!leader) return null;
@@ -89,6 +90,7 @@ const CURRENT_YEAR = new Date().getFullYear();
 const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
 
 export default function HallOfFame() {
+  const lp = useLeaguePath();
   const [champs, setChamps] = useState({});
   const [goats1v1, setGoats1v1] = useState({ wins: null, winPct: null, gp: null });
   const [goats2v2, setGoats2v2] = useState({ wins: null, winPct: null, gp: null });
@@ -202,7 +204,7 @@ export default function HallOfFame() {
         {entries.length > 0 ? (
           <div className={`flex flex-col gap-2 ${entries.length > 1 ? 'items-center' : ''}`}>
             {entries.map((d, i) => is2v2 ? (
-              <Link key={i} to={`/teams/${[...d.players].sort((a, b) => a.user_id - b.user_id).map((p) => p.user_id).join('/')}`} className="hover:opacity-80 block">
+              <Link key={i} to={lp(`teams/${[...d.players].sort((a, b) => a.user_id - b.user_id).map((p) => p.user_id).join('/')}`)} className="hover:opacity-80 block">
                 <div className="flex justify-center -space-x-2 mb-1">
                   {d.players.map((p) => (
                     <img key={p.user_id} src={p.avatar_url} alt={p.display_name} className="w-8 h-8 rounded-full border-2"
@@ -216,7 +218,7 @@ export default function HallOfFame() {
                 {i === 0 && <div className="font-display text-2xl mt-1" style={{ color: 'var(--color-secondary)' }}>{format(d[stat])}</div>}
               </Link>
             ) : (
-              <Link key={i} to={`/players/${d.user_id}`} className="hover:opacity-80 block">
+              <Link key={i} to={lp(`players/${d.user_id}`)} className="hover:opacity-80 block">
                 <img src={d.avatar_url} alt={d.display_name} className="w-12 h-12 rounded-full border-2 mx-auto mb-1"
                   style={{ borderColor: 'var(--color-secondary)' }}
                   onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${d.display_name}`; }} />
@@ -262,7 +264,7 @@ export default function HallOfFame() {
               <div className="mb-3">
                 <div className="text-xs font-ui font-semibold uppercase tracking-wide mb-1.5 opacity-60" style={{ color: 'var(--color-text-secondary)' }}>1v1</div>
                 {champs[year]?.['1v1'] ? (
-                  <Link to={`/players/${champs[year]['1v1'].user_id}`} className="flex items-center gap-3 hover:opacity-80">
+                  <Link to={lp(`players/${champs[year]['1v1'].user_id}`)} className="flex items-center gap-3 hover:opacity-80">
                     <img src={champs[year]['1v1'].avatar_url} alt={champs[year]['1v1'].display_name} className="w-10 h-10 rounded-full border-2"
                       style={{ borderColor: '#D4A017' }}
                       onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${champs[year]['1v1'].display_name}`; }} />

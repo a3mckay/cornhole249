@@ -6,12 +6,16 @@ import WeatherBadge from '../components/WeatherBadge';
 import CommentSection from '../components/CommentSection';
 import OddsBar from '../components/OddsBar';
 import ShareButton from '../components/ShareButton';
-import { variantLabel } from '../sports';
+import { variantLabel, getSport } from '../sports';
+import { useLeaguePath, useLeague } from '../contexts/LeagueContext';
 
 export default function GameDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const lp = useLeaguePath();
+  const { sport } = useLeague();
+  const isOutdoor = getSport(sport).outdoor !== false;
   const [game, setGame] = useState(null);
   const [odds, setOdds] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,14 +35,14 @@ export default function GameDetail() {
       oddsApi.calculate({ type: g.game_type, team1, team2 })
         .then(setOdds)
         .catch(() => {});
-    }).catch(() => navigate('/games')).finally(() => setLoading(false));
+    }).catch(() => navigate(lp('games'))).finally(() => setLoading(false));
   }, [id]);
 
   const handleDelete = async () => {
     if (!confirm('Delete this game? This cannot be undone.')) return;
     setDeleting(true);
     await gamesApi.delete(id);
-    navigate('/games');
+    navigate(lp('games'));
   };
 
   // Convert a UTC ISO string ("2026-05-21T00:00:00.000Z") into a datetime-local
@@ -122,7 +126,7 @@ export default function GameDetail() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <Link to="/games" className="text-sm font-ui hover:underline mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>
+          <Link to={lp('games')} className="text-sm font-ui hover:underline mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>
             ← Games
           </Link>
           <h1 className="font-display text-3xl" style={{ color: 'var(--color-text-primary)' }}>
@@ -147,7 +151,7 @@ export default function GameDetail() {
         <div className="flex gap-2 items-center">
           <ShareButton
             imageUrl={`/og/game/${game.id}.png`}
-            shareUrl={typeof window !== 'undefined' ? `${window.location.origin}/games/${game.id}` : ''}
+            shareUrl={typeof window !== 'undefined' ? `${window.location.origin}${lp(`games/${game.id}`)}` : ''}
             title={`Game #${game.id} — Cornhole249`}
             text={`${teamLabel(team1)} ${t1Score}–${t2Score} ${teamLabel(team2)}`}
             entityType="game"
@@ -170,7 +174,7 @@ export default function GameDetail() {
           <div className={`p-4 rounded-xl ${t1Won ? 'bg-green-50' : ''}`}>
             <div className="flex justify-center gap-1 mb-2">
               {team1.map((p) => (
-                <Link key={p.user_id} to={`/players/${p.user_id}`}>
+                <Link key={p.user_id} to={lp(`players/${p.user_id}`)}>
                   <img src={p.avatar_url} alt={p.display_name} className="w-10 h-10 rounded-full border-2"
                     style={{ borderColor: t1Won ? '#16a34a' : 'var(--color-border)' }}
                     onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
@@ -198,7 +202,7 @@ export default function GameDetail() {
           <div className={`p-4 rounded-xl ${!t1Won ? 'bg-green-50' : ''}`}>
             <div className="flex justify-center gap-1 mb-2">
               {team2.map((p) => (
-                <Link key={p.user_id} to={`/players/${p.user_id}`}>
+                <Link key={p.user_id} to={lp(`players/${p.user_id}`)}>
                   <img src={p.avatar_url} alt={p.display_name} className="w-10 h-10 rounded-full border-2"
                     style={{ borderColor: !t1Won ? '#16a34a' : 'var(--color-border)' }}
                     onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
@@ -218,16 +222,18 @@ export default function GameDetail() {
 
       {/* Meta cards */}
       <div className="grid sm:grid-cols-2 gap-4 mb-5">
-        {/* Weather */}
-        {weather ? (
-          <div>
-            <h3 className="font-display text-lg mb-2" style={{ color: 'var(--color-text-primary)' }}>Weather</h3>
-            <WeatherBadge weather={weather} size="lg" />
-          </div>
-        ) : (
-          <div className="card text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-            🌡️ Weather unavailable
-          </div>
+        {/* Weather — outdoor sports only (indoor leagues like pool hide it) */}
+        {isOutdoor && (
+          weather ? (
+            <div>
+              <h3 className="font-display text-lg mb-2" style={{ color: 'var(--color-text-primary)' }}>Weather</h3>
+              <WeatherBadge weather={weather} size="lg" />
+            </div>
+          ) : (
+            <div className="card text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>
+              🌡️ Weather unavailable
+            </div>
+          )
         )}
 
         {/* Venue */}

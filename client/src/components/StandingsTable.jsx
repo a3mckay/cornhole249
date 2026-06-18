@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 function Last5Dots({ last5 }) {
   const recent = [...last5].slice(0, 5).reverse(); // oldest → left, most recent → right
@@ -35,6 +36,7 @@ const COLS = [
 ];
 
 export default function StandingsTable({ data, type = '1v1' }) {
+  const lp = useLeaguePath();
   const [sortKey, setSortKey] = useState('pts');
   const [sortDir, setSortDir] = useState('desc');
 
@@ -100,7 +102,7 @@ export default function StandingsTable({ data, type = '1v1' }) {
                 <td className="px-3 py-2">
                   {type === '1v1' ? (
                     <Link
-                      to={`/players/${row.user_id}`}
+                      to={lp(`players/${row.user_id}`)}
                       className="flex items-center gap-2 hover:opacity-80"
                     >
                       <img
@@ -122,7 +124,7 @@ export default function StandingsTable({ data, type = '1v1' }) {
                       {row.players?.map((p, pi) => (
                         <React.Fragment key={p.user_id}>
                           {pi > 0 && <span className="opacity-50 text-xs mx-0.5">&</span>}
-                          <Link to={`/players/${p.user_id}`} className="flex items-center gap-1 hover:opacity-80">
+                          <Link to={lp(`players/${p.user_id}`)} className="flex items-center gap-1 hover:opacity-80">
                             <img
                               src={p.avatar_url}
                               alt={p.display_name}

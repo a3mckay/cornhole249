@@ -9,12 +9,14 @@ import {
 import AchievementBadge from '../components/AchievementBadge';
 import GameCard from '../components/GameCard';
 import ShareButton from '../components/ShareButton';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 const CONDITION_COLORS = { 'Clear': '#F59E0B', 'Partly Cloudy': '#6B7280', 'Rain': '#3B82F6', 'Overcast': '#9CA3AF', 'Drizzle': '#60A5FA', 'Heavy Rain': '#1D4ED8', 'Thunderstorm': '#7C3AED' };
 
 export default function PlayerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const lp = useLeaguePath();
   const { user: currentUser } = useAuth();
   const [player, setPlayer] = useState(null);
   const [achievements, setAchievements] = useState([]);
@@ -132,7 +134,7 @@ export default function PlayerProfile() {
     if (!confirm(`Delete ${player.display_name}? This cannot be undone.`)) return;
     try {
       await usersApi.delete(id);
-      navigate('/players');
+      navigate(lp('players'));
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to delete player');
     }
@@ -170,7 +172,7 @@ export default function PlayerProfile() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Link to="/players" className="text-sm font-ui hover:underline mb-4 block" style={{ color: 'var(--color-text-secondary)' }}>
+      <Link to={lp('players')} className="text-sm font-ui hover:underline mb-4 block" style={{ color: 'var(--color-text-secondary)' }}>
         ← Players
       </Link>
 
@@ -418,7 +420,7 @@ export default function PlayerProfile() {
           <div className="flex flex-col gap-2">
             {h2h.sort((a,b) => b.total_games - a.total_games).map((r) => (
               <div key={r.opponent.id} className="flex items-center gap-3">
-                <Link to={`/players/${r.opponent.id}`}>
+                <Link to={lp(`players/${r.opponent.id}`)}>
                   <img src={r.opponent.avatar_url} alt={r.opponent.display_name} className="w-8 h-8 rounded-full border" style={{ borderColor: 'var(--color-border)' }}
                     onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.opponent.display_name}`; }} />
                 </Link>

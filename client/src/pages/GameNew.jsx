@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gamesApi, venuesApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
-import { useLeague } from '../contexts/LeagueContext';
+import { useLeague, useLeaguePath } from '../contexts/LeagueContext';
 import { capture } from '../lib/analytics';
+import { getSport } from '../sports';
 
 function PlayerSelect({ players, value, onChange, exclude, label }) {
   // Convert all IDs to numbers for a type-safe comparison
@@ -39,7 +40,11 @@ export default function GameNew({ onAchievement }) {
   const { user } = useAuth();
   const { leagueRules, customRules, sport, raceToTarget } = useLeague();
   const isPool = sport === 'pool';
+  // Indoor sports (pool, …) don't track weather, so we don't prompt for or
+  // require a venue location. Cornhole (outdoor) keeps the existing flow.
+  const isOutdoor = getSport(sport).outdoor !== false;
   const navigate = useNavigate();
+  const lp = useLeaguePath();
   const [step, setStep] = useState(1);
 
   // Pool-only state. For pool, gameType is derived from variant + singles/doubles.
@@ -146,7 +151,7 @@ export default function GameNew({ onAchievement }) {
 
   const selectedVenue = venues.find((v) => v.id === parseInt(venueId));
   const venueNeedsLocation = venueId && venueId !== 'new' && selectedVenue && !selectedVenue.lat;
-  const newVenueNeedsLocation = venueId === 'new' && (!newVenueLat || !newVenueLng);
+  const newVenueNeedsLocation = isOutdoor && venueId === 'new' && (!newVenueLat || !newVenueLng);
 
   const validate = () => {
     const errs = [];
@@ -221,9 +226,9 @@ export default function GameNew({ onAchievement }) {
       capture('game_logged', { game_type: effectiveType, sport, variant: isPool ? gameVariant : undefined });
       // pending = submitted to both_submit queue, no game id yet
       if (game.pending) {
-        navigate('/games', { state: { pendingSubmission: true } });
+        navigate(lp('games'), { state: { pendingSubmission: true } });
       } else {
-        navigate(`/games/${game.id}`);
+        navigate(lp(`games/${game.id}`));
       }
     } catch (err) {
       setErrors([err.response?.data?.error || 'Failed to submit game']);
@@ -564,29 +569,33 @@ export default function GameNew({ onAchievement }) {
                       className="px-3 py-2 rounded-xl border font-ui text-sm"
                       style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
                     />
-                    <div className="p-3 rounded-xl text-sm font-ui" style={{ background: 'rgba(58,107,53,0.08)', border: '1px solid rgba(58,107,53,0.25)', color: 'var(--color-text-secondary)' }}>
-                      📍 <strong>Location required</strong> — used to fetch weather data for this game.
-                    </div>
-                    {newVenueLat ? (
-                      <div className="flex items-center gap-2 p-2 rounded-xl text-sm font-ui" style={{ background: '#D1FAE5', color: '#065F46' }}>
-                        <span>✓ Location set ({newVenueLat.toFixed(4)}, {newVenueLng.toFixed(4)})</span>
-                        <button type="button" onClick={getLocationForNew} className="ml-auto text-xs underline">Update</button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={getLocationForNew}
-                        disabled={geoLoading}
-                        className="btn btn-primary text-sm"
-                      >
-                        {geoLoading ? 'Getting location...' : '📍 Set My Location'}
-                      </button>
+                    {isOutdoor && (
+                      <>
+                        <div className="p-3 rounded-xl text-sm font-ui" style={{ background: 'rgba(58,107,53,0.08)', border: '1px solid rgba(58,107,53,0.25)', color: 'var(--color-text-secondary)' }}>
+                          📍 <strong>Location required</strong> — used to fetch weather data for this game.
+                        </div>
+                        {newVenueLat ? (
+                          <div className="flex items-center gap-2 p-2 rounded-xl text-sm font-ui" style={{ background: '#D1FAE5', color: '#065F46' }}>
+                            <span>✓ Location set ({newVenueLat.toFixed(4)}, {newVenueLng.toFixed(4)})</span>
+                            <button type="button" onClick={getLocationForNew} className="ml-auto text-xs underline">Update</button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={getLocationForNew}
+                            disabled={geoLoading}
+                            className="btn btn-primary text-sm"
+                          >
+                            {geoLoading ? 'Getting location...' : '📍 Set My Location'}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
 
                 {/* Existing venue missing location */}
-                {venueNeedsLocation && (
+                {isOutdoor && venueNeedsLocation && (
                   <div className="flex flex-col gap-2 mt-1">
                     <div className="p-3 rounded-xl text-sm font-ui" style={{ background: 'rgba(212,139,45,0.1)', border: '1px solid rgba(212,139,45,0.4)', color: 'var(--color-text-secondary)' }}>
                       📍 <strong>No location saved for this venue.</strong> Pin it now so weather can be tracked for future games.

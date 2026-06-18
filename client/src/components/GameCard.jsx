@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import WeatherBadge from './WeatherBadge';
-import { variantLabel } from '../sports';
+import { variantLabel, getSport } from '../sports';
+import { useLeaguePath, useLeague } from '../contexts/LeagueContext';
 
 function TeamDisplay({ players, score, isWinner }) {
   return (
@@ -36,6 +37,9 @@ function TeamDisplay({ players, score, isWinner }) {
 }
 
 export default function GameCard({ game }) {
+  const lp = useLeaguePath();
+  const { sport } = useLeague();
+  const isOutdoor = getSport(sport).outdoor !== false;
   const team1 = game.participants?.filter((p) => p.team === 1) || [];
   const team2 = game.participants?.filter((p) => p.team === 2) || [];
   // Use the first player's score — in 2v2 all teammates share the same team score
@@ -46,7 +50,7 @@ export default function GameCard({ game }) {
   const weather = game.weather || (game.weather_json ? JSON.parse(game.weather_json) : null);
 
   return (
-    <Link to={`/games/${game.id}`} className="block">
+    <Link to={lp(`games/${game.id}`)} className="block">
       <div
         className="card card-hover"
         style={{ background: 'var(--color-surface)' }}
@@ -76,7 +80,7 @@ export default function GameCard({ game }) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {weather && <WeatherBadge weather={weather} size="sm" />}
+            {weather && isOutdoor && <WeatherBadge weather={weather} size="sm" />}
             {game.venue_name && (
               <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>
                 📍 {game.venue_name}

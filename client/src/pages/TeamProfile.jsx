@@ -5,9 +5,11 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import GameCard from '../components/GameCard';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 export default function TeamProfile() {
   const { p1, p2 } = useParams();
+  const lp = useLeaguePath();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,7 +33,7 @@ export default function TeamProfile() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Link to="/teams" className="text-sm font-ui hover:underline mb-4 block" style={{ color: 'var(--color-text-secondary)' }}>
+      <Link to={lp('teams')} className="text-sm font-ui hover:underline mb-4 block" style={{ color: 'var(--color-text-secondary)' }}>
         ← Teams
       </Link>
 
@@ -73,11 +75,11 @@ export default function TeamProfile() {
               Best streak: W{overall.best_streak} · Worst: L{overall.worst_streak} · +/-: {overall.plus_minus > 0 ? '+' : ''}{overall.plus_minus}
             </div>
             <div className="mt-2 flex gap-2 flex-wrap justify-center sm:justify-start">
-              <Link to={`/players/${pl1.id}`} className="text-xs font-ui px-3 py-1 rounded-full hover:opacity-80"
+              <Link to={lp(`players/${pl1.id}`)} className="text-xs font-ui px-3 py-1 rounded-full hover:opacity-80"
                 style={{ background: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
                 {pl1.display_name}'s profile →
               </Link>
-              <Link to={`/players/${pl2.id}`} className="text-xs font-ui px-3 py-1 rounded-full hover:opacity-80"
+              <Link to={lp(`players/${pl2.id}`)} className="text-xs font-ui px-3 py-1 rounded-full hover:opacity-80"
                 style={{ background: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
                 {pl2.display_name}'s profile →
               </Link>

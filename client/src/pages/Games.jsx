@@ -4,6 +4,7 @@ import { gamesApi, venuesApi, usersApi } from '../api';
 import GameCard from '../components/GameCard';
 import DateStrip from '../components/DateStrip';
 import { useAuth } from '../hooks/useAuth';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const SEASONS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => CURRENT_YEAR - i);
@@ -96,6 +97,7 @@ function PendingGamesBanner({ user }) {
 
 export default function Games() {
   const { user } = useAuth();
+  const lp = useLeaguePath();
   const [games, setGames] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -144,7 +146,7 @@ export default function Games() {
           Game History
         </h1>
         {user && (
-          <Link to="/games/new" className="btn btn-primary">
+          <Link to={lp('games/new')} className="btn btn-primary">
             + Log a Game
           </Link>
         )}

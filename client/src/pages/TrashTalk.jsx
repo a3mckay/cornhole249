@@ -3,11 +3,13 @@ import { trashTalkApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { capture } from '../lib/analytics';
 import { Link } from 'react-router-dom';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 const MAX_CHARS = 280;
 
 export default function TrashTalk() {
   const { user } = useAuth();
+  const lp = useLeaguePath();
   const [posts, setPosts] = useState([]);
   const [hotGames, setHotGames] = useState([]);
   const [total, setTotal] = useState(0);
@@ -166,7 +168,7 @@ export default function TrashTalk() {
             {hotGames.length > 0 ? (
               <div className="flex flex-col gap-2">
                 {hotGames.map((g) => (
-                  <Link key={g.game_id} to={`/games/${g.game_id}`} className="flex items-center gap-2 hover:opacity-80">
+                  <Link key={g.game_id} to={lp(`games/${g.game_id}`)} className="flex items-center gap-2 hover:opacity-80">
                     <span className="text-lg">💬</span>
                     <div className="flex-1">
                       <div className="text-sm font-ui font-semibold" style={{ color: 'var(--color-text-primary)' }}>

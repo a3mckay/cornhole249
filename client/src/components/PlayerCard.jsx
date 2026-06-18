@@ -1,14 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 export default function PlayerCard({ player, stats }) {
+  const lp = useLeaguePath();
   const gp = stats?.gp || 0;
   const wins = stats?.wins || 0;
   const losses = stats?.losses || 0;
   const winPct = gp > 0 ? Math.round((wins / gp) * 100) : 0;
 
   return (
-    <Link to={`/players/${player.id}`}>
+    <Link to={lp(`players/${player.id}`)}>
       <div className="card card-hover text-center cursor-pointer">
         {/* Avatar with cornhole-hole frame */}
         <div className="relative mx-auto w-20 h-20 mb-3">

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { statsApi } from '../api';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import UpgradeModal from '../components/UpgradeModal';
-import { useLeague } from '../contexts/LeagueContext';
+import { useLeague, useLeaguePath } from '../contexts/LeagueContext';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -29,6 +29,7 @@ function getWeatherEmoji(condition) {
 
 export default function Stats() {
   const { leagueId } = useLeague();
+  const lp = useLeaguePath();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [seasonMode, setSeasonMode] = useState('current'); // 'current' | 'alltime'
   const [performers, setPerformers] = useState(null);
@@ -150,7 +151,7 @@ export default function Stats() {
             ) : (
               <div className="flex flex-col gap-2">
                 {allPerformers.map((p, i) => (
-                  <Link key={p.user_id} to={`/players/${p.user_id}`} className="flex items-center gap-3 hover:opacity-80">
+                  <Link key={p.user_id} to={lp(`players/${p.user_id}`)} className="flex items-center gap-3 hover:opacity-80">
                     <span className="text-lg w-7 text-center">
                       {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="font-ui text-sm" style={{ color: 'var(--color-text-secondary)' }}>{i + 1}</span>}
                     </span>
@@ -193,7 +194,7 @@ export default function Stats() {
                     <div className="text-xs font-ui font-semibold uppercase mb-2" style={{ color: 'var(--color-text-secondary)' }}>
                       Longest Win Streak
                     </div>
-                    <Link to={`/players/${topWinStreak.user_id}`} className="flex items-center gap-3 hover:opacity-80">
+                    <Link to={lp(`players/${topWinStreak.user_id}`)} className="flex items-center gap-3 hover:opacity-80">
                       <img
                         src={topWinStreak.avatar_url}
                         alt={topWinStreak.display_name}
@@ -219,7 +220,7 @@ export default function Stats() {
                       const isWin = s.current_streak > 0;
                       const count = Math.abs(s.current_streak);
                       return (
-                        <Link key={s.user_id} to={`/players/${s.user_id}`} className="flex items-center gap-3 hover:opacity-80">
+                        <Link key={s.user_id} to={lp(`players/${s.user_id}`)} className="flex items-center gap-3 hover:opacity-80">
                           <img
                             src={s.avatar_url}
                             alt={s.display_name}
@@ -283,7 +284,7 @@ export default function Stats() {
               </div>
               <div className="flex flex-col gap-2">
                 {clutch.map((c, i) => (
-                  <Link key={c.user_id} to={`/players/${c.user_id}`} className="flex items-center gap-2 hover:opacity-80">
+                  <Link key={c.user_id} to={lp(`players/${c.user_id}`)} className="flex items-center gap-2 hover:opacity-80">
                     <span className="font-display text-xl w-6 text-center" style={{ color: 'var(--color-text-secondary)' }}>{i + 1}</span>
                     <img
                       src={c.avatar_url}
@@ -319,7 +320,7 @@ export default function Stats() {
                       </span>
                     </div>
                     {v.king && (
-                      <Link to={`/players/${v.king.user_id}`} className="flex items-center gap-1.5 hover:opacity-80">
+                      <Link to={lp(`players/${v.king.user_id}`)} className="flex items-center gap-1.5 hover:opacity-80">
                         <img
                           src={v.king.avatar_url}
                           alt={v.king.display_name}
@@ -349,7 +350,7 @@ export default function Stats() {
               </h2>
               <div className="flex flex-col gap-2">
                 {eloLeaders.map((u, i) => (
-                  <Link key={u.id} to={`/players/${u.id}`} className="flex items-center gap-3 hover:opacity-80">
+                  <Link key={u.id} to={lp(`players/${u.id}`)} className="flex items-center gap-3 hover:opacity-80">
                     <span className="font-ui text-sm w-5 text-center" style={{ color: 'var(--color-text-secondary)' }}>{i + 1}</span>
                     <img
                       src={u.avatar_url}
@@ -386,7 +387,7 @@ export default function Stats() {
                     </div>
                     <div className="flex flex-col gap-1 pl-7">
                       {w.players.slice(0, 1).map((p) => (
-                        <Link key={p.user_id} to={`/players/${p.user_id}`} className="flex items-center gap-2 hover:opacity-80">
+                        <Link key={p.user_id} to={lp(`players/${p.user_id}`)} className="flex items-center gap-2 hover:opacity-80">
                           <img
                             src={p.avatar_url}
                             alt={p.display_name}
@@ -449,7 +450,7 @@ export default function Stats() {
                           style={{ borderColor: 'var(--color-border)' }}
                           onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.player1.display_name}`; }}
                         />
-                        <Link to={`/players/${r.player1.id}`} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
+                        <Link to={lp(`players/${r.player1.id}`)} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
                           {r.player1.display_name}
                         </Link>
                         <span className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>vs</span>
@@ -460,7 +461,7 @@ export default function Stats() {
                           style={{ borderColor: 'var(--color-border)' }}
                           onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${r.player2.display_name}`; }}
                         />
-                        <Link to={`/players/${r.player2.id}`} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
+                        <Link to={lp(`players/${r.player2.id}`)} className="font-ui font-semibold text-sm hover:underline" style={{ color: 'var(--color-text-primary)' }}>
                           {r.player2.display_name}
                         </Link>
                         <span className="ml-auto text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>{r.games_played} games</span>
@@ -471,7 +472,7 @@ export default function Stats() {
                       </div>
                       <div className="flex justify-between text-xs font-ui mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
                         <span>{r.p1_wins}W</span>
-                        <Link to="/stats" className="underline" style={{ color: 'var(--color-primary)' }}>H2H →</Link>
+                        <Link to={lp('stats')} className="underline" style={{ color: 'var(--color-primary)' }}>H2H →</Link>
                         <span>{r.p2_wins}W</span>
                       </div>
                     </>

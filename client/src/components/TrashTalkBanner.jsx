@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { trashTalkApi } from '../api';
+import { useLeaguePath } from '../contexts/LeagueContext';
 
 const STORAGE_KEY = 'dismissedTrashTalkId';
 
 export default function TrashTalkBanner() {
   const [post, setPost] = useState(null);
   const [dismissed, setDismissed] = useState(false);
+  const lp = useLeaguePath();
 
   useEffect(() => {
     trashTalkApi.list({ limit: 1 }).then((data) => {
@@ -39,7 +41,7 @@ export default function TrashTalkBanner() {
     >
       {/* Label */}
       <Link
-        to="/trash-talk"
+        to={lp('trash-talk')}
         className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 text-sm font-ui font-bold border-r"
         style={{ borderColor: 'rgba(212,139,45,0.35)', color: 'var(--color-secondary)' }}
       >

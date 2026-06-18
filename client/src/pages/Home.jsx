@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { gamesApi, statsApi, tournamentsApi } from '../api';
-import { useLeague, leaguePath } from '../contexts/LeagueContext';
+import { useLeague, leaguePath, useLeaguePath } from '../contexts/LeagueContext';
 import { useAuth } from '../hooks/useAuth';
 import GameCard from '../components/GameCard';
 import QRShare from '../components/QRShare';
@@ -30,6 +30,7 @@ function StringLights() {
 
 export default function Home() {
   const { slug, leagueName, tagline, createdAt, userPendingRequest } = useLeague();
+  const lp = useLeaguePath();
   const { leagues } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -272,7 +273,7 @@ export default function Home() {
             <h2 className="font-display text-2xl" style={{ color: 'var(--color-text-primary)' }}>
               Recent Games
             </h2>
-            <Link to="/games" className="text-sm font-ui font-semibold hover:underline" style={{ color: 'var(--color-primary)' }}>
+            <Link to={lp('games')} className="text-sm font-ui font-semibold hover:underline" style={{ color: 'var(--color-primary)' }}>
               View all →
             </Link>
           </div>
@@ -285,7 +286,7 @@ export default function Home() {
               {recentGames.map((g) => <GameCard key={g.id} game={g} />)}
               {recentGames.length === 0 && (
                 <div className="card text-center py-10 font-ui" style={{ color: 'var(--color-text-secondary)' }}>
-                  No games yet! <Link to="/games/new" className="underline font-semibold" style={{ color: 'var(--color-primary)' }}>Log the first one.</Link>
+                  No games yet! <Link to={lp('games/new')} className="underline font-semibold" style={{ color: 'var(--color-primary)' }}>Log the first one.</Link>
                 </div>
               )}
             </div>
@@ -304,7 +305,7 @@ export default function Home() {
                 {activeTournaments.map((t) => (
                   <Link
                     key={t.id}
-                    to="/tournaments"
+                    to={lp('tournaments')}
                     className="flex items-center justify-between p-2 rounded-xl hover:opacity-80 transition-opacity"
                     style={{ background: 'rgba(0,0,0,0.03)' }}
                   >
@@ -323,7 +324,7 @@ export default function Home() {
                   </Link>
                 ))}
               </div>
-              <Link to="/tournaments" className="btn btn-primary w-full mt-3 text-sm">
+              <Link to={lp('tournaments')} className="btn btn-primary w-full mt-3 text-sm">
                 View Bracket →
               </Link>
             </div>
@@ -337,7 +338,7 @@ export default function Home() {
               </h2>
               <div className="flex flex-col gap-2">
                 {performers.top?.slice(0, 3).map((p, i) => (
-                  <Link key={p.user_id} to={`/players/${p.user_id}`} className="flex items-center gap-2 hover:opacity-80">
+                  <Link key={p.user_id} to={lp(`players/${p.user_id}`)} className="flex items-center gap-2 hover:opacity-80">
                     <span className="font-display text-xl w-6 text-center" style={{ color: 'var(--color-secondary)' }}>
                       {i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}
                     </span>
@@ -350,7 +351,7 @@ export default function Home() {
                   </Link>
                 ))}
               </div>
-              <Link to="/standings" className="btn btn-primary w-full mt-3 text-sm">Full Standings</Link>
+              <Link to={lp('standings')} className="btn btn-primary w-full mt-3 text-sm">Full Standings</Link>
             </div>
           )}
 
