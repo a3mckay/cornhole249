@@ -8,6 +8,7 @@ const { requireAuth } = require('../middleware/auth');
 const { isPro } = require('../lib/plan');
 const { leaguePreview } = require('../lib/leaguePreview');
 const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
+const { isLiveSport, DEFAULT_SPORT } = require('../lib/sports');
 
 // ── Logo upload (multer) ─────────────────────────────────────────────────────
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/uploads';
@@ -174,8 +175,14 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
 
-    const { name, is_public = true, rules = 'hamilton', tagline } = req.body;
+    const { name, is_public = true, rules = 'hamilton', tagline, sport = DEFAULT_SPORT } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'League name required' });
+
+    // Validate sport against the LIVE registry (not the broader DB CHECK list),
+    // so a league can't be created for a sport that has no game support yet.
+    if (!isLiveSport(sport)) {
+      return res.status(400).json({ error: 'Unsupported sport' });
+    }
 
     // Build a unique slug
     let base = slugify(name.trim()) || 'league';
@@ -192,7 +199,7 @@ router.post('/', requireAuth, async (req, res) => {
 
     const league = await db
       .insertInto('leagues')
-      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null, short_code: shortCode })
+      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null, short_code: shortCode, sport })
       .returningAll()
       .executeTakeFirstOrThrow();
 

@@ -46,6 +46,7 @@ const SPORTS = {
     displayName: 'Cornhole',
     emoji: '🌽',
     accent: { primary: '#3A6B35', secondary: '#D48B2D' },
+    outdoor: true, // weather is relevant — fetched + shown for cornhole games
     scoreModel: 'points', // race to 21 (rules-dependent)
     formats: ['1v1', '2v2'],
     variants: null,
@@ -70,6 +71,7 @@ const SPORTS = {
     displayName: 'Pool',
     emoji: '🎱',
     accent: { primary: '#1f5c3d', secondary: '#caa45a' },
+    outdoor: false, // indoor — no weather fetch, no weather card
     scoreModel: 'racks',
     formats: ['1v1', '2v2'],
     variants: ['eight_ball', 'nine_ball', 'cutthroat', 'straight_pool'],
@@ -98,10 +100,25 @@ function getSport(key) {
   return SPORTS[key] || SPORTS[DEFAULT_SPORT];
 }
 
+/**
+ * Is `key` a sport that is actually built and wired into the registry?
+ *
+ * Note: the leagues.sport CHECK constraint (migration 019) lists *planned*
+ * sports too (pingpong, crokinole, …), but those have no game support yet.
+ * League creation must validate against what's LIVE — i.e. the registry keys —
+ * so a user can't self-serve a league for a sport that can't record a game.
+ * Object.keys(SPORTS) is always a subset of the CHECK list, so a valid value
+ * here always passes the DB constraint.
+ */
+function isLiveSport(key) {
+  return Object.prototype.hasOwnProperty.call(SPORTS, key);
+}
+
 module.exports = {
   SPORTS,
   DEFAULT_SPORT,
   getSport,
+  isLiveSport,
   pointMarginMultiplier,
   ballsRemainingMultiplier,
 };

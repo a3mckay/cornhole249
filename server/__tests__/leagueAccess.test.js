@@ -226,6 +226,35 @@ describe('League creation cap', () => {
     expect(res.body.joinCode).toBeDefined();
   });
 
+  test('POST /api/leagues defaults sport to cornhole when omitted', async () => {
+    const cookie = await loginAs(1);
+    const res = await request(app)
+      .post('/api/leagues')
+      .set('Cookie', cookie)
+      .send({ name: 'Default Sport League', is_public: true });
+    expect(res.status).toBe(201);
+    expect(res.body.league.sport).toBe('cornhole');
+  });
+
+  test('POST /api/leagues accepts a valid live sport', async () => {
+    const cookie = await loginAs(1);
+    const res = await request(app)
+      .post('/api/leagues')
+      .set('Cookie', cookie)
+      .send({ name: 'Felt Night', is_public: true, sport: 'pool' });
+    expect(res.status).toBe(201);
+    expect(res.body.league.sport).toBe('pool');
+  });
+
+  test('POST /api/leagues rejects an unsupported/not-yet-built sport', async () => {
+    const cookie = await loginAs(1);
+    const res = await request(app)
+      .post('/api/leagues')
+      .set('Cookie', cookie)
+      .send({ name: 'Shuffleboard Crew', is_public: true, sport: 'shuffleboard' });
+    expect(res.status).toBe(400);
+  });
+
   test('POST /api/leagues returns 403 with upgrade:true after hitting the cap', async () => {
     // Alice already owns league 1. Create league 2 for Alice too.
     rawTestDb.prepare(`INSERT OR IGNORE INTO league_memberships (user_id, league_id, role) VALUES (1, 2, 'owner')`).run();

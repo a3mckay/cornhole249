@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { leaguesApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { SPORTS, DEFAULT_SPORT } from '../sports';
 
 export default function CreateLeague() {
   const { user, refreshUser } = useAuth();
@@ -10,6 +11,7 @@ export default function CreateLeague() {
   const [name, setName] = useState('');
   const [tagline, setTagline] = useState('');
   const [isPublic, setIsPublic] = useState(true);
+  const [sport, setSport] = useState(DEFAULT_SPORT);
   const [rules, setRules] = useState('hamilton');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,7 +36,7 @@ export default function CreateLeague() {
     setLoading(true);
     setError('');
     try {
-      const { league, joinCode, inviteToken } = await leaguesApi.create({ name: name.trim(), tagline: tagline.trim() || undefined, is_public: isPublic, rules });
+      const { league, joinCode, inviteToken } = await leaguesApi.create({ name: name.trim(), tagline: tagline.trim() || undefined, is_public: isPublic, sport, rules });
       await refreshUser(); // update nav league list immediately
       navigate(`/l/${league.slug}/wizard`, { state: { league, joinCode, inviteToken } });
     } catch (err) {
@@ -72,7 +74,7 @@ export default function CreateLeague() {
           Create a League
         </h1>
         <p className="font-ui text-sm mb-6" style={{ color: 'var(--color-text-secondary)' }}>
-          Set up your own cornhole league and invite your crew.
+          Set up your own {(SPORTS[sport] || SPORTS[DEFAULT_SPORT]).displayName.toLowerCase()} league and invite your crew.
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -109,6 +111,30 @@ export default function CreateLeague() {
             />
           </div>
 
+          {/* Sport */}
+          <div>
+            <label className="block text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+              Sport
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {Object.values(SPORTS).map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setSport(s.key)}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all"
+                  style={{
+                    borderColor: sport === s.key ? 'var(--color-primary)' : 'var(--color-border)',
+                    background: sport === s.key ? 'rgba(58,107,53,0.07)' : 'var(--color-bg)',
+                  }}
+                >
+                  <span className="text-xl">{s.emoji}</span>
+                  <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{s.displayName}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Public / Private */}
           <div>
             <label className="block text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
@@ -136,32 +162,35 @@ export default function CreateLeague() {
             </div>
           </div>
 
-          {/* Rules */}
-          <div>
-            <label className="block text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-              Scoring Rules
-            </label>
-            <div className="flex gap-3">
-              {[
-                { value: 'hamilton', label: 'Hamilton', desc: 'Best-of, max 10 pts' },
-                { value: 'aca',      label: 'ACA',      desc: 'Standard 21 pts' },
-              ].map(({ value, label, desc }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setRules(value)}
-                  className={`flex-1 flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-left transition-all`}
-                  style={{
-                    borderColor: rules === value ? 'var(--color-primary)' : 'var(--color-border)',
-                    background: rules === value ? 'rgba(58,107,53,0.07)' : 'var(--color-bg)',
-                  }}
-                >
-                  <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
-                  <span className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>{desc}</span>
-                </button>
-              ))}
+          {/* Rules — cornhole-specific (Hamilton/ACA). Other sports configure
+              their scoring per-game (e.g. pool variants), so this is hidden. */}
+          {sport === 'cornhole' && (
+            <div>
+              <label className="block text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+                Scoring Rules
+              </label>
+              <div className="flex gap-3">
+                {[
+                  { value: 'hamilton', label: 'Hamilton', desc: 'Best-of, max 10 pts' },
+                  { value: 'aca',      label: 'ACA',      desc: 'Standard 21 pts' },
+                ].map(({ value, label, desc }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRules(value)}
+                    className={`flex-1 flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-left transition-all`}
+                    style={{
+                      borderColor: rules === value ? 'var(--color-primary)' : 'var(--color-border)',
+                      background: rules === value ? 'rgba(58,107,53,0.07)' : 'var(--color-bg)',
+                    }}
+                  >
+                    <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
+                    <span className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>{desc}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {error && (
             <p className="text-sm font-ui text-center rounded-xl p-2" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
