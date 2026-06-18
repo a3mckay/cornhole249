@@ -83,7 +83,20 @@ are dropped when team2 wins (display already degrades to `—`).
 **Covers feedback #1, #5.** Implements the locked branding/switcher decisions:
 constant "249" wordmark + active-sport tag; House hub as home with sport tiles;
 lightweight sport-grouped dropdown in the navbar for same-sport hops.
-**Effort:** M. **Status:** `[ ]`
+**Effort:** M. **Status:** `[x]` — three pieces:
+1. **Wordmark** — Navbar now anchors a constant **"249"** + the active-sport
+   face: `249 · 🌽 Cornhole`, `249 · 🎱 Pool`. Custom-logo leagues keep their
+   logo + name as the face. Replaces the old "Cornhole249"/emoji-only headers.
+2. **Switcher (B + lightweight A)** — new desktop sport-grouped dropdown
+   (>1 league) for quick same-sport hops, with sport headers signalling a
+   sport-boundary crossing; the mobile hamburger "My Leagues" list is now
+   grouped by sport too. Both link to each league's home.
+3. **House-as-home (conditional)** — `/` renders the cross-sport **House hub**
+   for users with leagues in **2+ sports**; single-sport users keep their
+   familiar league Home (no cornhole-only regression). House gained a
+   **"Your Leagues" sport-tiles** front door (own house only) — pick a sport →
+   enter that league (lands on Games to avoid the `/`→House loop).
+Build green, 100/100 server tests pass. Remaining: manual eyeball on device.
 
 ### WS-E — Per-sport ELO (data-model change)
 **Covers feedback #8.** Today `users.elo_rating` is a single global value and the

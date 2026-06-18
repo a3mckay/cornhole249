@@ -78,9 +78,14 @@ function PageWrapper({ children }) {
 }
 
 function RootRoute() {
-  const { user, loading } = useAuth();
+  const { user, leagues, loading } = useAuth();
   if (loading) return null;
   if (!user) return <Landing />;
+  // House-as-home (ROADMAP WS-D): a user with leagues across 2+ sports lands on
+  // the cross-sport House hub (pick a sport → enter that league). Single-sport
+  // users keep their familiar league Home — no regression for cornhole-only.
+  const sportCount = new Set((leagues || []).map((l) => l.sport || 'cornhole')).size;
+  if (sportCount >= 2) return <House />;
   return <Home />;
 }
 

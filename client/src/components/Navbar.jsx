@@ -56,6 +56,7 @@ export default function Navbar() {
   const [menuOpen,     setMenuOpen]     = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [shareOpen,    setShareOpen]    = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [copied,       setCopied]       = useState(false);
 
   const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
@@ -64,6 +65,16 @@ export default function Navbar() {
   const NAV_LINKS = makeNavLinks(currentSlug);
   const HAMBURGER_LINKS = makeHamburgerLinks(currentSlug);
   const leagueHome = (slug) => slug === 'cornhole249' ? '/' : `/l/${slug}`;
+
+  // Group the user's leagues by sport for the lightweight switcher (locked
+  // decision: same-sport hops are quick; crossing a sport boundary is a
+  // deliberate "go home → pick sport" gesture, hence the sport-grouped headers).
+  const leaguesBySport = (leagues || []).reduce((acc, l) => {
+    const key = l.sport || DEFAULT_SPORT;
+    (acc[key] ||= []).push(l);
+    return acc;
+  }, {});
+  const sportGroups = Object.keys(leaguesBySport).sort();
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(siteUrl).then(() => {
@@ -82,37 +93,94 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 shadow-md" style={{ backgroundColor: 'var(--color-navbar)' }}>
       <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-3">
 
-        {/* Logo / League name */}
-        {currentSlug !== 'cornhole249' && currentLeague?.theme_json?.logo_path ? (
-          <Link
-            to={leagueHome(currentSlug)}
-            className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
-          >
-            <img
-              src={`/uploads${currentLeague.theme_json.logo_path}`}
-              alt={currentLeague?.name || currentSlug}
-              className="h-8 w-8 rounded-lg object-contain bg-white/10"
-            />
-            <span className="font-display text-lg text-amber-100 hidden sm:inline">
-              {currentLeague?.name || currentSlug}
-            </span>
-          </Link>
-        ) : currentSlug !== 'cornhole249' ? (
-          // Non-cornhole league without a custom logo: show the sport emoji +
-          // league name (themed identity) rather than the umbrella wordmark.
-          <Link
-            to={leagueHome(currentSlug)}
-            className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
-          >
-            <span className="text-2xl leading-none">{getSport(currentLeague?.sport || DEFAULT_SPORT).emoji}</span>
-            <span className="font-display text-lg text-amber-100 hidden sm:inline">
-              {currentLeague?.name || currentSlug}
-            </span>
-          </Link>
-        ) : (
-          <Link to="/" className="font-display text-2xl text-amber-100 tracking-wide hover:text-amber-200 transition-colors flex-shrink-0">
-            Cornhole249
-          </Link>
+        {/* Wordmark: constant "249" anchor + active-sport face (locked brand,
+            ROADMAP WS-D). "249" never changes; the sport expresses itself
+            beside it — "249 · 🌽 Cornhole", "249 · 🎱 Pool". Custom-logo
+            leagues keep their logo + league name as the face. */}
+        <Link
+          to={leagueHome(currentSlug)}
+          className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
+        >
+          <span className="font-display text-2xl text-amber-100 tracking-wide">249</span>
+          <span className="text-amber-100/40 text-xl leading-none" aria-hidden="true">·</span>
+          {currentSlug !== 'cornhole249' && currentLeague?.theme_json?.logo_path ? (
+            <>
+              <img
+                src={`/uploads${currentLeague.theme_json.logo_path}`}
+                alt={currentLeague?.name || currentSlug}
+                className="h-7 w-7 rounded-lg object-contain bg-white/10"
+              />
+              <span className="font-display text-lg text-amber-100 hidden sm:inline">
+                {currentLeague?.name || currentSlug}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-2xl leading-none" aria-hidden="true">
+                {getSport(currentLeague?.sport || DEFAULT_SPORT).emoji}
+              </span>
+              <span className="font-display text-lg text-amber-100 hidden sm:inline">
+                {getSport(currentLeague?.sport || DEFAULT_SPORT).displayName}
+              </span>
+            </>
+          )}
+        </Link>
+
+        {/* Sport-grouped league switcher — desktop, only with >1 league.
+            Lightweight "A": quick same-sport hops; sport headers signal that
+            crossing sports is a context change. */}
+        {user && leagues.length > 1 && (
+          <div className="relative hidden lg:block flex-shrink-0">
+            <button
+              onClick={() => setSwitcherOpen((o) => !o)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-ui font-semibold text-amber-100/80 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <span className="text-base leading-none" aria-hidden="true">
+                {getSport(currentLeague?.sport || DEFAULT_SPORT).emoji}
+              </span>
+              <span className="hidden xl:inline max-w-[8rem] truncate">{currentLeague?.name || currentSlug}</span>
+              <span className="text-xs opacity-70">▾</span>
+            </button>
+
+            {switcherOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setSwitcherOpen(false)} />
+                <div className="absolute left-0 mt-2 w-60 rounded-card shadow-card border overflow-hidden z-50 py-1"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                  {sportGroups.map((sportKey) => (
+                    <div key={sportKey}>
+                      <div className="px-3 pt-2 pb-1 text-xs font-ui font-semibold uppercase tracking-wider flex items-center gap-1.5"
+                        style={{ color: 'var(--color-text-secondary)' }}>
+                        <span aria-hidden="true">{getSport(sportKey).emoji}</span>
+                        {getSport(sportKey).displayName}
+                      </div>
+                      {leaguesBySport[sportKey].map((l) => (
+                        <button key={l.id}
+                          onClick={() => { navigate(leagueHome(l.slug)); setSwitcherOpen(false); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm font-ui text-left hover:bg-amber-50 transition-colors"
+                          style={{ color: 'var(--color-text-primary)', background: l.slug === currentSlug ? 'var(--color-surface-alt, rgba(0,0,0,0.04))' : undefined }}>
+                          <span className="flex-1 truncate">{l.name}</span>
+                          {l.slug === currentSlug && <span className="text-xs" style={{ color: 'var(--color-primary)' }}>●</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                  <div className="border-t mt-1 pt-1" style={{ borderColor: 'var(--color-border)' }}>
+                    <button onClick={() => { navigate('/find-league'); setSwitcherOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
+                      style={{ color: 'var(--color-text-primary)' }}>
+                      🔍 Find a league
+                    </button>
+                    <button onClick={() => { navigate('/leagues/new'); setSwitcherOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-sm font-ui hover:bg-amber-50 transition-colors"
+                      style={{ color: 'var(--color-text-primary)' }}>
+                      🏟 Create a league
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {/* Share button — next to logo, mobile only */}
@@ -336,13 +404,21 @@ export default function Navbar() {
             {user && leagues.length > 1 && (
               <div className="border-t mt-2 pt-2" style={{ borderColor: 'rgba(255,255,255,0.15)' }}>
                 <div className="px-4 py-1 text-xs font-ui font-semibold uppercase tracking-wider text-amber-200/60">My Leagues</div>
-                {leagues.map((l) => (
-                  <button key={l.id}
-                    onClick={() => { navigate(leagueHome(l.slug)); setMenuOpen(false); }}
-                    className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-left transition-colors ${l.slug === currentSlug ? 'bg-white/20 text-white font-bold' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'}`}>
-                    <span className="flex-1">{l.name}</span>
-                    <span className="text-xs opacity-50 capitalize">{l.role}</span>
-                  </button>
+                {sportGroups.map((sportKey) => (
+                  <div key={sportKey}>
+                    <div className="px-4 pt-2 pb-0.5 text-[11px] font-ui font-semibold uppercase tracking-wider text-amber-200/40 flex items-center gap-1.5">
+                      <span aria-hidden="true">{getSport(sportKey).emoji}</span>
+                      {getSport(sportKey).displayName}
+                    </div>
+                    {leaguesBySport[sportKey].map((l) => (
+                      <button key={l.id}
+                        onClick={() => { navigate(leagueHome(l.slug)); setMenuOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-ui text-left transition-colors ${l.slug === currentSlug ? 'bg-white/20 text-white font-bold' : 'text-amber-100/80 hover:bg-white/10 hover:text-white'}`}>
+                        <span className="flex-1">{l.name}</span>
+                        <span className="text-xs opacity-50 capitalize">{l.role}</span>
+                      </button>
+                    ))}
+                  </div>
                 ))}
                 {canManageCurrentLeague && (
                   <button

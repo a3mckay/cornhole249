@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { houseApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
+import { leaguePath } from '../contexts/LeagueContext';
+import { getSport, DEFAULT_SPORT } from '../sports';
 
 // Cross-sport "house" landing. A house = all leagues a single user owns,
 // aggregated across every sport. Rankings are built on each player's
@@ -20,6 +22,54 @@ function playerName(p) {
   return p?.nickname || p?.display_name || `Player ${p?.user_id}`;
 }
 
+// "Enter that league" target. Land on the Games tab rather than the league
+// home — for cornhole249 the home is "/", which itself renders this House hub
+// for multi-sport users, so linking there would loop back. Games never loops
+// and is the natural primary tab.
+function enterLeague(slug) {
+  return leaguePath(slug, 'games');
+}
+
+// Front-door tiles: the viewer's own leagues, grouped into sport sections.
+// This is what makes House a hub (pick a sport → enter that league) rather than
+// a stats-only page. Sourced from the live client sport registry for emoji/name.
+function LeagueTiles({ leagues }) {
+  if (!leagues?.length) return null;
+  const bySport = leagues.reduce((acc, l) => {
+    const key = l.sport || DEFAULT_SPORT;
+    (acc[key] ||= []).push(l);
+    return acc;
+  }, {});
+  const sportKeys = Object.keys(bySport).sort();
+
+  return (
+    <div className="mb-8">
+      <h2 className="font-display text-2xl mb-1" style={{ color: 'var(--color-primary)' }}>Your Leagues</h2>
+      <p className="font-ui text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>Pick a sport to jump in.</p>
+      <div className="space-y-4">
+        {sportKeys.map((sportKey) => (
+          <div key={sportKey}>
+            <div className="flex items-center gap-1.5 mb-2 font-ui text-xs font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--color-text-secondary)' }}>
+              <span aria-hidden="true">{getSport(sportKey).emoji}</span>
+              {getSport(sportKey).displayName}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {bySport[sportKey].map((l) => (
+                <Link key={l.id} to={enterLeague(l.slug)}
+                  className="card flex flex-col items-center justify-center text-center py-5 hover:shadow-card-hover transition-shadow">
+                  <span className="text-3xl mb-1" aria-hidden="true">{getSport(sportKey).emoji}</span>
+                  <span className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>{l.name}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Board({ title, blurb, children }) {
   return (
     <div className="card mb-6">
@@ -32,8 +82,11 @@ function Board({ title, blurb, children }) {
 
 export default function House() {
   const { ownerId: ownerIdParam } = useParams();
-  const { user } = useAuth();
+  const { user, leagues } = useAuth();
   const ownerId = ownerIdParam || user?.id;
+  // Tiles are the viewer's personal front door — only show on your own house.
+  const isOwnHouse = !ownerIdParam || String(ownerIdParam) === String(user?.id);
+  const tiles = isOwnHouse ? <LeagueTiles leagues={leagues} /> : null;
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -65,7 +118,8 @@ export default function House() {
   if (!sports.length) {
     return (
       <div className="max-w-3xl mx-auto">
-        <h1 className="font-display text-4xl mb-2" style={{ color: 'var(--color-text-primary)' }}>🏠 {playerName(owner)}'s House</h1>
+        <h1 className="font-display text-4xl mb-4" style={{ color: 'var(--color-text-primary)' }}>🏠 {playerName(owner)}'s House</h1>
+        {tiles}
         <div className="card text-center font-ui" style={{ color: 'var(--color-text-secondary)' }}>
           No games logged across this house's leagues yet. Cross-sport boards appear once games are played.
         </div>
@@ -81,6 +135,8 @@ export default function House() {
         {sports.map(sportLabel).join(' · ')}. Ranked by average percentile within each sport — so being
         top of a small sport counts the same as topping a big one.
       </p>
+
+      {tiles}
 
       {/* House rankings */}
       <Board title="House Rankings" blurb="Average percentile across every sport a player has been ranked in.">
