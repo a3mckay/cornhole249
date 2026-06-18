@@ -69,7 +69,15 @@ an overflow menu on mobile. (b) When the variant/league isn't rack-scored (no
 race target, e.g. 8-ball / cutthroat), render **"Winner"** instead of a numeric
 score, and surface the loser's **balls-left-on-table** (`balls_remaining`, already
 captured) in the matchup.
-**Effort:** S. **Status:** `[ ]`
+**Effort:** S. **Status:** `[x]` — (a) GameDetail header is now responsive
+(`flex-col sm:flex-row` + `flex-wrap` action row) so Share/Edit/Delete wrap on
+mobile instead of overflowing. (b) New `scoreModel` registry field
+(cornhole=`points`, pool=`racks`) drives a `renderScore` helper: points sports
+and race-to-N pool show the numeric score; pure win/loss games (single 8-ball,
+cutthroat) show **"Winner"** for the winner and the loser's **balls-left** (or
+`—` when not captured). Build green, 100/100. **Follow-up flagged:** server
+only writes `balls_remaining` to team2 and only when team1 wins — loser balls
+are dropped when team2 wins (display already degrades to `—`).
 
 ### WS-D — Branding & switcher (B + lightweight A)
 **Covers feedback #1, #5.** Implements the locked branding/switcher decisions:

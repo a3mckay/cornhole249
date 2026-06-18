@@ -15,6 +15,7 @@ export const SPORTS = {
     displayName: 'Cornhole',
     emoji: '🌽',
     accent: { primary: '#3A6B35', secondary: '#D48B2D' },
+    scoreModel: 'points', // numeric points — always show the scoreboard number
     outdoor: true, // weather is relevant — show weather card/badge
     // Document-head / chrome theming (browser tab + navbar).
     chrome: {
@@ -31,6 +32,7 @@ export const SPORTS = {
     displayName: 'Pool',
     emoji: '🎱',
     accent: { primary: '#1f5c3d', secondary: '#caa45a' },
+    scoreModel: 'racks', // numeric only in race-to-N leagues; else win/loss
     outdoor: false, // indoor — hide weather card/badge
     chrome: {
       navbar: '#14342a',     // dark felt-green rail

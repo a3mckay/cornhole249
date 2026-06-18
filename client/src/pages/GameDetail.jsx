@@ -14,7 +14,7 @@ export default function GameDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const lp = useLeaguePath();
-  const { sport } = useLeague();
+  const { sport, raceToTarget } = useLeague();
   const isOutdoor = getSport(sport).outdoor !== false;
   const [game, setGame] = useState(null);
   const [odds, setOdds] = useState(null);
@@ -119,12 +119,43 @@ export default function GameDetail() {
   const t1Won = team1[0]?.is_winner === 1;
   const weather = game.weather || (game.weather_json ? JSON.parse(game.weather_json) : null);
 
+  // Rack-scored = there's a meaningful numeric score to show. Points sports
+  // (cornhole) always are; rack sports (pool) only when the league plays
+  // race-to-N. Cutthroat is pure win/loss. Otherwise show "Winner" + the
+  // loser's balls-left-on-table instead of a number.
+  const isCutthroat = game.game_variant === 'cutthroat';
+  const rackScored = getSport(sport).scoreModel === 'points'
+    || (raceToTarget != null && !isCutthroat);
+  // Loser's balls left on the table (only captured for 8-ball today).
+  const loserParticipant = t1Won ? team2[0] : team1[0];
+  const loserBalls = loserParticipant?.balls_remaining;
+
   const teamLabel = (players) => players.map((p) => p.display_name).join(' & ');
+
+  // Score cell: a number for rack/points games; "Winner" + the loser's
+  // balls-left for win/loss-only games (single 8-ball, cutthroat, …).
+  const renderScore = (isWinner) => {
+    const color = isWinner ? '#16a34a' : 'var(--color-text-secondary)';
+    if (rackScored) {
+      const score = isWinner === t1Won ? t1Score : t2Score;
+      return <div className="font-display text-5xl mt-2" style={{ color }}>{score}</div>;
+    }
+    if (isWinner) {
+      return <div className="font-display text-3xl mt-2" style={{ color }}>Winner</div>;
+    }
+    return (
+      <div className="mt-3" style={{ color }}>
+        {loserBalls != null
+          ? <span className="font-ui text-sm font-semibold">{loserBalls} ball{loserBalls === 1 ? '' : 's'} left</span>
+          : <span className="font-display text-3xl">—</span>}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
           <Link to={lp('games')} className="text-sm font-ui hover:underline mb-1 block" style={{ color: 'var(--color-text-secondary)' }}>
             ← Games
@@ -148,7 +179,7 @@ export default function GameDetail() {
             </span>
           </div>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center sm:flex-shrink-0">
           <ShareButton
             imageUrl={`/og/game/${game.id}.png`}
             shareUrl={typeof window !== 'undefined' ? `${window.location.origin}${lp(`games/${game.id}`)}` : ''}
@@ -184,9 +215,7 @@ export default function GameDetail() {
             <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
               {team1.map((p) => p.display_name).join(' & ')}
             </div>
-            <div className="font-display text-5xl mt-2" style={{ color: t1Won ? '#16a34a' : 'var(--color-text-secondary)' }}>
-              {t1Score}
-            </div>
+            {renderScore(t1Won)}
             {t1Won && <div className="text-2xl mt-1">🏆</div>}
           </div>
 
@@ -212,9 +241,7 @@ export default function GameDetail() {
             <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
               {team2.map((p) => p.display_name).join(' & ')}
             </div>
-            <div className="font-display text-5xl mt-2" style={{ color: !t1Won ? '#16a34a' : 'var(--color-text-secondary)' }}>
-              {t2Score}
-            </div>
+            {renderScore(!t1Won)}
             {!t1Won && <div className="text-2xl mt-1">🏆</div>}
           </div>
         </div>
