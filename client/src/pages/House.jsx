@@ -18,8 +18,17 @@ function sportLabel(s) {
   return `${SPORT_EMOJI[s] || '🎯'} ${s.charAt(0).toUpperCase() + s.slice(1)}`;
 }
 
+// Identity heuristic: the real name (display_name) always leads — we never show
+// a bare nickname as someone's identity. The nickname rides along as a small
+// secondary label (<Nick>), matching GameCard/StandingsTable. Nickname-only
+// falls back to display_name; display_name is required so this is rare.
 function playerName(p) {
-  return p?.nickname || p?.display_name || `Player ${p?.user_id}`;
+  return p?.display_name || p?.nickname || `Player ${p?.user_id}`;
+}
+
+function Nick({ p }) {
+  if (!p?.nickname || !p?.display_name) return null;
+  return <span className="ml-1 text-xs opacity-60" style={{ color: 'var(--color-text-secondary)' }}>"{p.nickname}"</span>;
 }
 
 // "Enter that league" target. Land on the Games tab rather than the league
@@ -146,7 +155,7 @@ export default function House() {
               style={{ background: 'var(--color-surface)' }}>
               <div className="flex items-center gap-3">
                 <span className="font-display text-lg w-6 text-center" style={{ color: 'var(--color-primary)' }}>{r.rank}</span>
-                <span style={{ color: 'var(--color-text-primary)' }}>{playerName(r)}</span>
+                <span style={{ color: 'var(--color-text-primary)' }}>{playerName(r)}<Nick p={r} /></span>
                 <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                   {Object.entries(r.per_sport || {}).map(([s, p]) => `${SPORT_EMOJI[s] || '🎯'} ${p}`).join('  ')}
                 </span>
@@ -163,7 +172,7 @@ export default function House() {
           <ol className="space-y-1 font-ui">
             {best_at_everything.map((r, i) => (
               <li key={r.user_id} className="flex items-center justify-between py-1.5 px-3 rounded-lg" style={{ background: 'var(--color-surface)' }}>
-                <span style={{ color: 'var(--color-text-primary)' }}>{i + 1}. {playerName(r)}</span>
+                <span style={{ color: 'var(--color-text-primary)' }}>{i + 1}. {playerName(r)}<Nick p={r} /></span>
                 <span style={{ color: 'var(--color-text-secondary)' }}>floor {r.min_percentile} · {r.sports_played} sports</span>
               </li>
             ))}
@@ -177,7 +186,7 @@ export default function House() {
           <ol className="space-y-1 font-ui">
             {jack_of_all_trades.map((r, i) => (
               <li key={r.user_id} className="flex items-center justify-between py-1.5 px-3 rounded-lg" style={{ background: 'var(--color-surface)' }}>
-                <span style={{ color: 'var(--color-text-primary)' }}>{i + 1}. {playerName(r)}</span>
+                <span style={{ color: 'var(--color-text-primary)' }}>{i + 1}. {playerName(r)}<Nick p={r} /></span>
                 <span style={{ color: 'var(--color-text-secondary)' }}>{r.sports_at_baseline} of {r.sports_played} sports</span>
               </li>
             ))}
@@ -191,7 +200,7 @@ export default function House() {
           <ol className="space-y-1 font-ui">
             {sport_affinity.map((r) => (
               <li key={r.user_id} className="flex items-center justify-between py-1.5 px-3 rounded-lg" style={{ background: 'var(--color-surface)' }}>
-                <span style={{ color: 'var(--color-text-primary)' }}>{playerName(r)}</span>
+                <span style={{ color: 'var(--color-text-primary)' }}>{playerName(r)}<Nick p={r} /></span>
                 <span style={{ color: 'var(--color-text-secondary)' }}>{sportLabel(r.sport)} · +{r.over_performance}</span>
               </li>
             ))}
