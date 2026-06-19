@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { useLeague, leaguePath } from '../contexts/LeagueContext';
+import { leaguePath } from '../contexts/LeagueContext';
 import { useAuth } from '../hooks/useAuth';
 import { getSport } from '../sports';
 
@@ -45,9 +45,17 @@ const TAB_DEFS = [
 ];
 
 export default function BottomNav() {
-  const { slug, sport } = useLeague();
   const { pathname } = useLocation();
   const { leagues } = useAuth();
+
+  // BottomNav renders globally — OUTSIDE the per-route LeagueProvider — so
+  // useLeague() would always hand back the default cornhole249 context, sending
+  // every tab back to cornhole regardless of which league you're in. Derive the
+  // current league from the URL instead (same approach as Navbar): /l/:slug/*
+  // is a non-cornhole league; anything else is cornhole249.
+  const currentSlug = pathname.match(/^\/l\/([^/]+)/)?.[1] ?? 'cornhole249';
+  const currentLeague = (leagues || []).find((l) => l.slug === currentSlug);
+  const sport = currentLeague?.sport || 'cornhole';
 
   // The bottom nav is LEAGUE-scoped (Games/Standings/Stats/Trash all live inside
   // a league). The House hub sits above any league, so the nav makes no sense
@@ -63,7 +71,7 @@ export default function BottomNav() {
     const override = sportIcons[t.key];
     return {
       ...t,
-      to: leaguePath(slug, t.key),
+      to: leaguePath(currentSlug, t.key),
       icon: override
         ? <span className="text-xl leading-none" aria-hidden="true">{override}</span>
         : t.icon,
