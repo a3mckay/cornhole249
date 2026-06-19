@@ -81,7 +81,7 @@ describe('GameCard', () => {
     };
     render(<MemoryRouter><GameCard game={poolGame} /></MemoryRouter>);
     expect(screen.getByText('Winner')).toBeInTheDocument();
-    expect(screen.getByText(/3 balls left/)).toBeInTheDocument();
+    expect(screen.getByText(/Margin of victory: 3 balls/)).toBeInTheDocument();
     expect(screen.queryByText('1')).not.toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });

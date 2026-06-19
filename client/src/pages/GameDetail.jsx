@@ -143,14 +143,13 @@ export default function GameDetail() {
     if (isWinner) {
       return <div className="font-display text-lg sm:text-2xl mt-2 leading-tight" style={{ color }}>Winner</div>;
     }
-    return (
-      <div className="mt-3" style={{ color }}>
-        {loserBalls != null
-          ? <span className="font-ui text-sm font-semibold">{loserBalls} ball{loserBalls === 1 ? '' : 's'} left</span>
-          : <span className="font-display text-3xl">—</span>}
-      </div>
-    );
+    // Loser of a win/loss game — the margin of victory is shown on its own line
+    // below the matchup, so nothing extra goes under the loser here.
+    return null;
   };
+
+  // Margin of victory for 8-ball = the balls the loser still had on the table.
+  const marginBalls = !rackScored ? loserBalls : null;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -245,6 +244,15 @@ export default function GameDetail() {
             {!t1Won && <div className="text-2xl mt-1">🏆</div>}
           </div>
         </div>
+
+        {marginBalls != null && (
+          <div className="text-center mt-4 pt-3 border-t text-sm font-ui" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+            Margin of victory:{' '}
+            <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+              {marginBalls} ball{marginBalls === 1 ? '' : 's'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Meta cards */}

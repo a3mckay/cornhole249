@@ -63,9 +63,8 @@ export default function GameCard({ game }) {
     if (isWinner) {
       return <div className="font-display text-lg text-green-700 leading-tight">Winner</div>;
     }
-    return loserBalls != null
-      ? <div className="font-ui text-xs font-semibold text-right" style={{ color: 'var(--color-text-secondary)' }}>{loserBalls} ball{loserBalls === 1 ? '' : 's'} left</div>
-      : <div className="text-2xl font-display" style={{ color: 'var(--color-text-secondary)' }}>—</div>;
+    // Loser of a win/loss game — margin of victory is shown below the matchup.
+    return null;
   };
 
   const weather = game.weather || (game.weather_json ? JSON.parse(game.weather_json) : null);
@@ -118,6 +117,12 @@ export default function GameCard({ game }) {
           </div>
           <TeamDisplay players={team2} scoreNode={scoreNode(!t1Won)} isWinner={!t1Won} />
         </div>
+
+        {!rackScored && loserBalls != null && (
+          <div className="text-center mt-2 text-xs font-ui font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+            Margin of victory: {loserBalls} ball{loserBalls === 1 ? '' : 's'}
+          </div>
+        )}
 
         {/* Latest comment */}
         {game.latest_comment && (
