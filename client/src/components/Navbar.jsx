@@ -93,18 +93,18 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 shadow-md" style={{ backgroundColor: 'var(--color-navbar)' }}>
       <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-3">
 
-        {/* Wordmark: constant "249" anchor + active-sport face (locked brand,
-            ROADMAP WS-D). "249" never changes; the sport expresses itself
-            beside it — "249 · 🌽 Cornhole", "249 · 🎱 Pool". Custom-logo
-            leagues keep their logo + league name as the face. */}
+        {/* Wordmark: sport-neutral "Games249" brand (no per-sport emoji — that
+            read as clutter on the multi-sport House). Custom-logo leagues still
+            append their uploaded logo + name; sport context lives in the
+            switcher and page content, not the wordmark. */}
         <Link
           to={leagueHome(currentSlug)}
           className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
         >
-          <span className="font-display text-2xl text-amber-100 tracking-wide">249</span>
-          <span className="text-amber-100/40 text-xl leading-none" aria-hidden="true">·</span>
-          {currentSlug !== 'cornhole249' && currentLeague?.theme_json?.logo_path ? (
+          <span className="font-display text-2xl text-amber-100 tracking-wide">Games249</span>
+          {currentSlug !== 'cornhole249' && currentLeague?.theme_json?.logo_path && (
             <>
+              <span className="text-amber-100/40 text-xl leading-none" aria-hidden="true">·</span>
               <img
                 src={`/uploads${currentLeague.theme_json.logo_path}`}
                 alt={currentLeague?.name || currentSlug}
@@ -112,15 +112,6 @@ export default function Navbar() {
               />
               <span className="font-display text-lg text-amber-100 hidden sm:inline">
                 {currentLeague?.name || currentSlug}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="text-2xl leading-none" aria-hidden="true">
-                {getSport(currentLeague?.sport || DEFAULT_SPORT).emoji}
-              </span>
-              <span className="font-display text-lg text-amber-100 hidden sm:inline">
-                {getSport(currentLeague?.sport || DEFAULT_SPORT).displayName}
               </span>
             </>
           )}
