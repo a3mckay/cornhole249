@@ -154,6 +154,57 @@ describe('Pool sport gating', () => {
     expect(bob.rating).toBeGreaterThan(1016);
   });
 
+  test('editing a pool 8-ball to flip the winner clears stale loser balls', async () => {
+    setSport('pool');
+    rawTestDb.prepare('UPDATE users SET is_admin = 1 WHERE id = 1').run(); // PATCH needs admin
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    // Alice (team1) beats Bob (team2); Bob left 4 balls.
+    const created = await agent.post('/api/games').send({
+      game_type: '1v1',
+      game_variant: 'eight_ball',
+      balls_remaining: 4,
+      team1: [{ user_id: 1, score: 1 }],
+      team2: [{ user_id: 2, score: 0 }],
+    });
+    expect(created.status).toBe(201);
+    const gameId = created.body.id;
+    expect(rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 2').get(gameId).balls_remaining).toBe(4);
+
+    // Admin edits the scores to flip the result: now Bob (team2) wins.
+    const patched = await agent.patch(`/api/games/${gameId}`).send({ t1_score: 0, t2_score: 1 });
+    expect(patched.status).toBe(200);
+
+    // The stale "4 balls" no longer describes the new loser → cleared on both rows.
+    const rows = rawTestDb.prepare('SELECT user_id, is_winner, balls_remaining FROM game_participants WHERE game_id = ?').all(gameId);
+    const alice = rows.find((r) => r.user_id === 1);
+    const bob = rows.find((r) => r.user_id === 2);
+    expect(bob.is_winner).toBe(1);
+    expect(alice.is_winner).toBe(0);
+    expect(alice.balls_remaining).toBeNull();
+    expect(bob.balls_remaining).toBeNull();
+  });
+
+  test('editing a pool 8-ball WITHOUT flipping the winner keeps the loser balls', async () => {
+    setSport('pool');
+    rawTestDb.prepare('UPDATE users SET is_admin = 1 WHERE id = 1').run(); // PATCH needs admin
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    const created = await agent.post('/api/games').send({
+      game_type: '1v1',
+      game_variant: 'eight_ball',
+      balls_remaining: 4,
+      team1: [{ user_id: 1, score: 1 }],
+      team2: [{ user_id: 2, score: 0 }],
+    });
+    const gameId = created.body.id;
+    // Re-save the same winner (Alice still wins) — balls must survive.
+    const patched = await agent.patch(`/api/games/${gameId}`).send({ t1_score: 1, t2_score: 0 });
+    expect(patched.status).toBe(200);
+    const bob = rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 2').get(gameId);
+    expect(bob.balls_remaining).toBe(4);
+  });
+
   test('balls_remaining clamps to 0..7', async () => {
     setSport('pool');
     const agent = request.agent(app);

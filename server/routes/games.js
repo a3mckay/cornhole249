@@ -616,13 +616,25 @@ router.patch('/:id', requireAdmin, async (req, res) => {
       if (s1 === s2) return res.status(400).json({ error: 'Games cannot end in a tie' });
 
       const t1Won = s1 > s2;
+
+      // If this edit flips the winner, any recorded loser balls_remaining (pool
+      // 8-ball) described the OLD loser's table and no longer applies — and the
+      // edit form gives no way to re-enter it. Clear it so the UI shows "—" and
+      // the Elo margin falls back to flat rather than asserting a wrong count.
+      // No-op for cornhole (balls_remaining is always null there).
+      const priorT1 = await db.selectFrom('game_participants')
+        .select(['is_winner']).where('game_id', '=', gameId).where('team', '=', 1)
+        .executeTakeFirst();
+      const winnerFlipped = priorT1 != null && (priorT1.is_winner === 1) !== t1Won;
+      const ballsPatch = winnerFlipped ? { balls_remaining: null } : {};
+
       await db.updateTable('game_participants')
-        .set({ score: s1, is_winner: t1Won ? 1 : 0 })
+        .set({ score: s1, is_winner: t1Won ? 1 : 0, ...ballsPatch })
         .where('game_id', '=', gameId)
         .where('team', '=', 1)
         .execute();
       await db.updateTable('game_participants')
-        .set({ score: s2, is_winner: t1Won ? 0 : 1 })
+        .set({ score: s2, is_winner: t1Won ? 0 : 1, ...ballsPatch })
         .where('game_id', '=', gameId)
         .where('team', '=', 2)
         .execute();
