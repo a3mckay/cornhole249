@@ -55,15 +55,33 @@ describe('aggregate + buildOverview', () => {
     expect(agg.sports.sort()).toEqual(['cornhole', 'pool']);
   });
 
-  test('overview ranks by average percentile across sports', () => {
+  test('overview ranks by average win % across sports', () => {
     const agg = house.aggregate(rows);
     const ov = house.buildOverview(agg);
-    // A: cornhole 100, pool 0 -> avg 50. B: cornhole 0, pool 100 -> avg 50.
+    // A: cornhole 100% (2-0), pool 0% (0-2) -> avg 50. B: mirror -> avg 50.
     expect(ov.rankings.length).toBe(2);
-    expect(ov.rankings[0].avg_percentile).toBe(50);
-    expect(ov.rankings[1].avg_percentile).toBe(50);
+    expect(ov.rankings[0].avg_win_pct).toBe(50);
+    expect(ov.rankings[1].avg_win_pct).toBe(50);
     expect(ov.rankings[0].rank).toBe(1);
     expect(ov.rankings[1].rank).toBe(2);
+  });
+
+  test('rankings use raw win %, not field-normalized percentile', () => {
+    // 2-player cornhole where A wins 60% and B wins 40%. Percentile would slam
+    // these to 100/0; win % must report the actual 60/40.
+    const r = [
+      ...game(1, 'cornhole', [[1, 1, 1], [2, 2, 0]]),
+      ...game(2, 'cornhole', [[1, 1, 1], [2, 2, 0]]),
+      ...game(3, 'cornhole', [[1, 1, 1], [2, 2, 0]]),
+      ...game(4, 'cornhole', [[1, 1, 0], [2, 2, 1]]),
+      ...game(5, 'cornhole', [[1, 1, 0], [2, 2, 1]]),
+    ];
+    const ov = house.buildOverview(house.aggregate(r));
+    const a = ov.rankings.find((x) => x.user_id === 1);
+    const b = ov.rankings.find((x) => x.user_id === 2);
+    expect(a.avg_win_pct).toBe(60);
+    expect(b.avg_win_pct).toBe(40);
+    expect(a.per_sport).toEqual({ cornhole: 60 });
   });
 
   test('per_sport breakdown is exposed on rankings', () => {
@@ -74,18 +92,18 @@ describe('aggregate + buildOverview', () => {
     expect(a.sports_played).toBe(2);
   });
 
-  test('best_at_everything needs >=2 sports and scores by min percentile', () => {
+  test('best_at_everything needs >=2 sports and scores by min win %', () => {
     const agg = house.aggregate(rows);
     const ov = house.buildOverview(agg);
-    // both played 2 sports, both have min 0
+    // both played 2 sports, both have a 0% sport
     expect(ov.best_at_everything.length).toBe(2);
-    expect(ov.best_at_everything[0].min_percentile).toBe(0);
+    expect(ov.best_at_everything[0].min_win_pct).toBe(0);
   });
 
-  test('jack_of_all_trades counts sports at/above baseline', () => {
+  test('jack_of_all_trades counts sports with a winning record', () => {
     const agg = house.aggregate(rows);
     const ov = house.buildOverview(agg);
-    // A: cornhole 100 (>=50), pool 0 -> 1 sport at baseline.
+    // A: cornhole 100% (>=50), pool 0% -> 1 sport with a winning record.
     const a = ov.jack_of_all_trades.find((r) => r.user_id === 1);
     expect(a.sports_at_baseline).toBe(1);
   });
@@ -94,7 +112,7 @@ describe('aggregate + buildOverview', () => {
     const agg = house.aggregate(rows);
     const ov = house.buildOverview(agg);
     const a = ov.sport_affinity.find((r) => r.user_id === 1);
-    // A's avg is 50; cornhole 100 is +50 over, pool 0 is -50.
+    // A's avg win % is 50; cornhole 100 is +50 over, pool 0 is -50.
     expect(a.sport).toBe('cornhole');
     expect(a.over_performance).toBe(50);
   });

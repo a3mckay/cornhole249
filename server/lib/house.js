@@ -19,8 +19,8 @@
 
 // A player needs at least this many games in a sport to be ranked in it.
 const MIN_GAMES_FOR_PERCENTILE = 1;
-// "Played at a baseline level" threshold for jack-of-all-trades (percentile).
-const BASELINE_PERCENTILE = 50;
+// "Winning record" threshold for jack-of-all-trades (win %).
+const BASELINE_WIN_PCT = 50;
 // Minimum meetings before an opponent counts as a nemesis candidate.
 const MIN_MEETINGS_FOR_NEMESIS = 2;
 
@@ -95,6 +95,10 @@ function aggregate(rows) {
       if (!playerSports.has(uid)) playerSports.set(uid, new Map());
       playerSports.get(uid).set(sport, {
         percentile: pcts.has(uid) ? pcts.get(uid) : null,
+        // Win rate (0..100) is the headline metric for the overview boards —
+        // it's the number players actually understand. percentile is retained
+        // for any field-normalized view but no longer drives the rankings.
+        win_pct: s.gp > 0 ? (s.wins / s.gp) * 100 : null,
         wins: s.wins,
         gp: s.gp,
         losses: s.gp - s.wins,
@@ -129,9 +133,9 @@ function aggregate(rows) {
   return { bySport, sportPercentiles, playerSports, ledger, sports: [...sportsSeen] };
 }
 
-/** Average of a player's percentiles across the sports they've been ranked in. */
-function avgPercentile(sportMap) {
-  const vals = [...sportMap.values()].map((v) => v.percentile).filter((p) => p != null);
+/** Average of a player's win % across the sports they've played. */
+function avgWinPct(sportMap) {
+  const vals = [...sportMap.values()].map((v) => v.win_pct).filter((p) => p != null);
   if (!vals.length) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
@@ -151,45 +155,45 @@ function buildOverview(agg, hydrate = (id) => ({ user_id: id })) {
 
   for (const [uid, sportMap] of playerSports) {
     const played = [...sportMap.entries()]
-      .filter(([, v]) => v.percentile != null);
+      .filter(([, v]) => v.win_pct != null);
     const playedSports = played.map(([s]) => s);
-    const avg = avgPercentile(sportMap);
+    const avg = avgWinPct(sportMap);
     if (avg == null) continue;
 
     rankings.push({
       ...hydrate(uid),
-      avg_percentile: round1(avg),
+      avg_win_pct: round1(avg),
       sports_played: playedSports.length,
-      per_sport: Object.fromEntries(played.map(([s, v]) => [s, round1(v.percentile)])),
+      per_sport: Object.fromEntries(played.map(([s, v]) => [s, round1(v.win_pct)])),
     });
 
-    // Best at everything: needs ≥2 sports; score = worst (min) percentile.
+    // Best at everything: needs ≥2 sports; score = worst (min) win %.
     if (played.length >= 2) {
-      const minPct = Math.min(...played.map(([, v]) => v.percentile));
-      bestAtEverything.push({ ...hydrate(uid), min_percentile: round1(minPct), sports_played: played.length });
+      const minPct = Math.min(...played.map(([, v]) => v.win_pct));
+      bestAtEverything.push({ ...hydrate(uid), min_win_pct: round1(minPct), sports_played: played.length });
     }
 
-    // Jack of all trades: count sports at/above baseline.
-    const atBaseline = played.filter(([, v]) => v.percentile >= BASELINE_PERCENTILE).length;
+    // Jack of all trades: count sports with a winning record (≥ baseline win %).
+    const atBaseline = played.filter(([, v]) => v.win_pct >= BASELINE_WIN_PCT).length;
     if (atBaseline > 0) {
-      jackOfAllTrades.push({ ...hydrate(uid), sports_at_baseline: atBaseline, sports_played: played.length, avg_percentile: round1(avg) });
+      jackOfAllTrades.push({ ...hydrate(uid), sports_at_baseline: atBaseline, sports_played: played.length, avg_win_pct: round1(avg) });
     }
 
-    // Sport affinity: largest positive (percentile - personal average).
+    // Sport affinity: largest positive (win % - personal average win %).
     let best = null;
     for (const [s, v] of played) {
-      const over = v.percentile - avg;
-      if (best == null || over > best.over) best = { sport: s, over, percentile: v.percentile };
+      const over = v.win_pct - avg;
+      if (best == null || over > best.over) best = { sport: s, over, win_pct: v.win_pct };
     }
     if (best && played.length >= 2) {
-      affinity.push({ ...hydrate(uid), sport: best.sport, percentile: round1(best.percentile), over_performance: round1(best.over) });
+      affinity.push({ ...hydrate(uid), sport: best.sport, win_pct: round1(best.win_pct), over_performance: round1(best.over) });
     }
   }
 
-  rankings.sort((a, b) => b.avg_percentile - a.avg_percentile);
+  rankings.sort((a, b) => b.avg_win_pct - a.avg_win_pct);
   rankings.forEach((r, i) => { r.rank = i + 1; });
-  bestAtEverything.sort((a, b) => b.min_percentile - a.min_percentile);
-  jackOfAllTrades.sort((a, b) => b.sports_at_baseline - a.sports_at_baseline || b.avg_percentile - a.avg_percentile);
+  bestAtEverything.sort((a, b) => b.min_win_pct - a.min_win_pct);
+  jackOfAllTrades.sort((a, b) => b.sports_at_baseline - a.sports_at_baseline || b.avg_win_pct - a.avg_win_pct);
   affinity.sort((a, b) => b.over_performance - a.over_performance);
 
   return { sports, rankings, best_at_everything: bestAtEverything, jack_of_all_trades: jackOfAllTrades, sport_affinity: affinity };
@@ -258,6 +262,6 @@ module.exports = {
   buildNemesis,
   percentiles,
   MIN_GAMES_FOR_PERCENTILE,
-  BASELINE_PERCENTILE,
+  BASELINE_WIN_PCT,
   MIN_MEETINGS_FOR_NEMESIS,
 };

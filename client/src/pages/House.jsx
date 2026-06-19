@@ -141,14 +141,13 @@ export default function House() {
       <h1 className="font-display text-4xl mb-1" style={{ color: 'var(--color-text-primary)' }}>🏠 {playerName(owner)}'s House</h1>
       <p className="font-ui mb-6" style={{ color: 'var(--color-text-secondary)' }}>
         Combined standings across {sports.length} sport{sports.length === 1 ? '' : 's'}:{' '}
-        {sports.map(sportLabel).join(' · ')}. Ranked by average percentile within each sport — so being
-        top of a small sport counts the same as topping a big one.
+        {sports.map(sportLabel).join(' · ')}. Ranked by average win % across the sports each player plays.
       </p>
 
       {tiles}
 
       {/* House rankings */}
-      <Board title="House Rankings" blurb="Average percentile across every sport a player has been ranked in.">
+      <Board title="House Rankings" blurb="Average win % across every sport a player plays.">
         <div className="space-y-1">
           {rankings.map((r) => (
             <div key={r.user_id} className="flex items-center justify-between py-2 px-3 rounded-lg font-ui"
@@ -157,10 +156,10 @@ export default function House() {
                 <span className="font-display text-lg w-6 text-center" style={{ color: 'var(--color-primary)' }}>{r.rank}</span>
                 <span style={{ color: 'var(--color-text-primary)' }}>{playerName(r)}<Nick p={r} /></span>
                 <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  {Object.entries(r.per_sport || {}).map(([s, p]) => `${SPORT_EMOJI[s] || '🎯'} ${p}`).join('  ')}
+                  {Object.entries(r.per_sport || {}).map(([s, p]) => `${SPORT_EMOJI[s] || '🎯'} ${p}%`).join('  ')}
                 </span>
               </div>
-              <span className="font-display text-lg" style={{ color: 'var(--color-text-primary)' }}>{r.avg_percentile}</span>
+              <span className="font-display text-lg" style={{ color: 'var(--color-text-primary)' }}>{r.avg_win_pct}%</span>
             </div>
           ))}
         </div>
@@ -168,12 +167,12 @@ export default function House() {
 
       {/* Best at everything */}
       {best_at_everything.length > 0 && (
-        <Board title="🏆 Best at Everything" blurb="Highest floor — ranked by worst sport (min percentile) across ≥2 sports.">
+        <Board title="🏆 Best at Everything" blurb="Highest floor — ranked by your worst sport's win % across ≥2 sports.">
           <ol className="space-y-1 font-ui">
             {best_at_everything.map((r, i) => (
               <li key={r.user_id} className="flex items-center justify-between py-1.5 px-3 rounded-lg" style={{ background: 'var(--color-surface)' }}>
                 <span style={{ color: 'var(--color-text-primary)' }}>{i + 1}. {playerName(r)}<Nick p={r} /></span>
-                <span style={{ color: 'var(--color-text-secondary)' }}>floor {r.min_percentile} · {r.sports_played} sports</span>
+                <span style={{ color: 'var(--color-text-secondary)' }}>floor {r.min_win_pct}% · {r.sports_played} sports</span>
               </li>
             ))}
           </ol>
@@ -182,7 +181,7 @@ export default function House() {
 
       {/* Jack of all trades */}
       {jack_of_all_trades.length > 0 && (
-        <Board title="🃏 Jack of All Trades" blurb="Most sports played at or above the 50th percentile.">
+        <Board title="🃏 Jack of All Trades" blurb="Most sports with a winning record (≥50% win rate).">
           <ol className="space-y-1 font-ui">
             {jack_of_all_trades.map((r, i) => (
               <li key={r.user_id} className="flex items-center justify-between py-1.5 px-3 rounded-lg" style={{ background: 'var(--color-surface)' }}>
@@ -201,7 +200,7 @@ export default function House() {
             {sport_affinity.map((r) => (
               <li key={r.user_id} className="flex items-center justify-between py-1.5 px-3 rounded-lg" style={{ background: 'var(--color-surface)' }}>
                 <span style={{ color: 'var(--color-text-primary)' }}>{playerName(r)}<Nick p={r} /></span>
-                <span style={{ color: 'var(--color-text-secondary)' }}>{sportLabel(r.sport)} · +{r.over_performance}</span>
+                <span style={{ color: 'var(--color-text-secondary)' }}>{sportLabel(r.sport)} · +{r.over_performance}%</span>
               </li>
             ))}
           </ol>
