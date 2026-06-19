@@ -1,6 +1,7 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useLeague, leaguePath } from '../contexts/LeagueContext';
+import { useAuth } from '../hooks/useAuth';
 import { getSport } from '../sports';
 
 const TAB_DEFS = [
@@ -45,6 +46,16 @@ const TAB_DEFS = [
 
 export default function BottomNav() {
   const { slug, sport } = useLeague();
+  const { pathname } = useLocation();
+  const { leagues } = useAuth();
+
+  // The bottom nav is LEAGUE-scoped (Games/Standings/Stats/Trash all live inside
+  // a league). The House hub sits above any league, so the nav makes no sense
+  // there — hide it. House renders at /house* and, for multi-sport users, at "/"
+  // (mirrors RootRoute's sportCount>=2 rule; single-sport users keep Home + nav).
+  const sportCount = new Set((leagues || []).map((l) => l.sport || 'cornhole')).size;
+  const onHouse = pathname.startsWith('/house') || (pathname === '/' && sportCount >= 2);
+  if (onHouse) return null;
   // Per-sport icon overrides (registry). Today only the Games tab swaps — pool
   // shows 🎱 instead of the cornhole-board SVG. Falls back to the built-in icon.
   const sportIcons = getSport(sport).icons || {};
