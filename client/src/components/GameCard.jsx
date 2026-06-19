@@ -4,7 +4,7 @@ import WeatherBadge from './WeatherBadge';
 import { variantLabel, getSport } from '../sports';
 import { useLeaguePath, useLeague } from '../contexts/LeagueContext';
 
-function TeamDisplay({ players, score, isWinner }) {
+function TeamDisplay({ players, scoreNode, isWinner }) {
   return (
     <div className={`flex items-center gap-2 px-3 py-2 rounded-xl ${isWinner ? 'bg-green-50 border border-green-200' : ''}`}>
       <div className="flex -space-x-2">
@@ -28,9 +28,7 @@ function TeamDisplay({ players, score, isWinner }) {
           </div>
         )}
       </div>
-      <div className={`text-2xl font-display tabular-nums ${isWinner ? 'text-green-700' : ''}`} style={{ color: isWinner ? undefined : 'var(--color-text-secondary)' }}>
-        {score}
-      </div>
+      <div className="flex-shrink-0">{scoreNode}</div>
       {isWinner && <span className="text-green-600 text-sm">🏆</span>}
     </div>
   );
@@ -38,7 +36,7 @@ function TeamDisplay({ players, score, isWinner }) {
 
 export default function GameCard({ game }) {
   const lp = useLeaguePath();
-  const { sport } = useLeague();
+  const { sport, raceToTarget } = useLeague();
   const isOutdoor = getSport(sport).outdoor !== false;
   const team1 = game.participants?.filter((p) => p.team === 1) || [];
   const team2 = game.participants?.filter((p) => p.team === 2) || [];
@@ -46,6 +44,29 @@ export default function GameCard({ game }) {
   const t1Score = team1[0]?.score ?? 0;
   const t2Score = team2[0]?.score ?? 0;
   const t1Won = team1[0]?.is_winner === 1;
+
+  // Win/loss-only games (single 8-ball, cutthroat) have no meaningful 1–0 score,
+  // so show "Winner" + the loser's balls-left instead — matching GameDetail.
+  // Rack/points games (cornhole, race-to-N pool) keep their numeric score.
+  const isCutthroat = game.game_variant === 'cutthroat';
+  const rackScored = getSport(sport).scoreModel === 'points' || (raceToTarget != null && !isCutthroat);
+  const loserBalls = (t1Won ? team2[0] : team1[0])?.balls_remaining;
+
+  const scoreNode = (isWinner) => {
+    if (rackScored) {
+      const s = isWinner === t1Won ? t1Score : t2Score;
+      return (
+        <div className={`text-2xl font-display tabular-nums ${isWinner ? 'text-green-700' : ''}`}
+          style={{ color: isWinner ? undefined : 'var(--color-text-secondary)' }}>{s}</div>
+      );
+    }
+    if (isWinner) {
+      return <div className="font-display text-lg text-green-700 leading-tight">Winner</div>;
+    }
+    return loserBalls != null
+      ? <div className="font-ui text-xs font-semibold text-right" style={{ color: 'var(--color-text-secondary)' }}>{loserBalls} ball{loserBalls === 1 ? '' : 's'} left</div>
+      : <div className="text-2xl font-display" style={{ color: 'var(--color-text-secondary)' }}>—</div>;
+  };
 
   const weather = game.weather || (game.weather_json ? JSON.parse(game.weather_json) : null);
 
@@ -91,11 +112,11 @@ export default function GameCard({ game }) {
 
         {/* Teams */}
         <div className="flex flex-col gap-1.5">
-          <TeamDisplay players={team1} score={t1Score} isWinner={t1Won} />
+          <TeamDisplay players={team1} scoreNode={scoreNode(t1Won)} isWinner={t1Won} />
           <div className="text-center text-xs font-ui font-bold" style={{ color: 'var(--color-text-secondary)' }}>
             vs
           </div>
-          <TeamDisplay players={team2} score={t2Score} isWinner={!t1Won} />
+          <TeamDisplay players={team2} scoreNode={scoreNode(!t1Won)} isWinner={!t1Won} />
         </div>
 
         {/* Latest comment */}
