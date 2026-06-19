@@ -148,55 +148,62 @@ function avgWinPct(sportMap) {
 function buildOverview(agg, hydrate = (id) => ({ user_id: id })) {
   const { playerSports, sports } = agg;
 
-  const rankings = [];        // house ranking by avg percentile
-  const bestAtEverything = []; // by min percentile across ≥2 sports
-  const jackOfAllTrades = [];  // most sports at ≥ baseline percentile
-  const affinity = [];         // per player: sport they over-perform in
+  // House Rankings include everyone (one sport is fine). The three superlative
+  // boards are CROSS-sport by definition, so they require ≥2 sports played —
+  // that's what keeps single-sport/single-game players from polluting them.
+  const rankings = [];         // everyone, by avg win % across their sports
+  const bestAtEverything = []; // ≥2 sports, by their weakest sport's win % (floor)
+  const jackOfAllTrades = [];  // ≥2 sports, by how many sports they win in
+  const signatureSport = [];   // ≥2 sports: each player's single best sport
 
   for (const [uid, sportMap] of playerSports) {
     const played = [...sportMap.entries()]
       .filter(([, v]) => v.win_pct != null);
-    const playedSports = played.map(([s]) => s);
     const avg = avgWinPct(sportMap);
     if (avg == null) continue;
 
     rankings.push({
       ...hydrate(uid),
       avg_win_pct: round1(avg),
-      sports_played: playedSports.length,
+      sports_played: played.length,
       per_sport: Object.fromEntries(played.map(([s, v]) => [s, round1(v.win_pct)])),
     });
 
-    // Best at everything: needs ≥2 sports; score = worst (min) win %.
-    if (played.length >= 2) {
-      const minPct = Math.min(...played.map(([, v]) => v.win_pct));
-      bestAtEverything.push({ ...hydrate(uid), min_win_pct: round1(minPct), sports_played: played.length });
+    // Cross-sport boards only: skip anyone who hasn't played ≥2 sports.
+    if (played.length < 2) continue;
+
+    // Best at everything: high floor — the win % of their *weakest* sport.
+    const weakest = played.reduce((lo, e) => (e[1].win_pct < lo[1].win_pct ? e : lo));
+    bestAtEverything.push({
+      ...hydrate(uid),
+      min_win_pct: round1(weakest[1].win_pct),
+      weakest_sport: weakest[0],
+      sports_played: played.length,
+    });
+
+    // Jack of all trades: how many sports they hold a winning record in.
+    const winningSports = played.filter(([, v]) => v.win_pct >= BASELINE_WIN_PCT).length;
+    if (winningSports > 0) {
+      jackOfAllTrades.push({
+        ...hydrate(uid),
+        winning_sports: winningSports,
+        sports_played: played.length,
+        avg_win_pct: round1(avg),
+      });
     }
 
-    // Jack of all trades: count sports with a winning record (≥ baseline win %).
-    const atBaseline = played.filter(([, v]) => v.win_pct >= BASELINE_WIN_PCT).length;
-    if (atBaseline > 0) {
-      jackOfAllTrades.push({ ...hydrate(uid), sports_at_baseline: atBaseline, sports_played: played.length, avg_win_pct: round1(avg) });
-    }
-
-    // Sport affinity: largest positive (win % - personal average win %).
-    let best = null;
-    for (const [s, v] of played) {
-      const over = v.win_pct - avg;
-      if (best == null || over > best.over) best = { sport: s, over, win_pct: v.win_pct };
-    }
-    if (best && played.length >= 2) {
-      affinity.push({ ...hydrate(uid), sport: best.sport, win_pct: round1(best.win_pct), over_performance: round1(best.over) });
-    }
+    // Signature sport: their single strongest sport by win %.
+    const top = played.reduce((hi, e) => (e[1].win_pct > hi[1].win_pct ? e : hi));
+    signatureSport.push({ ...hydrate(uid), sport: top[0], win_pct: round1(top[1].win_pct) });
   }
 
   rankings.sort((a, b) => b.avg_win_pct - a.avg_win_pct);
   rankings.forEach((r, i) => { r.rank = i + 1; });
   bestAtEverything.sort((a, b) => b.min_win_pct - a.min_win_pct);
-  jackOfAllTrades.sort((a, b) => b.sports_at_baseline - a.sports_at_baseline || b.avg_win_pct - a.avg_win_pct);
-  affinity.sort((a, b) => b.over_performance - a.over_performance);
+  jackOfAllTrades.sort((a, b) => b.winning_sports - a.winning_sports || b.sports_played - a.sports_played || b.avg_win_pct - a.avg_win_pct);
+  signatureSport.sort((a, b) => b.win_pct - a.win_pct);
 
-  return { sports, rankings, best_at_everything: bestAtEverything, jack_of_all_trades: jackOfAllTrades, sport_affinity: affinity };
+  return { sports, rankings, best_at_everything: bestAtEverything, jack_of_all_trades: jackOfAllTrades, signature_sport: signatureSport };
 }
 
 /** Cross-sport head-to-head between two players over the whole house. */

@@ -92,12 +92,14 @@ describe('aggregate + buildOverview', () => {
     expect(a.sports_played).toBe(2);
   });
 
-  test('best_at_everything needs >=2 sports and scores by min win %', () => {
+  test('best_at_everything needs >=2 sports and reports the weakest sport', () => {
     const agg = house.aggregate(rows);
     const ov = house.buildOverview(agg);
     // both played 2 sports, both have a 0% sport
     expect(ov.best_at_everything.length).toBe(2);
     expect(ov.best_at_everything[0].min_win_pct).toBe(0);
+    const a = ov.best_at_everything.find((r) => r.user_id === 1);
+    expect(a.weakest_sport).toBe('pool'); // A: cornhole 100%, pool 0%
   });
 
   test('jack_of_all_trades counts sports with a winning record', () => {
@@ -105,16 +107,33 @@ describe('aggregate + buildOverview', () => {
     const ov = house.buildOverview(agg);
     // A: cornhole 100% (>=50), pool 0% -> 1 sport with a winning record.
     const a = ov.jack_of_all_trades.find((r) => r.user_id === 1);
-    expect(a.sports_at_baseline).toBe(1);
+    expect(a.winning_sports).toBe(1);
+    expect(a.sports_played).toBe(2);
   });
 
-  test('sport_affinity picks the over-performed sport', () => {
+  test('cross-sport boards exclude single-sport players', () => {
+    // Player 1 plays two sports; players 8 and 9 each play only one.
+    const r = [
+      ...game(1, 'cornhole', [[1, 1, 1], [9, 2, 0]]), // 9: cornhole only
+      ...game(2, 'pool', [[1, 1, 1], [8, 2, 0]]),     // 8: pool only; 1 crosses
+    ];
+    const ov = house.buildOverview(house.aggregate(r));
+    // House Rankings still lists everyone…
+    expect(ov.rankings.map((x) => x.user_id).sort()).toEqual([1, 8, 9]);
+    // …but the cross-sport boards only include the 2-sport player.
+    expect(ov.best_at_everything.length).toBe(1);
+    for (const board of [ov.best_at_everything, ov.jack_of_all_trades, ov.signature_sport]) {
+      expect(board.every((x) => x.user_id === 1)).toBe(true);
+    }
+  });
+
+  test('signature_sport picks each player\'s strongest sport by win %', () => {
     const agg = house.aggregate(rows);
     const ov = house.buildOverview(agg);
-    const a = ov.sport_affinity.find((r) => r.user_id === 1);
-    // A's avg win % is 50; cornhole 100 is +50 over, pool 0 is -50.
+    const a = ov.signature_sport.find((r) => r.user_id === 1);
+    // A: cornhole 100% vs pool 0% -> signature is cornhole.
     expect(a.sport).toBe('cornhole');
-    expect(a.over_performance).toBe(50);
+    expect(a.win_pct).toBe(100);
   });
 
   test('hydrate is applied to board entries', () => {
