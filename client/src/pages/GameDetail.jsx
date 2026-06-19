@@ -141,7 +141,7 @@ export default function GameDetail() {
       return <div className="font-display text-5xl mt-2" style={{ color }}>{score}</div>;
     }
     if (isWinner) {
-      return <div className="font-display text-3xl mt-2" style={{ color }}>Winner</div>;
+      return <div className="font-display text-lg sm:text-2xl mt-2 leading-tight" style={{ color }}>Winner</div>;
     }
     return (
       <div className="mt-3" style={{ color }}>
@@ -202,7 +202,7 @@ export default function GameDetail() {
       <div className="card mb-5">
         <div className="grid grid-cols-3 text-center items-center gap-2">
           {/* Team 1 */}
-          <div className={`p-4 rounded-xl ${t1Won ? 'bg-green-50' : ''}`}>
+          <div className={`px-2 py-4 rounded-xl ${t1Won ? 'bg-green-50' : ''}`}>
             <div className="flex justify-center gap-1 mb-2">
               {team1.map((p) => (
                 <Link key={p.user_id} to={lp(`players/${p.user_id}`)}>
@@ -228,7 +228,7 @@ export default function GameDetail() {
           </div>
 
           {/* Team 2 */}
-          <div className={`p-4 rounded-xl ${!t1Won ? 'bg-green-50' : ''}`}>
+          <div className={`px-2 py-4 rounded-xl ${!t1Won ? 'bg-green-50' : ''}`}>
             <div className="flex justify-center gap-1 mb-2">
               {team2.map((p) => (
                 <Link key={p.user_id} to={lp(`players/${p.user_id}`)}>
