@@ -34,6 +34,8 @@ const MIGRATIONS = [
   { name: '019_league_sport',                  file: './migrations/019_league_sport' },
   { name: '020_pool_game_variants',            file: './migrations/020_pool_game_variants' },
   { name: '021_league_race_to_target',         file: './migrations/021_league_race_to_target' },
+  { name: '022_user_sport_ratings',            file: './migrations/022_user_sport_ratings' },
+  { name: '023_matches',                       file: './migrations/023_matches' },
 ];
 
 async function run(db) {
@@ -61,7 +63,7 @@ async function run(db) {
   }
 }
 
-module.exports = { run };
+module.exports = { run, MIGRATIONS };
 
 // CLI entry point
 if (require.main === module) {
