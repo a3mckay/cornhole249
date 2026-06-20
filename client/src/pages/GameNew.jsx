@@ -52,6 +52,7 @@ export default function GameNew({ onAchievement }) {
   const [poolDoubles, setPoolDoubles] = useState(false); // singles is the default
   const [ballsRemaining, setBallsRemaining] = useState('');
   const [endCondition, setEndCondition] = useState(''); // '' | 'sunk' | 'scratch'
+  const [poolWinner, setPoolWinner] = useState('team1'); // win/loss mode: which team won
 
   const [gameType, setGameType] = useState('1v1');
   const [t1p1, setT1p1] = useState('');
@@ -97,6 +98,14 @@ export default function GameNew({ onAchievement }) {
   // (not cutthroat, and not 8-ball which is scored single-rack via balls left).
   const raceActive =
     isPool && raceToTarget != null && !isCutthroat && gameVariant !== 'eight_ball';
+  // Per-game (rack-level) win/loss entry: just pick the winner — no score boxes.
+  // This is the pool default when Race-to-N is off; 8-ball is always here (it's
+  // single-rack). Only race-on rack/point variants keep the numeric match score.
+  const winLossMode = isPool && !isCutthroat && !raceActive;
+
+  // Resolve a team's player names for the winner picker (falls back to a label).
+  const teamName = (ids, fallback) =>
+    ids.map((id) => players.find((p) => p.id === id)?.display_name).filter(Boolean).join(' & ') || fallback;
 
   const allSelected = () => {
     if (isCutthroat) return t1p1 && t2p1 && t2p2;
@@ -157,8 +166,9 @@ export default function GameNew({ onAchievement }) {
     const errs = [];
     if (!allSelected()) errs.push('Select all players');
     if (hasDuplicates) errs.push('A player cannot be on both teams');
-    // Cutthroat has no numeric scores — the winner is whoever is in team1.
-    if (!isCutthroat) {
+    // Numeric scores only apply to cornhole and race-on pool. Cutthroat and
+    // per-game win/loss pool derive the winner without a typed score.
+    if (!isCutthroat && !winLossMode) {
       const s1 = parseInt(t1score);
       const s2 = parseInt(t2score);
       if (isNaN(s1) || isNaN(s2) || s1 < 0 || s2 < 0) errs.push(`${scoreLabel} must be non-negative integers`);
@@ -189,8 +199,10 @@ export default function GameNew({ onAchievement }) {
         finalVenueId = v.id;
       }
 
-      const s1 = parseInt(t1score);
-      const s2 = parseInt(t2score);
+      // Win/loss mode encodes the result as 1–0 from the winner pick; numeric
+      // modes (cornhole, race-on pool) read the typed scores.
+      const s1 = winLossMode ? (poolWinner === 'team1' ? 1 : 0) : parseInt(t1score);
+      const s2 = winLossMode ? (poolWinner === 'team1' ? 0 : 1) : parseInt(t2score);
 
       let team1, team2;
       if (isCutthroat) {
@@ -400,7 +412,7 @@ export default function GameNew({ onAchievement }) {
                   </div>
                 )}
               </div>
-              {!isCutthroat && (
+              {!isCutthroat && !winLossMode && (
                 <input
                   type="number"
                   min="0"
@@ -429,7 +441,7 @@ export default function GameNew({ onAchievement }) {
                   </div>
                 )}
               </div>
-              {!isCutthroat && (
+              {!isCutthroat && !winLossMode && (
                 <input
                   type="number"
                   min="0"
@@ -442,6 +454,33 @@ export default function GameNew({ onAchievement }) {
                 />
               )}
             </div>
+
+            {/* Win/loss pick — no rack score to type (per-game default). */}
+            {winLossMode && (
+              <div className="mb-4">
+                <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Who won?</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { key: 'team1', label: teamName([t1p1, t1p2], 'Team 1') },
+                    { key: 'team2', label: teamName([t2p1, t2p2], 'Team 2') },
+                  ].map((w) => (
+                    <button
+                      key={w.key}
+                      type="button"
+                      onClick={() => setPoolWinner(w.key)}
+                      className="p-4 rounded-2xl border-2 text-center transition-all font-display text-lg"
+                      style={{
+                        background: poolWinner === w.key ? 'rgba(31,92,61,0.10)' : 'var(--color-surface)',
+                        borderColor: poolWinner === w.key ? 'var(--color-primary)' : 'var(--color-border)',
+                        color: 'var(--color-text-primary)',
+                      }}
+                    >
+                      {poolWinner === w.key && <span className="mr-1">🏆</span>}{w.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 8-ball extras: how it ended + loser's balls left on the table */}
             {isPool && gameVariant === 'eight_ball' && (
@@ -516,9 +555,9 @@ export default function GameNew({ onAchievement }) {
               <button onClick={() => setStep(1)} className="btn btn-ghost flex-1">← Back</button>
               <button
                 onClick={() => setStep(3)}
-                disabled={!allSelected() || hasDuplicates || (!isCutthroat && (!t1score || !t2score))}
+                disabled={!allSelected() || hasDuplicates || (!isCutthroat && !winLossMode && (!t1score || !t2score))}
                 className="btn btn-primary flex-2 flex-1"
-                style={{ opacity: (!allSelected() || (!isCutthroat && (!t1score || !t2score))) ? 0.5 : 1 }}
+                style={{ opacity: (!allSelected() || (!isCutthroat && !winLossMode && (!t1score || !t2score))) ? 0.5 : 1 }}
               >
                 Next →
               </button>
