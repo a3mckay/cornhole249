@@ -909,6 +909,9 @@ export default function LeagueSettings() {
             </div>
           </div>
 
+          {/* Scoring Rules are cornhole-specific (Hamilton/ACA/Custom point
+              rules) — hidden for pool and other sports. */}
+          {!isPool && (
           <div>
             <label className="block text-sm font-ui font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
               Scoring Rules
@@ -1071,6 +1074,7 @@ export default function LeagueSettings() {
               </div>
             )}
           </div>
+          )}
 
           {saveError && (
             <p className="text-sm font-ui p-2 rounded-xl text-center" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
