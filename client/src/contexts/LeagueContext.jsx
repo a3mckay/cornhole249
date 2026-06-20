@@ -72,12 +72,14 @@ export function LeagueProvider({ slug: slugProp }) {
         setTheme(league?.theme_json || null);
         setSport(league?.sport || DEFAULT_SPORT);
         setRaceToTarget(league?.race_to_target != null ? Number(league.race_to_target) : null);
-        if (slug !== 'cornhole249') {
-          setLeagueId(league?.id ?? null);
-          setPlan(league?.plan_override || league?.plan || 'free');
-          setExpiresAt(league?.expires_at ?? null);
-          setGraceEndsAt(league?.grace_period_ends_at ?? null);
-        }
+        // Always reflect the league's REAL plan (plan_override wins — that's the
+        // superadmin comp set via /admin). cornhole249 used to be hardcoded 'pro'
+        // here, which split-brained the UI (server enforced the real plan, client
+        // faked Pro). Now every league — cornhole249 included — shows the truth.
+        setLeagueId(slug === 'cornhole249' ? 1 : (league?.id ?? null));
+        setPlan(league?.plan_override || league?.plan || 'free');
+        setExpiresAt(league?.expires_at ?? null);
+        setGraceEndsAt(league?.grace_period_ends_at ?? null);
       })
       .catch(() => {
         if (slug !== 'cornhole249') {
