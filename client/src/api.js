@@ -113,6 +113,13 @@ export const gamesApi = {
   retractSubmission: (id) => api.delete(`${leagueBase()}/games/submissions/${id}`).then((r) => r.data),
 };
 
+// Matches / series (best-of-N between two fixed sides) — ROADMAP WS-G
+export const matchesApi = {
+  list: (params) => api.get(`${leagueBase()}/matches`, { params }).then((r) => r.data),
+  get: (id) => api.get(`${leagueBase()}/matches/${id}`).then((r) => r.data),
+  create: (data) => api.post(`${leagueBase()}/matches`, data).then((r) => r.data),
+};
+
 // Comments
 export const commentsApi = {
   post: (gameId, body) => api.post(`${leagueBase()}/games/${gameId}/comments`, { body }).then((r) => r.data),

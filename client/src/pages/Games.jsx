@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { gamesApi, venuesApi, usersApi } from '../api';
+import { gamesApi, venuesApi, usersApi, matchesApi } from '../api';
 import GameCard from '../components/GameCard';
 import DateStrip from '../components/DateStrip';
 import { useAuth } from '../hooks/useAuth';
@@ -108,10 +108,12 @@ export default function Games() {
   const [filters, setFilters] = useState({ type: '', season: '', venue_id: '', user_id: '' });
   const [selectedDate, setSelectedDate] = useState(null);
   const [gameDates, setGameDates] = useState([]);
+  const [openMatches, setOpenMatches] = useState([]);
 
   useEffect(() => {
     Promise.all([venuesApi.list(), usersApi.list(), gamesApi.dates()])
       .then(([v, u, dates]) => { setVenues(v); setPlayers(u); setGameDates(dates); });
+    matchesApi.list({ status: 'open' }).then(setOpenMatches).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -146,13 +148,38 @@ export default function Games() {
           Game History
         </h1>
         {user && (
-          <Link to={lp('games/new')} className="btn btn-primary">
-            + Log a Game
-          </Link>
+          <div className="flex gap-2">
+            <Link to={lp('matches/new')} className="btn btn-secondary">🏆 Match</Link>
+            <Link to={lp('games/new')} className="btn btn-primary">+ Log a Game</Link>
+          </div>
         )}
       </div>
 
       <PendingGamesBanner user={user} />
+
+      {/* Open matches (WS-G) — in-progress series with a live running score. */}
+      {openMatches.length > 0 && (
+        <div className="mb-5">
+          <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>🏆 Matches in progress</div>
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {openMatches.map((m) => {
+              const s1 = (m.side1_players || []).map((p) => p.display_name).join(' & ') || 'Side 1';
+              const s2 = (m.side2_players || []).map((p) => p.display_name).join(' & ') || 'Side 2';
+              return (
+                <Link key={m.id} to={lp(`matches/${m.id}`)}
+                  className="flex-shrink-0 w-56 card card-hover p-3" style={{ background: 'var(--color-surface)' }}>
+                  <div className="text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-primary)' }}>{m.format_label || `First to ${m.target_wins}`}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-ui text-sm truncate" style={{ color: 'var(--color-text-primary)' }}>{s1}</span>
+                    <span className="font-display text-lg flex-shrink-0" style={{ color: 'var(--color-text-primary)' }}>{m.progress?.side1_wins ?? 0}–{m.progress?.side2_wins ?? 0}</span>
+                    <span className="font-ui text-sm truncate text-right" style={{ color: 'var(--color-text-primary)' }}>{s2}</span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Date strip */}
       <div className="mb-5">

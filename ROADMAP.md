@@ -150,9 +150,13 @@ stored counter. **Effort:** L (own workstream). **Status:** Phase 1 (backend)
   `match_id` (validates open + sides-fit, attaches, recomputes after each game).
   Mounted at `/api/matches` + `/api/l/:slug/matches`. Fixtures synced. 6 new
   tests; 117/117 green.
-- **Phase 2 (todo):** client — start-a-match UI, log games into an open match
-  (winner picker already exists), a match detail page with running score, and
-  surfacing open matches + grouping in the games list.
+- **Phase 2 (done):** client — `matchesApi` (list/get/create); `MatchNew` page
+  (format, sides, length presets Best-of-3/5/7 + Race-to-5 + custom, pool variant
+  picker); `MatchDetail` page (running score, status, inline "log a rack" winner
+  picker + 8-ball balls, rack-by-rack list, auto-refresh on log); Games page gets
+  a "🏆 Match" button + an "in progress" open-matches strip with live scores.
+  Routes added under both cornhole249 and /l/:slug. MatchNew render verified in
+  preview; build clean. (Logging a rack reuses POST /api/games with match_id.)
 
 ---
 

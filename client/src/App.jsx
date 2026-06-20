@@ -22,6 +22,8 @@ import Standings from './pages/Standings';
 import Games     from './pages/Games';
 import GameNew   from './pages/GameNew';
 import GameDetail from './pages/GameDetail';
+import MatchNew   from './pages/MatchNew';
+import MatchDetail from './pages/MatchDetail';
 import Register  from './pages/Register';
 import Login     from './pages/Login';
 import Landing   from './pages/Landing';
@@ -205,6 +207,8 @@ export default function App() {
               <Route path="/games" element={<PageWrapper><Games /></PageWrapper>} />
               <Route path="/games/new" element={<PageWrapper><GameNew onAchievement={addToast} /></PageWrapper>} />
               <Route path="/games/:id" element={<PageWrapper><GameDetail /></PageWrapper>} />
+              <Route path="/matches/new" element={<PageWrapper><MatchNew /></PageWrapper>} />
+              <Route path="/matches/:id" element={<PageWrapper><MatchDetail onAchievement={addToast} /></PageWrapper>} />
               <Route path="/players" element={<PageWrapper><Players /></PageWrapper>} />
               <Route path="/players/:id" element={<PageWrapper><PlayerProfile /></PageWrapper>} />
               <Route path="/teams" element={<PageWrapper><Teams /></PageWrapper>} />
@@ -227,6 +231,8 @@ export default function App() {
               <Route path="games" element={<PageWrapper><Games /></PageWrapper>} />
               <Route path="games/new" element={<PageWrapper><GameNew onAchievement={addToast} /></PageWrapper>} />
               <Route path="games/:id" element={<PageWrapper><GameDetail /></PageWrapper>} />
+              <Route path="matches/new" element={<PageWrapper><MatchNew /></PageWrapper>} />
+              <Route path="matches/:id" element={<PageWrapper><MatchDetail onAchievement={addToast} /></PageWrapper>} />
               <Route path="players" element={<PageWrapper><Players /></PageWrapper>} />
               <Route path="players/:id" element={<PageWrapper><PlayerProfile /></PageWrapper>} />
               <Route path="teams" element={<PageWrapper><Teams /></PageWrapper>} />
