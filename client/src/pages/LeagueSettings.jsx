@@ -1271,7 +1271,7 @@ export default function LeagueSettings() {
           </h2>
           <InviteKit
             joinLink={`${window.location.origin}/l/${slug}/join`}
-            joinCode={null}
+            joinCode={shortCode}
             leagueName={league?.name}
           />
           <p className="text-xs font-ui mt-4" style={{ color: 'var(--color-text-secondary)' }}>
