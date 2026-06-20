@@ -255,6 +255,7 @@ app.use((req, res, next) => { req.leagueId = 1; next(); });
 app.use('/auth', require('./routes/auth'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/games', require('./routes/games'));
+app.use('/api/matches', require('./routes/matches'));
 app.use('/api', require('./routes/comments'));
 app.use('/api/standings', require('./routes/standings'));
 app.use('/api/stats', require('./routes/stats'));
@@ -309,6 +310,7 @@ function mountLeague(path, router) {
 const { requirePro } = require('./middleware/planAccess');
 
 const gamesRouter      = require('./routes/games');
+const matchesRouter    = require('./routes/matches');
 const standingsRouter  = require('./routes/standings');
 const statsRouter      = require('./routes/stats');
 const oddsRouter       = require('./routes/odds');
@@ -333,6 +335,7 @@ function mountLeaguePro(path, router) {
 }
 
 mountLeague('games',        gamesRouter);
+mountLeague('matches',      matchesRouter);
 mountLeague('standings',    standingsRouter);
 mountLeaguePro('stats',     statsRouter);     // Pro-gated — Stats page
 mountLeaguePro('odds',      oddsRouter);

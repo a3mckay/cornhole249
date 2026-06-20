@@ -132,6 +132,28 @@ picker now gated behind `sport === 'cornhole'`. `POST /api/leagues` accepts
 league can't be created for a planned-but-unbuilt sport (pingpong/crokinole/…).
 3 new tests (default→cornhole, accept pool, reject unsupported). 100/100 green.
 
+### WS-G — Matches / series (best-of-N between two fixed sides)
+New feedback (2026-06-20). A *match* groups several individual games into a race
+to N wins between two **fixed** sides (cornhole "best of 3", pool "race to 5").
+**Sport-agnostic** (Andrew: cornhole plays best-of-3s too). Games in a match need
+NOT be consecutive — another match can be logged in between (one table / one set
+of boards), so progress is **derived by replaying the match's games**, never a
+stored counter. **Effort:** L (own workstream). **Status:** Phase 1 (backend)
+`[x]`; Phase 2 (client UI) `[ ]`.
+- **Phase 1 (done):** migration 023 (`matches` table + nullable `games.match_id`,
+  additive/idempotent — existing games untouched). Pure `lib/matches.js`
+  (matchProgress replays games→running score + completion; gameFitsMatch validates
+  a game's two teams are the match's two sides in either orientation).
+  `lib/matchSync.js` (recomputeMatch persists status/winner_side/completed_at).
+  `routes/matches.js` (POST create, GET list with running score, GET :id detail
+  with rack-by-rack games + hydrated side players). `POST /api/games` accepts
+  `match_id` (validates open + sides-fit, attaches, recomputes after each game).
+  Mounted at `/api/matches` + `/api/l/:slug/matches`. Fixtures synced. 6 new
+  tests; 117/117 green.
+- **Phase 2 (todo):** client — start-a-match UI, log games into an open match
+  (winner picker already exists), a match detail page with running score, and
+  surfacing open matches + grouping in the games list.
+
 ---
 
 ## Execution order

@@ -6,6 +6,8 @@ const { evaluateAchievements } = require('../lib/achievements');
 const { recalculateAllElosBySport } = require('../lib/elo');
 const { persistSportRatings } = require('../lib/sportRatings');
 const { DEFAULT_SPORT, getSport } = require('../lib/sports');
+const { gameFitsMatch, parseIds } = require('../lib/matches');
+const { recomputeMatch } = require('../lib/matchSync');
 const { fetchWeatherForGame } = require('./weather');
 
 // played_at is stored as UTC ISO / TIMESTAMPTZ. The league plays in Hamilton, ON,
@@ -233,6 +235,8 @@ router.post('/', requireAuth, async (req, res) => {
       game_variant = null,
       eight_ball_end_condition = null,
       balls_remaining = null,
+      // Optional match/series this game belongs to (ROADMAP WS-G).
+      match_id = null,
     } = req.body;
 
     // Resolve the league's sport up-front. Pool leagues unlock the 'cutthroat'
@@ -260,6 +264,20 @@ router.post('/', requireAuth, async (req, res) => {
     const t2Ids = team2.map((p) => p.user_id);
     if (t1Ids.filter((id) => t2Ids.includes(id)).length > 0) {
       return res.status(400).json({ error: 'A player cannot be on both teams' });
+    }
+
+    // Match attachment (WS-G): the game must belong to an open match in this
+    // league whose two sides are exactly these two teams (in either orientation).
+    let matchId = null;
+    if (match_id != null) {
+      const match = await db.selectFrom('matches').selectAll()
+        .where('id', '=', parseInt(match_id)).where('league_id', '=', req.leagueId).executeTakeFirst();
+      if (!match) return res.status(400).json({ error: 'Match not found' });
+      if (match.status !== 'open') return res.status(400).json({ error: 'This match is already complete' });
+      if (!gameFitsMatch(t1Ids, t2Ids, parseIds(match.side1_player_ids), parseIds(match.side2_player_ids))) {
+        return res.status(400).json({ error: "Game players don't match this match's sides" });
+      }
+      matchId = match.id;
     }
 
     // Reject frozen participants — their access to this league is limited
@@ -431,6 +449,7 @@ router.post('/', requireAuth, async (req, res) => {
           submitted_by_user_id: req.session.userId,
           league_id: req.leagueId,
           status: gameStatus,
+          match_id: matchId,
         })
         .returning(['id'])
         .executeTakeFirstOrThrow();
@@ -450,6 +469,7 @@ router.post('/', requireAuth, async (req, res) => {
         await updateElosAfterGame(gameId, db);
         evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
       }
+      if (matchId) await recomputeMatch(db, matchId);
 
       if (venue_id && isOutdoor) {
         const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', venue_id).executeTakeFirst();
@@ -479,6 +499,7 @@ router.post('/', requireAuth, async (req, res) => {
         submitted_by_user_id: req.session.userId,
         league_id: req.leagueId,
         status: gameStatus,
+        match_id: matchId,
       })
       .returning(['id'])
       .executeTakeFirstOrThrow();
@@ -496,6 +517,8 @@ router.post('/', requireAuth, async (req, res) => {
       await updateElosAfterGame(gameId, db);
       evaluateAchievements(gameId).catch((e) => console.warn('[Achievements]', e.message));
     }
+    // Update the parent match's running score / completion (WS-G).
+    if (matchId) await recomputeMatch(db, matchId);
 
     if (venue_id && isOutdoor) {
       const venue = await db.selectFrom('venues').select(['lat', 'lng']).where('id', '=', venue_id).executeTakeFirst();

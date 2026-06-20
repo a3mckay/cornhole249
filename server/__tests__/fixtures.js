@@ -126,6 +126,8 @@ const SCHEMA_SQL = `
     -- migration 020: pool game variants (NULL for cornhole games)
     game_variant TEXT,
     eight_ball_end_condition TEXT,
+    -- migration 023: match/series this game belongs to (NULL = standalone)
+    match_id INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS game_participants (
@@ -160,6 +162,23 @@ const SCHEMA_SQL = `
     league_id INTEGER NOT NULL DEFAULT 1,
     earned_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id, achievement_key, league_id)
+  );
+  CREATE TABLE IF NOT EXISTS matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    league_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    venue_id INTEGER,
+    game_type TEXT NOT NULL,
+    game_variant TEXT,
+    side1_player_ids TEXT NOT NULL DEFAULT '[]',
+    side2_player_ids TEXT NOT NULL DEFAULT '[]',
+    target_wins INTEGER NOT NULL,
+    format_label TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    winner_side INTEGER,
+    created_by_user_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
   );
   CREATE TABLE IF NOT EXISTS tournaments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
