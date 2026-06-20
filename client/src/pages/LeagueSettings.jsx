@@ -155,30 +155,18 @@ export default function LeagueSettings() {
     }
   };
 
-  const handleExport = async (type) => {
+  const handleExport = (type) => {
+    // Pro-gated. Gate in-page (same rule as custom rules) so free leagues get the
+    // upgrade modal instead of a silent failure.
+    if (plan === 'free' && !venueActive) { setShowUpgrade(true); return; }
+    // Download by navigating straight to the endpoint: its
+    // `Content-Disposition: attachment` makes the browser download natively and
+    // stay on the page. The old approach (fetch → blob → programmatic <a>.click())
+    // runs after an await, so it loses user-activation and is silently blocked on
+    // mobile / installed-PWA browsers — which is why "nothing happened" on phone.
     setExportLoading(type);
-    try {
-      const res = await fetch(`/api/l/${slug}/export/${type}`, { credentials: 'include' });
-      if (res.status === 403) {
-        const data = await res.json().catch(() => ({}));
-        if (data.upgrade) setShowUpgrade(true);
-        return;
-      }
-      if (!res.ok) return;
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${type}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (_) {
-      // silent fail
-    } finally {
-      setExportLoading(null);
-    }
+    window.location.href = `/api/l/${slug}/export/${type}`;
+    setTimeout(() => setExportLoading(null), 1500);
   };
 
   // Initialise grace keep-set when members load and grace period is active
