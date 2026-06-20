@@ -180,6 +180,21 @@ const SCHEMA_SQL = `
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     completed_at TEXT
   );
+  CREATE TABLE IF NOT EXISTS pending_game_submissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    league_id INTEGER NOT NULL,
+    submitter_user_id INTEGER NOT NULL,
+    submitter_team INTEGER NOT NULL,
+    game_type TEXT NOT NULL,
+    played_at TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    venue_id INTEGER,
+    team1_player_ids TEXT NOT NULL DEFAULT '[]',
+    team2_player_ids TEXT NOT NULL DEFAULT '[]',
+    team1_score INTEGER NOT NULL,
+    team2_score INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
   CREATE TABLE IF NOT EXISTS tournaments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
