@@ -1492,13 +1492,13 @@ export default function LeagueSettings() {
               )}
             </div>
 
-            {/* Race to N — pool only. Off by default; admins opt in and tune the target. */}
+            {/* Race to Rack # — pool only. Off by default; admins opt in and tune the target. */}
             {isPool && (
               <div>
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="block font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-                      🎱 Race to N
+                      🎱 Race to Rack #
                     </label>
                     <p className="font-ui text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
                       Set a target number of racks to win a match. Off by default.
