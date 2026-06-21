@@ -93,12 +93,11 @@ export default function Navbar() {
     <nav className="sticky top-0 z-50 shadow-md" style={{ backgroundColor: 'var(--color-navbar)' }}>
       <div className="max-w-7xl mx-auto px-4 flex items-center h-14 gap-3">
 
-        {/* Wordmark: sport-neutral "Games249" brand (no per-sport emoji — that
-            read as clutter on the multi-sport House). Custom-logo leagues still
-            append their uploaded logo + name; sport context lives in the
-            switcher and page content, not the wordmark. */}
+        {/* Wordmark: sport-neutral "Games249" brand. Tapping it returns to the
+            House — the cross-sport league selector (Andrew's nav spec) — so it's
+            always the way "up and out" to pick a league. Logged-out → landing. */}
         <Link
-          to={leagueHome(currentSlug)}
+          to={user ? '/house' : '/'}
           className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
         >
           <span className="font-display text-2xl text-amber-100 tracking-wide">Games249</span>

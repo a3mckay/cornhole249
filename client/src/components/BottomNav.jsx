@@ -67,46 +67,67 @@ export default function BottomNav() {
   // Per-sport icon overrides (registry). Today only the Games tab swaps — pool
   // shows 🎱 instead of the cornhole-board SVG. Falls back to the built-in icon.
   const sportIcons = getSport(sport).icons || {};
-  const tabs = TAB_DEFS.map((t) => {
+  const tab = (t) => {
     const override = sportIcons[t.key];
-    return {
-      ...t,
-      to: leaguePath(currentSlug, t.key),
-      icon: override
-        ? <span className="text-xl leading-none" aria-hidden="true">{override}</span>
-        : t.icon,
-    };
-  });
+    return { ...t, to: leaguePath(currentSlug, t.key), icon: override ? <span className="text-xl leading-none" aria-hidden="true">{override}</span> : t.icon };
+  };
+  // Games/Standings flank the left; Stats/Trash the right; Home sits raised in
+  // the middle (a FAB-style tab) and returns to the league home screen.
+  const left = [tab(TAB_DEFS[0]), tab(TAB_DEFS[1])];
+  const right = [tab(TAB_DEFS[2]), tab(TAB_DEFS[3])];
+
+  const renderTab = (t) => (
+    <NavLink
+      key={t.key}
+      to={t.to}
+      className={({ isActive }) =>
+        `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs font-ui font-semibold transition-colors ${
+          isActive ? 'text-white' : 'text-amber-100/50 hover:text-amber-100/80'
+        }`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <span style={{ color: isActive ? 'var(--color-secondary)' : undefined }}>{t.icon}</span>
+          <span style={{ fontSize: '10px' }}>{t.label}</span>
+        </>
+      )}
+    </NavLink>
+  );
 
   return (
     <nav
-      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex border-t"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 flex items-end border-t"
       style={{
         backgroundColor: 'var(--color-navbar)',
         borderColor: 'rgba(255,255,255,0.1)',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      {tabs.map((tab) => (
-        <NavLink
-          key={tab.key}
-          to={tab.to}
-          className={({ isActive }) =>
-            `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs font-ui font-semibold transition-colors ${
-              isActive ? 'text-white' : 'text-amber-100/50 hover:text-amber-100/80'
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <span style={{ color: isActive ? 'var(--color-secondary)' : undefined }}>
-                {tab.icon}
-              </span>
-              <span style={{ fontSize: '10px' }}>{tab.label}</span>
-            </>
-          )}
-        </NavLink>
-      ))}
+      {left.map(renderTab)}
+
+      {/* Raised center Home button — returns to the current league's home screen. */}
+      <NavLink to={leaguePath(currentSlug, 'home')} className="flex-1 flex flex-col items-center justify-end pb-1.5" aria-label="Home">
+        {({ isActive }) => (
+          <>
+            <span
+              className="flex items-center justify-center rounded-full shadow-lg transition-transform"
+              style={{
+                width: 54, height: 54, marginTop: -22, marginBottom: 3,
+                background: isActive ? 'var(--color-secondary)' : 'var(--color-primary)',
+                color: '#fff', border: '4px solid var(--color-navbar)',
+              }}
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.9}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 11.5l9-8 9 8M5.5 9.5V20a1 1 0 001 1H10v-5.5h4V21h3.5a1 1 0 001-1V9.5" />
+              </svg>
+            </span>
+            <span className="font-ui font-semibold" style={{ fontSize: '10px', color: isActive ? 'var(--color-secondary)' : 'rgba(255,243,199,0.7)' }}>Home</span>
+          </>
+        )}
+      </NavLink>
+
+      {right.map(renderTab)}
     </nav>
   );
 }

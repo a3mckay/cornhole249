@@ -191,7 +191,7 @@ export default function Home() {
                     {(leagues || []).map((l) => (
                       <button
                         key={l.slug}
-                        onClick={() => { setSwitcherOpen(false); navigate(l.slug === 'cornhole249' ? '/' : `/l/${l.slug}`); }}
+                        onClick={() => { setSwitcherOpen(false); navigate(leaguePath(l.slug, 'home')); }}
                         className="w-full text-left px-4 py-3 font-ui font-semibold text-sm flex items-center justify-between gap-4 hover:opacity-80 transition-opacity"
                         style={{
                           color: 'var(--color-text-primary)',

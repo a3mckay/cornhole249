@@ -207,6 +207,7 @@ export default function App() {
               <Route path="/games" element={<PageWrapper><Games /></PageWrapper>} />
               <Route path="/games/new" element={<PageWrapper><GameNew onAchievement={addToast} /></PageWrapper>} />
               <Route path="/games/:id" element={<PageWrapper><GameDetail /></PageWrapper>} />
+              <Route path="/home" element={<PageWrapper><Home /></PageWrapper>} />
               <Route path="/matches/new" element={<PageWrapper><MatchNew /></PageWrapper>} />
               <Route path="/matches/:id" element={<PageWrapper><MatchDetail onAchievement={addToast} /></PageWrapper>} />
               <Route path="/players" element={<PageWrapper><Players /></PageWrapper>} />
@@ -231,6 +232,7 @@ export default function App() {
               <Route path="games" element={<PageWrapper><Games /></PageWrapper>} />
               <Route path="games/new" element={<PageWrapper><GameNew onAchievement={addToast} /></PageWrapper>} />
               <Route path="games/:id" element={<PageWrapper><GameDetail /></PageWrapper>} />
+              <Route path="home" element={<PageWrapper><Home /></PageWrapper>} />
               <Route path="matches/new" element={<PageWrapper><MatchNew /></PageWrapper>} />
               <Route path="matches/:id" element={<PageWrapper><MatchDetail onAchievement={addToast} /></PageWrapper>} />
               <Route path="players" element={<PageWrapper><Players /></PageWrapper>} />
