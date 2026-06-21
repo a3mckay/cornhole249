@@ -210,6 +210,7 @@ export const leaguesApi = {
   create: (data) => api.post('/leagues', data).then((r) => r.data),
   get: (slug) => api.get(`/leagues/${slug}`).then((r) => r.data),
   update: (slug, data) => api.patch(`/leagues/${slug}`, data).then((r) => r.data),
+  remove: (slug, confirm) => api.delete(`/leagues/${slug}`, { data: { confirm } }).then((r) => r.data),
   members: (slug) => api.get(`/leagues/${slug}/members`).then((r) => r.data),
   changeMemberRole: (slug, userId, role) => api.patch(`/leagues/${slug}/members/${userId}`, { role }).then((r) => r.data),
   removeMember: (slug, userId) => api.delete(`/leagues/${slug}/members/${userId}`).then((r) => r.data),

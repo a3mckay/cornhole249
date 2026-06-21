@@ -910,4 +910,70 @@ router.post('/:slug/short-code', requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/leagues/:slug — permanently delete a league and ALL of its data.
+//
+// SAFETY (Andrew's hard requirement): this is scoped STRICTLY to one league. It
+// removes only rows tied to this league_id (plus its games' participants and its
+// tournaments' matches), then the league row — all in a single transaction so a
+// failure rolls back cleanly. It NEVER touches:
+//   • users (players)               • user_sport_ratings (global per user/sport)
+//   • any OTHER league's rows        • kv_store / sessions
+// The flagship `cornhole249` league is hard-protected and cannot be deleted.
+// Authorization: league OWNER (or site superadmin) only, with a typed-name
+// confirmation as defense-in-depth against accidental/automated calls.
+router.delete('/:slug', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const slug = req.params.slug;
+
+    if (slug === 'cornhole249') {
+      return res.status(403).json({ error: 'The Cornhole249 league is protected and cannot be deleted.' });
+    }
+
+    const { rows: leagueRows } = await sql`SELECT id, name FROM leagues WHERE slug = ${slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    // Owner of THIS league, or a site superadmin.
+    const { rows: roleRows } = await sql`
+      SELECT role FROM league_memberships WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    const isOwner = roleRows[0]?.role === 'owner';
+    if (!isOwner && !req.session.isAdmin) {
+      return res.status(403).json({ error: 'Only the league owner can delete a league.' });
+    }
+
+    // Typed confirmation must match the league name.
+    const confirm = (req.body?.confirm || '').trim();
+    if (confirm.toLowerCase() !== String(league.name).trim().toLowerCase()) {
+      return res.status(400).json({ error: 'Type the league name exactly to confirm deletion.' });
+    }
+
+    const id = league.id;
+    await db.transaction().execute(async (trx) => {
+      // Grandchildren first (rows keyed off this league's games / tournaments).
+      await sql`DELETE FROM game_participants WHERE game_id IN (SELECT id FROM games WHERE league_id = ${id})`.execute(trx);
+      await sql`DELETE FROM tournament_matches WHERE tournament_id IN (SELECT id FROM tournaments WHERE league_id = ${id})`.execute(trx);
+      // Every league-scoped table (explicit + ordered; never relies on cascades).
+      await sql`DELETE FROM comments WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM games WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM tournaments WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM matches WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM trash_talk WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM achievements WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM venues WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM join_codes WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM join_requests WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM pending_game_submissions WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM plan_override_audit WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM league_memberships WHERE league_id = ${id}`.execute(trx);
+      await sql`DELETE FROM leagues WHERE id = ${id}`.execute(trx);
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

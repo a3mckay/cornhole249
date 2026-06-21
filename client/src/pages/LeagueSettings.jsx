@@ -77,6 +77,12 @@ export default function LeagueSettings() {
   const [shortCodeCopied, setShortCodeCopied] = useState(false);
   const [shortCodeRegenerating, setShortCodeRegenerating] = useState(false);
 
+  // Delete league (danger zone)
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteText, setDeleteText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
   // Member removal / role change
   const [removingId, setRemovingId] = useState(null);
   const [confirmRemove, setConfirmRemove] = useState(null);
@@ -361,6 +367,19 @@ export default function LeagueSettings() {
       setSaveError(e.response?.data?.error || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteLeague = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await leaguesApi.remove(slug, deleteText);
+      await refreshUser(); // drop the deleted league from the user's list
+      navigate('/house');
+    } catch (e) {
+      setDeleteError(e.response?.data?.error || 'Failed to delete league');
+      setDeleting(false);
     }
   };
 
@@ -1751,6 +1770,57 @@ export default function LeagueSettings() {
           </p>
         )}
       </div>
+
+      {/* Danger Zone — delete this league. Owner (or site admin) only, never the
+          flagship cornhole249, and gated behind typing the league name. */}
+      {(myRole === 'owner' || user?.is_admin) && slug !== 'cornhole249' && (
+        <div className="card p-6" style={{ border: '1px solid var(--color-danger)' }}>
+          <h2 className="font-display text-xl mb-1" style={{ color: 'var(--color-danger)' }}>⚠️ Danger Zone</h2>
+          <p className="font-ui text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
+            Permanently delete <strong>{league?.name || slug}</strong> and all of its games, standings,
+            matches, and history. Players' accounts and your other leagues are <strong>not</strong> affected.
+            This can't be undone.
+          </p>
+          {!deleteOpen ? (
+            <button
+              onClick={() => { setDeleteOpen(true); setDeleteText(''); setDeleteError(''); }}
+              className="btn text-sm"
+              style={{ background: 'var(--color-danger)', color: '#fff' }}
+            >
+              🗑️ Delete this league
+            </button>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <label className="font-ui text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                Type <strong>{league?.name}</strong> to confirm:
+              </label>
+              <input
+                value={deleteText}
+                onChange={(e) => setDeleteText(e.target.value)}
+                placeholder={league?.name}
+                className="w-full px-3 py-2 rounded-xl border font-ui text-sm"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              />
+              {deleteError && (
+                <p className="text-sm font-ui p-2 rounded-lg" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>{deleteError}</p>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => { setDeleteOpen(false); setDeleteText(''); setDeleteError(''); }} className="btn btn-ghost text-sm flex-1">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteLeague}
+                  disabled={deleting || deleteText.trim().toLowerCase() !== String(league?.name || '').trim().toLowerCase()}
+                  className="btn text-sm flex-1 disabled:opacity-50"
+                  style={{ background: 'var(--color-danger)', color: '#fff' }}
+                >
+                  {deleting ? 'Deleting…' : 'Delete forever'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
