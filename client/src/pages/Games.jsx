@@ -148,10 +148,7 @@ export default function Games() {
           Game History
         </h1>
         {user && (
-          <div className="flex gap-2">
-            <Link to={lp('matches/new')} className="btn btn-secondary">🏆 Match</Link>
-            <Link to={lp('games/new')} className="btn btn-primary">+ Log a Game</Link>
-          </div>
+          <Link to={lp('games/new')} className="btn btn-primary">+ Log a Game</Link>
         )}
       </div>
 

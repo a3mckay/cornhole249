@@ -290,6 +290,26 @@ export default function GameNew({ onAchievement }) {
       </div>
 
       <div className="card">
+        {/* First choice: a single game (this flow) or a best-of-N match. Picking
+            match hands off to the match setup — keeps one "Log a Game" entry. */}
+        {step === 1 && (
+          <div className="flex gap-2 mb-5">
+            <div className="flex-1 p-3 rounded-xl border-2 text-center" style={{ borderColor: 'var(--color-primary)', background: 'rgba(31,92,61,0.08)' }}>
+              <div className="font-display text-base" style={{ color: 'var(--color-text-primary)' }}>🎯 Single game</div>
+              <div className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Log one result</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(lp('matches/new'))}
+              className="flex-1 p-3 rounded-xl border-2 text-center transition-all"
+              style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
+            >
+              <div className="font-display text-base">🏆 Best-of-N match →</div>
+              <div className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Race to N wins</div>
+            </button>
+          </div>
+        )}
+
         {/* Step 1: Game Type */}
         {step === 1 && !isPool && (
           <div>
