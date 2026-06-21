@@ -80,8 +80,28 @@ describe('DELETE /api/leagues/:slug', () => {
     }
     expect(count('league_memberships', 'league_id = 3')).toBe(2);
 
-    // Global per-sport ratings untouched.
-    expect(count('user_sport_ratings')).toBe(2);
+    // Delete triggers a recompute (adds cornhole rows for the surviving keeper
+    // players) but never wipes the table — pool ratings (no remaining games) survive.
+    expect(count('user_sport_ratings', "sport = 'pool'")).toBe(2);
+  });
+
+  test('recomputes per-sport ratings from the remaining games after delete', async () => {
+    // Both leagues are pool, one 8-ball game each; Alice's pool rating is bogus.
+    run(`UPDATE leagues SET sport = 'pool' WHERE id IN (2,3)`);
+    run(`UPDATE games SET game_variant = 'eight_ball'`);
+    run(`UPDATE user_sport_ratings SET rating = 1500 WHERE user_id = 1 AND sport = 'pool'`);
+
+    const agent = request.agent(app);
+    await login(agent, 1);
+    const res = await agent.delete('/api/leagues/doomed').send({ confirm: 'Doomed League' });
+    expect(res.status).toBe(200);
+
+    // Only keeper's pool game remains (Alice beat Carol). Replayed from 1000 with
+    // flat margin (K=32): winner 1016, loser 984. The bogus 1500 is overwritten,
+    // proving the recompute ran against the post-delete game set.
+    const pool = (uid) => rawTestDb.prepare("SELECT rating FROM user_sport_ratings WHERE user_id = ? AND sport = 'pool'").get(uid)?.rating;
+    expect(pool(1)).toBe(1016);
+    expect(pool(3)).toBe(984);
   });
 
   test('the cornhole249 flagship is protected (403)', async () => {

@@ -9,6 +9,7 @@
 
 const { sql } = require('../db');
 const { DEFAULT_SPORT } = require('./sports');
+const { recalculateAllElosBySport } = require('./elo');
 
 /**
  * Upsert a single (user, sport) rating. Uses ON CONFLICT, which is supported by
@@ -88,7 +89,30 @@ async function applySportElo(db, req, users) {
   }
 }
 
+/**
+ * Recompute every per-sport rating from scratch off the CURRENT games, and
+ * persist. Used on startup and after a league delete (its games are gone, so the
+ * global per-sport ratings need to be replayed without them). Same engine as the
+ * startup recalc: partitions games by each league's sport and replays in
+ * isolation. No-op when there are no games. Players with no remaining games keep
+ * their last rating (the recalc only writes players who appear in a game).
+ */
+async function recomputeAllSportRatings(db) {
+  const { rows: games } = await sql`SELECT * FROM games ORDER BY played_at ASC`.execute(db);
+  if (!games.length) return { players: 0, sports: 0 };
+  const { rows: participants } = await sql`SELECT * FROM game_participants`.execute(db);
+  const { rows: leagueRows } = await sql`SELECT id, sport FROM leagues`.execute(db);
+  const sportByLeague = new Map(leagueRows.map((l) => [l.id, l.sport]));
+  const resolveSport = (game) => sportByLeague.get(game.league_id) || DEFAULT_SPORT;
+  const bySport = recalculateAllElosBySport(games, participants, resolveSport);
+  await persistSportRatings(db, bySport);
+  return {
+    players: new Set(Object.values(bySport).flatMap((m) => Object.keys(m))).size,
+    sports: Object.keys(bySport).length,
+  };
+}
+
 module.exports = {
-  upsertSportRating, persistSportRatings, getSportRating,
+  upsertSportRating, persistSportRatings, getSportRating, recomputeAllSportRatings,
   eloExpr, eloJoin, eloGroup, applySportElo,
 };

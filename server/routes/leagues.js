@@ -9,6 +9,7 @@ const { isPro } = require('../lib/plan');
 const { leaguePreview } = require('../lib/leaguePreview');
 const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
 const { isLiveSport, DEFAULT_SPORT } = require('../lib/sports');
+const { recomputeAllSportRatings } = require('../lib/sportRatings');
 
 // ── Logo upload (multer) ─────────────────────────────────────────────────────
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/uploads';
@@ -969,6 +970,15 @@ router.delete('/:slug', requireAuth, async (req, res) => {
       await sql`DELETE FROM league_memberships WHERE league_id = ${id}`.execute(trx);
       await sql`DELETE FROM leagues WHERE id = ${id}`.execute(trx);
     });
+
+    // The league's games are gone, so the GLOBAL per-sport ratings are now stale
+    // — replay the remaining games to correct them. Non-fatal: the delete already
+    // committed, so a recompute hiccup must not fail the request.
+    try {
+      await recomputeAllSportRatings(db);
+    } catch (e) {
+      console.warn('[LeagueDelete] rating recompute failed (delete still succeeded):', e.message);
+    }
 
     return res.json({ ok: true });
   } catch (e) {
