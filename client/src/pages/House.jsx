@@ -31,12 +31,12 @@ function Nick({ p }) {
   return <span className="ml-1 text-xs opacity-60" style={{ color: 'var(--color-text-secondary)' }}>"{p.nickname}"</span>;
 }
 
-// "Enter that league" target. Land on the Games tab rather than the league
-// home — for cornhole249 the home is "/", which itself renders this House hub
-// for multi-sport users, so linking there would loop back. Games never loops
-// and is the natural primary tab.
+// "Enter that league" target → the league's Home screen. Uses the dedicated
+// `home` route (/home for cornhole249, /l/:slug/home otherwise) which renders
+// Home.jsx directly — so it no longer loops back to this House hub the way a
+// bare "/" would for multi-sport users.
 function enterLeague(slug) {
-  return leaguePath(slug, 'games');
+  return leaguePath(slug, 'home');
 }
 
 // Front-door tiles: the viewer's own leagues, grouped into sport sections.
