@@ -4,8 +4,8 @@ import { usersApi, matchesApi } from '../api';
 import { useLeague, useLeaguePath } from '../contexts/LeagueContext';
 import { capture } from '../lib/analytics';
 
-// Start a match/series (ROADMAP WS-G): a race to N wins between two FIXED sides.
-// Sport-agnostic — cornhole "best of 3", pool "race to 5", etc.
+// Start a match/series (ROADMAP WS-G): a best-of-# series between two FIXED
+// sides — first to a target number of game wins. Sport-agnostic.
 
 const POOL_VARIANTS = [
   { key: 'eight_ball', label: '8-Ball', emoji: '🎱' },
@@ -18,7 +18,7 @@ const PRESETS = [
   { label: 'Best of 3', wins: 2 },
   { label: 'Best of 5', wins: 3 },
   { label: 'Best of 7', wins: 4 },
-  { label: 'Race to 5', wins: 5 },
+  { label: 'Best of 9', wins: 5 },
 ];
 
 function PlayerPicker({ players, value, onChange, exclude, label }) {

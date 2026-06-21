@@ -304,8 +304,8 @@ export default function GameNew({ onAchievement }) {
               className="flex-1 p-3 rounded-xl border-2 text-center transition-all"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-primary)' }}
             >
-              <div className="font-display text-base">🏆 Best-of-N match →</div>
-              <div className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Race to N wins</div>
+              <div className="font-display text-base">🏆 Best of # →</div>
+              <div className="text-xs font-ui" style={{ color: 'var(--color-text-secondary)' }}>Log a series</div>
             </button>
           </div>
         )}
