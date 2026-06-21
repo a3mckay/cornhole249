@@ -617,7 +617,7 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     const game = await db.selectFrom('games').selectAll().where('id', '=', gameId).executeTakeFirst();
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
-    const { played_at, venue_id, game_type, t1_score, t2_score } = req.body;
+    const { played_at, venue_id, game_type, t1_score, t2_score, balls_remaining } = req.body;
     const updates = {};
 
     if (played_at !== undefined) updates.played_at = played_at;
@@ -662,6 +662,17 @@ router.patch('/:id', requireAdmin, async (req, res) => {
         .where('team', '=', 2)
         .execute();
 
+      await updateElosAfterGame(gameId, db);
+    }
+
+    // Correct the ball margin (pool 8-ball): balls live on the LOSING row(s); the
+    // winner stays null. The margin feeds Elo, so recompute after.
+    if (balls_remaining !== undefined && game.game_variant === 'eight_ball') {
+      const clamped = (balls_remaining === null || balls_remaining === '' || isNaN(parseInt(balls_remaining)))
+        ? null
+        : Math.min(7, Math.max(0, parseInt(balls_remaining)));
+      await db.updateTable('game_participants').set({ balls_remaining: null }).where('game_id', '=', gameId).where('is_winner', '=', 1).execute();
+      await db.updateTable('game_participants').set({ balls_remaining: clamped }).where('game_id', '=', gameId).where('is_winner', '=', 0).execute();
       await updateElosAfterGame(gameId, db);
     }
 

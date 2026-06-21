@@ -205,6 +205,26 @@ describe('Pool sport gating', () => {
     expect(bob.balls_remaining).toBe(4);
   });
 
+  test('admin can correct the ball margin on a recorded 8-ball game', async () => {
+    setSport('pool');
+    rawTestDb.prepare('UPDATE users SET is_admin = 1 WHERE id = 1').run(); // PATCH needs admin
+    const agent = request.agent(app);
+    await loginAs(agent, 1);
+    const created = await agent.post('/api/games').send({
+      game_type: '1v1', game_variant: 'eight_ball', balls_remaining: 3,
+      team1: [{ user_id: 1, score: 1 }], team2: [{ user_id: 2, score: 0 }],
+    });
+    const gameId = created.body.id;
+    expect(rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 2').get(gameId).balls_remaining).toBe(3);
+
+    // Correct the margin from 3 → 6 (no score change).
+    const patched = await agent.patch(`/api/games/${gameId}`).send({ balls_remaining: 6 });
+    expect(patched.status).toBe(200);
+    expect(rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 2').get(gameId).balls_remaining).toBe(6);
+    // Winner's row stays null; loser carries the corrected value.
+    expect(rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 1').get(gameId).balls_remaining).toBeNull();
+  });
+
   test('balls_remaining clamps to 0..7', async () => {
     setSport('pool');
     const agent = request.agent(app);

@@ -95,3 +95,34 @@ describe('Standings API', () => {
     }
   });
 });
+
+describe('Pool +/- is ball differential', () => {
+  // Read over /api/l/pool/* so req.league.sport='pool' resolves (bare /api/*
+  // leaves req.league undefined → cornhole point-diff). Public league → read
+  // needs no auth, so we insert 8-ball games directly with loser balls.
+  beforeEach(() => {
+    rawTestDb.exec('DELETE FROM game_participants; DELETE FROM games; DELETE FROM league_memberships; DELETE FROM leagues;');
+    rawTestDb.prepare(`INSERT INTO leagues (id, slug, name, is_public, sport) VALUES (1,'pool','Pool249',1,'pool')`).run();
+
+    // season 2099 keeps this off the cornhole tests' shared standings cache key.
+    const eight = (id, winner, loser, loserBalls, date) => {
+      rawTestDb.prepare(`INSERT INTO games (id, game_type, game_variant, played_at, season, submitted_by_user_id, league_id) VALUES (?, '1v1', 'eight_ball', ?, 2099, 1, 1)`).run(id, date);
+      rawTestDb.prepare(`INSERT INTO game_participants (game_id, user_id, team, score, is_winner, balls_remaining) VALUES (?, ?, 1, 1, 1, NULL)`).run(id, winner);
+      rawTestDb.prepare(`INSERT INTO game_participants (game_id, user_id, team, score, is_winner, balls_remaining) VALUES (?, ?, 2, 0, 0, ?)`).run(id, loser, loserBalls);
+    };
+    eight(1, 1, 2, 4, '2099-01-01T10:00:00Z'); // Alice beats Bob (Bob left 4)
+    eight(2, 2, 1, 2, '2099-01-02T10:00:00Z'); // Bob beats Alice (Alice left 2)
+  });
+
+  test('1v1 standings +/- counts ball margin, not the 1–0 win/loss diff', async () => {
+    const res = await request(app).get('/api/l/pool/standings/1v1?season=2099');
+    expect(res.status).toBe(200);
+    const alice = res.body.find((r) => r.user_id === 1);
+    const bob = res.body.find((r) => r.user_id === 2);
+    // Both are 1–1 (W/L diff would be 0). Ball diff: Alice +4 −2 = +2; Bob −4 +2 = −2.
+    expect(alice.wins).toBe(1);
+    expect(alice.losses).toBe(1);
+    expect(alice.plus_minus).toBe(2);
+    expect(bob.plus_minus).toBe(-2);
+  });
+});

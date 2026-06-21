@@ -61,11 +61,13 @@ export default function GameDetail() {
   const openEdit = () => {
     const t1 = game.participants.filter((p) => p.team === 1);
     const t2 = game.participants.filter((p) => p.team === 2);
+    const loser = game.participants.find((p) => !p.is_winner && p.balls_remaining != null);
     setEditFields({
       played_at: isoToLocalInput(game.played_at),
       venue_id: game.venue_id || '',
       t1_score: t1[0]?.score ?? '',
       t2_score: t2[0]?.score ?? '',
+      balls_remaining: loser?.balls_remaining ?? '',
     });
     venuesApi.list().then(setEditVenues).catch(() => {});
     setEditError('');
@@ -95,6 +97,10 @@ export default function GameDetail() {
         venue_id: editFields.venue_id || null,
         t1_score: t1s,
         t2_score: t2s,
+        // Correct the ball margin for 8-ball (server applies it to the loser).
+        ...(game.game_variant === 'eight_ball'
+          ? { balls_remaining: editFields.balls_remaining === '' ? null : parseInt(editFields.balls_remaining) }
+          : {}),
       });
       setGame({ ...game, ...updated });
       // Reload the full game to get fresh participants
@@ -343,6 +349,21 @@ export default function GameDetail() {
                 />
               </div>
             </div>
+            {game.game_variant === 'eight_ball' && (
+              <div>
+                <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  🎱 Margin of victory — loser's balls left (0–7, blank to clear)
+                </label>
+                <input
+                  type="number" min="0" max="7"
+                  value={editFields.balls_remaining}
+                  onChange={(e) => setEditFields((f) => ({ ...f, balls_remaining: e.target.value }))}
+                  placeholder="e.g. 3"
+                  className="w-full px-3 py-2 rounded-xl border font-ui text-sm"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+                />
+              </div>
+            )}
             {editError && (
               <div className="text-sm font-ui p-2 rounded-lg" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>
                 ⚠️ {editError}

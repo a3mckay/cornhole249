@@ -105,6 +105,9 @@ router.get('/1v1', async (req, res) => {
     const variantFilter = variant && variant !== 'all' ? variant : null;
 
     const leagueSport = req.league?.sport || DEFAULT_SPORT;
+    // Pool's +/- is BALL differential (the loser's balls-left margin), not the
+    // 1–0 win/loss "score" diff. Cornhole keeps point differential.
+    const isPool = leagueSport === 'pool';
 
     const cacheKey = `${leagueId}:1v1:${seasonInt ?? ''}:${variantFilter ?? ''}`;
     const cached = getCache(cacheKey);
@@ -118,7 +121,8 @@ router.get('/1v1', async (req, res) => {
         SUM(gp.is_winner) as wins,
         COUNT(*) - SUM(gp.is_winner) as losses,
         SUM(gp.score) as total_scored,
-        SUM(CASE WHEN gp.team = 1 THEN opp.opp_score ELSE opp2.opp_score END) as total_against
+        SUM(CASE WHEN gp.team = 1 THEN opp.opp_score ELSE opp2.opp_score END) as total_against,
+        SUM(CASE WHEN gp.is_winner = 1 THEN COALESCE(bm.margin, 0) ELSE -COALESCE(bm.margin, 0) END) as ball_diff
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id AND g.game_type = '1v1' AND g.league_id = ${leagueId}
         ${seasonInt ? sql`AND g.season = ${seasonInt}` : sql``}
@@ -131,6 +135,9 @@ router.get('/1v1', async (req, res) => {
       LEFT JOIN (
         SELECT game_id, SUM(score) as opp_score FROM game_participants WHERE team = 1 GROUP BY game_id
       ) opp2 ON opp2.game_id = gp.game_id AND gp.team = 2
+      LEFT JOIN (
+        SELECT game_id, SUM(balls_remaining) as margin FROM game_participants GROUP BY game_id
+      ) bm ON bm.game_id = gp.game_id
       GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url, u.elo_rating${eloGroup(leagueSport)}
       ORDER BY SUM(gp.is_winner) * 2 DESC, SUM(gp.is_winner) * 1.0 / COUNT(*) DESC
     `.execute(db);
@@ -148,7 +155,9 @@ router.get('/1v1', async (req, res) => {
         losses: parseInt(r.losses),
         pts: parseInt(r.wins) * 2,
         win_pct: parseInt(r.gp) > 0 ? Math.round((parseInt(r.wins) / parseInt(r.gp)) * 1000) / 10 : 0,
-        plus_minus: (parseInt(r.total_scored) || 0) - (parseInt(r.total_against) || 0),
+        plus_minus: isPool
+          ? (parseInt(r.ball_diff) || 0)
+          : ((parseInt(r.total_scored) || 0) - (parseInt(r.total_against) || 0)),
         streak: await computeStreak(r.user_id, db, seasonInt, leagueId),
         last5: await computeLast5(r.user_id, db, seasonInt, leagueId),
       }))
@@ -169,6 +178,7 @@ router.get('/2v2', async (req, res) => {
     const seasonInt = season ? parseInt(season) : null;
     const leagueId = req.leagueId;
     const variantFilter = variant && variant !== 'all' ? variant : null;
+    const isPool = (req.league?.sport || DEFAULT_SPORT) === 'pool';
 
     const cacheKey = `${leagueId}:2v2:${seasonInt ?? ''}:${variantFilter ?? ''}`;
     const cached = getCache(cacheKey);
@@ -177,7 +187,7 @@ router.get('/2v2', async (req, res) => {
     // Fetch all 2v2 participants in one query instead of N+1 per-game queries.
     // Map preserves insertion order (games sorted by played_at ASC).
     const { rows: allRows } = await sql`
-      SELECT gp.game_id, gp.team, gp.user_id, gp.score, gp.is_winner,
+      SELECT gp.game_id, gp.team, gp.user_id, gp.score, gp.is_winner, gp.balls_remaining,
              u.display_name, u.nickname, u.avatar_url
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id
@@ -204,7 +214,7 @@ router.get('/2v2', async (req, res) => {
         pairStats[key] = {
           key, user_ids: ids,
           players: team.map((p) => ({ user_id: p.user_id, display_name: p.display_name, nickname: p.nickname, avatar_url: p.avatar_url })),
-          gp: 0, wins: 0, losses: 0, total_scored: 0, total_against: 0,
+          gp: 0, wins: 0, losses: 0, total_scored: 0, total_against: 0, ball_diff: 0,
         };
       }
       const won = team[0].is_winner === 1;
@@ -213,6 +223,9 @@ router.get('/2v2', async (req, res) => {
       else pairStats[key].losses++;
       pairStats[key].total_scored += team[0].score || 0;
       pairStats[key].total_against += opponent[0].score || 0;
+      // Ball differential (8-ball): when you win, +the loser's balls; when you
+      // lose, -your own balls. The loser team carries the balls on its rows.
+      pairStats[key].ball_diff += won ? (opponent[0].balls_remaining || 0) : -(team[0].balls_remaining || 0);
     };
 
     for (const participants of gameMap.values()) {
@@ -233,7 +246,7 @@ router.get('/2v2', async (req, res) => {
         ...pair,
         pts: pair.wins * 2,
         win_pct: pair.gp > 0 ? Math.round((pair.wins / pair.gp) * 1000) / 10 : 0,
-        plus_minus: pair.total_scored - pair.total_against,
+        plus_minus: isPool ? pair.ball_diff : (pair.total_scored - pair.total_against),
         streak: await computePairStreak(pair.user_ids, db, seasonInt, leagueId),
         last5: await computePairLast5(pair.user_ids, db, seasonInt, leagueId),
       }))
