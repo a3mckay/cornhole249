@@ -58,7 +58,8 @@ export default function CreateLeague() {
           Free plan limit reached
         </h1>
         <p className="font-ui mb-4" style={{ color: 'var(--color-text-secondary)' }}>
-          You can own up to 2 leagues on the free plan. Paid plans with unlimited leagues are coming soon.
+          Free accounts can own up to 2 leagues. Upgrade any of your leagues to Pro and you'll be
+          able to create unlimited leagues.
         </p>
         <button className="btn btn-secondary" onClick={() => navigate(-1)}>
           Go back

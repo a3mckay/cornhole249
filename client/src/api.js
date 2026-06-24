@@ -206,6 +206,8 @@ export const adminApi = {
   revokeCode: (code) => api.delete(`/admin/join-codes/${code}`).then((r) => r.data),
   referrals: () => api.get('/admin/referrals').then((r) => r.data),
   migrationStatus: () => api.get('/admin/migration-status').then((r) => r.data),
+  emailStatus: () => api.get('/admin/email-status').then((r) => r.data),
+  testEmail: () => api.post('/admin/test-email').then((r) => r.data),
 };
 
 // Leagues (global — not league-scoped)

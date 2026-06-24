@@ -28,6 +28,11 @@ export default function Admin() {
   const [migration, setMigration] = useState(null);
   const [migrationCopied, setMigrationCopied] = useState(false);
 
+  // Email diagnostics
+  const [emailConfigured, setEmailConfigured] = useState(null);
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
+
   // Leagues & billing
   const [leagues, setLeagues] = useState([]);
   const [planOverride, setPlanOverride] = useState({}); // { [leagueId]: { value, reason } }
@@ -38,7 +43,21 @@ export default function Admin() {
     Promise.all([adminApi.users(), adminApi.joinCodes(), adminApi.referrals(), adminApi.migrationStatus(), adminBillingApi.leagues()])
       .then(([u, c, r, m, l]) => { setUsers(u); setJoinCodes(c); setReferrals(r); setMigration(m); setLeagues(l); })
       .finally(() => setLoading(false));
+    adminApi.emailStatus().then((s) => setEmailConfigured(s.configured)).catch(() => setEmailConfigured(null));
   }, [user]);
+
+  const handleTestEmail = async () => {
+    setEmailTesting(true);
+    setEmailResult(null);
+    try {
+      const { sent_to } = await adminApi.testEmail();
+      setEmailResult({ ok: true, msg: `Sent — check ${sent_to}. If it arrives, outbound email works.` });
+    } catch (e) {
+      setEmailResult({ ok: false, msg: e.response?.data?.error || 'Test send failed.' });
+    } finally {
+      setEmailTesting(false);
+    }
+  };
 
   const openPlanOverride = (leagueId, currentOverride) => {
     setPlanOverride((prev) => ({
@@ -138,6 +157,48 @@ export default function Admin() {
           <h1 className="font-display text-3xl" style={{ color: 'var(--color-text-primary)' }}>Admin Panel</h1>
           <p className="text-sm font-ui" style={{ color: 'var(--color-text-secondary)' }}>You have admin access, {user.display_name}.</p>
         </div>
+      </div>
+
+      {/* Email diagnostics */}
+      <div className="card mb-6">
+        <h2 className="font-display text-2xl mb-1" style={{ color: 'var(--color-text-primary)' }}>
+          📧 Email Health
+        </h2>
+        <p className="text-sm font-ui mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+          Notifications (join requests, approvals) send via Gmail. A test send confirms the
+          OAuth token still works — not just that creds are present.
+        </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span
+            className="text-xs font-ui font-semibold px-2.5 py-1 rounded-full"
+            style={
+              emailConfigured === null
+                ? { background: 'var(--color-bg)', color: 'var(--color-text-secondary)' }
+                : emailConfigured
+                ? { background: '#D1FAE5', color: '#065F46' }
+                : { background: '#FEE2E2', color: 'var(--color-danger)' }
+            }
+          >
+            {emailConfigured === null ? 'Status unknown' : emailConfigured ? 'Configured' : 'NOT configured'}
+          </span>
+          <button
+            onClick={handleTestEmail}
+            disabled={emailTesting}
+            className="btn btn-secondary text-sm px-4 py-1.5 disabled:opacity-50"
+          >
+            {emailTesting ? 'Sending…' : 'Send test email'}
+          </button>
+        </div>
+        {emailResult && (
+          <p
+            className="text-sm font-ui mt-3 p-2 rounded-lg"
+            style={emailResult.ok
+              ? { background: '#D1FAE5', color: '#065F46' }
+              : { background: '#FEE2E2', color: 'var(--color-danger)' }}
+          >
+            {emailResult.ok ? '✓ ' : '⚠️ '}{emailResult.msg}
+          </p>
+        )}
       </div>
 
       {/* User Management */}

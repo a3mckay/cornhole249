@@ -267,6 +267,31 @@ describe('League creation cap', () => {
     expect(res.status).toBe(403);
     expect(res.body.upgrade).toBe(true);
   });
+
+  test('owning a Pro league lifts the cap (paid customer → unlimited)', async () => {
+    rawTestDb.prepare(`INSERT OR IGNORE INTO league_memberships (user_id, league_id, role) VALUES (1, 2, 'owner')`).run();
+    // Alice now owns 2 leagues, but league 1 is Pro
+    rawTestDb.prepare(`UPDATE leagues SET plan = 'pro' WHERE id = 1`).run();
+
+    const cookie = await loginAs(1);
+    const res = await request(app)
+      .post('/api/leagues')
+      .set('Cookie', cookie)
+      .send({ name: 'Third One', is_public: true });
+    expect(res.status).toBe(201);
+  });
+
+  test('a Venue plan lifts the cap', async () => {
+    rawTestDb.prepare(`INSERT OR IGNORE INTO league_memberships (user_id, league_id, role) VALUES (1, 2, 'owner')`).run();
+    rawTestDb.prepare(`UPDATE users SET venue_plan = 'venue', venue_stripe_subscription_id = 'sub_x' WHERE id = 1`).run();
+
+    const cookie = await loginAs(1);
+    const res = await request(app)
+      .post('/api/leagues')
+      .set('Cookie', cookie)
+      .send({ name: 'Venue League', is_public: true });
+    expect(res.status).toBe(201);
+  });
 });
 
 describe('Unknown league slug', () => {

@@ -525,7 +525,30 @@ async function sendProAnnualRecapEmail({ to, userName, leagueName, leagueUrl, st
   });
 }
 
+/** True when outbound email credentials are present. */
+function isEmailConfigured() {
+  return !!(process.env.GMAIL_USER && process.env.GMAIL_REFRESH_TOKEN);
+}
+
+/**
+ * Send a live test email. Unlike the notification helpers, this throws on any
+ * failure (missing creds OR an expired/invalid refresh token), so it can be
+ * used to positively verify that outbound email actually works right now.
+ */
+async function sendTestEmail(to) {
+  if (!isEmailConfigured()) {
+    throw new Error('Email is not configured — GMAIL_USER and/or GMAIL_REFRESH_TOKEN are missing.');
+  }
+  await sendEmail({
+    to,
+    subject: 'Cornhole249 email test ✅',
+    html: '<p>This is a test message from Cornhole249. If you received it, outbound email is working.</p>',
+  });
+}
+
 module.exports = {
+  isEmailConfigured,
+  sendTestEmail,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendJoinRequestEmail,

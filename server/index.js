@@ -411,6 +411,12 @@ app.use(errorHandler);
     if (require.main === module) {
       app.listen(PORT, () => {
         console.log(`[Server] Cornhole249 running on http://localhost:${PORT}`);
+        const { isEmailConfigured } = require('./lib/email');
+        if (isEmailConfigured()) {
+          console.log('[Email] ✅ Outbound email configured (Gmail OAuth). Use POST /api/admin/test-email to verify the token still works.');
+        } else {
+          console.warn('[Email] ⚠️  NOT configured — GMAIL_USER / GMAIL_REFRESH_TOKEN missing. All emails will be SKIPPED (logged only).');
+        }
       });
     }
   } catch (e) {

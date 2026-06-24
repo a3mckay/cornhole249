@@ -6,7 +6,7 @@ const { randomBytes } = require('crypto');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { isPro } = require('../lib/plan');
+const { isPro, hasVenuePlan } = require('../lib/plan');
 const { leaguePreview } = require('../lib/leaguePreview');
 const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
 const { isLiveSport, DEFAULT_SPORT } = require('../lib/sports');
@@ -176,16 +176,34 @@ router.post('/', requireAuth, async (req, res) => {
     const db = getDb();
     const userId = req.session.userId;
 
-    // Enforce free-tier cap: user may own at most FREE_LEAGUE_OWNER_CAP leagues
-    const { rows: ownedRows } = await sql`
-      SELECT COUNT(*) as c FROM league_memberships
-      WHERE user_id = ${userId} AND role = 'owner'
-    `.execute(db);
-    if (parseInt(ownedRows[0].c) >= FREE_LEAGUE_OWNER_CAP) {
-      return res.status(403).json({
-        error: `Free plan allows up to ${FREE_LEAGUE_OWNER_CAP} leagues. Upgrade to create more.`,
-        upgrade: true,
-      });
+    // League cap: a free account may own up to FREE_LEAGUE_OWNER_CAP leagues.
+    // Paying customers — anyone who owns at least one Pro league, or holds a
+    // Venue plan — get unlimited leagues.
+    const ownedLeagues = await db
+      .selectFrom('league_memberships')
+      .innerJoin('leagues', 'leagues.id', 'league_memberships.league_id')
+      .select([
+        'leagues.plan', 'leagues.plan_override',
+        'leagues.stripe_subscription_id', 'leagues.stripe_current_period_end',
+      ])
+      .where('league_memberships.user_id', '=', userId)
+      .where('league_memberships.role', '=', 'owner')
+      .execute();
+
+    if (ownedLeagues.length >= FREE_LEAGUE_OWNER_CAP) {
+      const ownsProLeague = ownedLeagues.some((l) => isPro(l));
+      const me = await db
+        .selectFrom('users')
+        .select(['venue_plan', 'venue_stripe_subscription_id', 'venue_stripe_period_end'])
+        .where('id', '=', userId)
+        .executeTakeFirst();
+
+      if (!ownsProLeague && !hasVenuePlan(me)) {
+        return res.status(403).json({
+          error: `Free accounts can create up to ${FREE_LEAGUE_OWNER_CAP} leagues. Upgrade any league to Pro to create unlimited leagues.`,
+          upgrade: true,
+        });
+      }
     }
 
     const { name, is_public = true, rules = 'hamilton', tagline, sport = DEFAULT_SPORT } = req.body;

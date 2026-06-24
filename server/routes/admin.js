@@ -2,6 +2,32 @@ const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAdmin } = require('../middleware/auth');
+const { isEmailConfigured, sendTestEmail } = require('../lib/email');
+
+// GET /api/admin/email-status — is outbound email configured?
+router.get('/email-status', requireAdmin, (req, res) => {
+  res.json({ configured: isEmailConfigured() });
+});
+
+// POST /api/admin/test-email — send a live test email to the admin's own address.
+// Surfaces real failures (missing creds AND expired refresh token).
+router.post('/test-email', requireAdmin, async (req, res) => {
+  try {
+    const db = getDb();
+    const me = await db
+      .selectFrom('users')
+      .select(['email'])
+      .where('id', '=', req.session.userId)
+      .executeTakeFirst();
+    if (!me?.email) {
+      return res.status(400).json({ error: 'Your admin account has no email on file to send a test to.' });
+    }
+    await sendTestEmail(me.email);
+    res.json({ ok: true, sent_to: me.email });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // GET /api/admin/users
 router.get('/users', requireAdmin, async (req, res) => {
