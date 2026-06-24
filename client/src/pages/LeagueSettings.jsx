@@ -120,6 +120,7 @@ export default function LeagueSettings() {
   const [stubClaimLink, setStubClaimLink] = useState(null);
   const [stubCopied, setStubCopied] = useState(false);
   const [stubError, setStubError] = useState('');
+  const [reviewError, setReviewError] = useState('');
 
   // Grace period — manage player access
   const [graceKeep, setGraceKeep] = useState(null); // Set of user IDs to keep; null = not yet initialised
@@ -438,11 +439,12 @@ export default function LeagueSettings() {
   };
 
   const handleReviewRequest = async (id, action) => {
+    setReviewError('');
     try {
       await leaguesApi.reviewJoinRequest(slug, id, action);
       setJoinRequests((prev) => prev.filter((r) => r.id !== id));
-    } catch (_) {
-      // Silent fail
+    } catch (err) {
+      setReviewError(err.response?.data?.error || 'Could not update that request. Try again.');
     }
   };
 
@@ -1372,6 +1374,11 @@ export default function LeagueSettings() {
           <h2 className="font-display text-xl mb-4" style={{ color: 'var(--color-text-primary)' }}>
             📬 Pending Requests ({joinRequests.length})
           </h2>
+          {reviewError && (
+            <p className="font-ui text-sm mb-3 p-2 rounded-lg" style={{ background: '#FEE2E2', color: 'var(--color-danger)' }}>
+              {reviewError}
+            </p>
+          )}
           <div className="flex flex-col gap-2">
             {joinRequests.map((r) => (
               <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-xl border" style={{ borderColor: 'var(--color-border)' }}>

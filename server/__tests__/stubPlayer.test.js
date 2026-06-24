@@ -95,6 +95,72 @@ describe('Stub player creation', () => {
     const res = await agent.post('/api/leagues/cornhole249/members/stub').send({ display_name: '  ' });
     expect(res.status).toBe(400);
   });
+
+  test('enforces the free-plan member cap', async () => {
+    // Drop the league to free and fill it to the 8-player cap
+    rawTestDb.prepare(`UPDATE leagues SET plan = 'free' WHERE id = 1`).run();
+    for (let i = 10; i < 16; i++) { setupUser(i, `Filler${i}`); addMember(i, 1); } // 2 existing + 6 = 8
+    const agent = await loginAs(1);
+    const res = await agent.post('/api/leagues/cornhole249/members/stub').send({ display_name: 'Overflow' });
+    expect(res.status).toBe(403);
+    expect(res.body.upgrade).toBe(true);
+  });
+
+  test('allows stub creation under the cap on a free league', async () => {
+    rawTestDb.prepare(`UPDATE leagues SET plan = 'free' WHERE id = 1`).run(); // 2 members, well under 8
+    const agent = await loginAs(1);
+    const res = await agent.post('/api/leagues/cornhole249/members/stub').send({ display_name: 'Under Cap' });
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('Join-request approval cap', () => {
+  function makeRequest(userId) {
+    rawTestDb.prepare(
+      `INSERT INTO join_requests (league_id, user_id, status) VALUES (1, ?, 'pending')`
+    ).run(userId);
+    return rawTestDb.prepare(`SELECT id FROM join_requests WHERE user_id = ? AND league_id = 1`).get(userId).id;
+  }
+
+  test('blocks approving a new member past the free cap', async () => {
+    rawTestDb.prepare(`UPDATE leagues SET plan = 'free' WHERE id = 1`).run();
+    for (let i = 10; i < 16; i++) { setupUser(i, `Filler${i}`); addMember(i, 1); } // fill to 8
+    setupUser(20, 'Applicant');
+    const reqId = makeRequest(20);
+
+    const agent = await loginAs(1);
+    const res = await agent.patch(`/api/leagues/cornhole249/join-requests/${reqId}`).send({ action: 'approve' });
+    expect(res.status).toBe(403);
+    expect(res.body.upgrade).toBe(true);
+
+    // Applicant was NOT added
+    const m = rawTestDb.prepare(`SELECT 1 FROM league_memberships WHERE user_id = 20 AND league_id = 1`).get();
+    expect(m).toBeUndefined();
+  });
+
+  test('denying past the cap still works', async () => {
+    rawTestDb.prepare(`UPDATE leagues SET plan = 'free' WHERE id = 1`).run();
+    for (let i = 10; i < 16; i++) { setupUser(i, `Filler${i}`); addMember(i, 1); }
+    setupUser(20, 'Applicant');
+    const reqId = makeRequest(20);
+
+    const agent = await loginAs(1);
+    const res = await agent.patch(`/api/leagues/cornhole249/join-requests/${reqId}`).send({ action: 'deny' });
+    expect(res.status).toBe(200);
+  });
+
+  test('approving under the cap adds the member', async () => {
+    rawTestDb.prepare(`UPDATE leagues SET plan = 'free' WHERE id = 1`).run(); // 2 members, under cap
+    setupUser(20, 'Applicant');
+    const reqId = makeRequest(20);
+
+    const agent = await loginAs(1);
+    const res = await agent.patch(`/api/leagues/cornhole249/join-requests/${reqId}`).send({ action: 'approve' });
+    expect(res.status).toBe(200);
+
+    const m = rawTestDb.prepare(`SELECT role FROM league_memberships WHERE user_id = 20 AND league_id = 1`).get();
+    expect(m.role).toBe('player');
+  });
 });
 
 describe('Claiming a stub player', () => {

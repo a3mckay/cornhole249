@@ -36,7 +36,18 @@ const logoUpload = multer({
 });
 
 const FREE_LEAGUE_OWNER_CAP = 2;
+const FREE_MEMBER_CAP = 8; // free leagues max out at 8 members (matches join.js + leaguePreview)
 const SHORT_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
+
+// Returns true if the league is on the free plan and already at the member cap.
+async function isFreeLeagueFull(db, leagueId) {
+  const { rows } = await sql`
+    SELECT l.plan, (SELECT COUNT(*) FROM league_memberships WHERE league_id = l.id) AS n
+    FROM leagues l WHERE l.id = ${leagueId}
+  `.execute(db);
+  const row = rows[0];
+  return row && row.plan === 'free' && parseInt(row.n) >= FREE_MEMBER_CAP;
+}
 
 async function generateUniqueShortCode(db) {
   let code, attempts = 0;
@@ -645,6 +656,11 @@ router.post('/:slug/members/stub', requireAuth, async (req, res) => {
     if (!display_name?.trim()) return res.status(400).json({ error: 'display_name required' });
     const name = display_name.trim();
 
+    // Free-plan member cap — admin adds count toward the limit just like joins
+    if (await isFreeLeagueFull(db, league.id)) {
+      return res.status(403).json({ error: `Free plan is limited to ${FREE_MEMBER_CAP} players. Upgrade to add more.`, upgrade: true });
+    }
+
     const claimToken = randomBytes(24).toString('base64url');
     const claimExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
@@ -880,10 +896,28 @@ router.patch('/:slug/join-requests/:id', requireAuth, async (req, res) => {
     `.execute(db);
     if (!reqRows[0]) return res.status(404).json({ error: 'Request not found' });
 
+    // Free-plan member cap — block approving a new member past the limit.
+    // (Denials and already-members are unaffected.)
+    if (action === 'approve') {
+      const alreadyMember = await db
+        .selectFrom('league_memberships')
+        .select('user_id')
+        .where('league_id', '=', league.id)
+        .where('user_id', '=', reqRows[0].user_id)
+        .executeTakeFirst();
+      if (!alreadyMember && await isFreeLeagueFull(db, league.id)) {
+        return res.status(403).json({
+          error: `Free plan is limited to ${FREE_MEMBER_CAP} players. Upgrade to approve more members.`,
+          upgrade: true,
+        });
+      }
+    }
+
     const status = action === 'approve' ? 'approved' : 'denied';
+    const reviewedAt = new Date().toISOString();
     await sql`
       UPDATE join_requests
-      SET status = ${status}, reviewed_at = NOW(), reviewed_by = ${req.session.userId}
+      SET status = ${status}, reviewed_at = ${reviewedAt}, reviewed_by = ${req.session.userId}
       WHERE id = ${requestId}
     `.execute(db);
 
