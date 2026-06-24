@@ -21,7 +21,7 @@ function PlayerSelect({ players, value, onChange, exclude, label }) {
         .filter((p) => !excludeSet.has(Number(p.id)))
         .map((p) => (
           <option key={p.id} value={p.id} disabled={!!p.frozen_at}>
-            {p.display_name} "{p.nickname}"{p.frozen_at ? ' (access limited)' : ''}
+            {p.display_name}{p.nickname ? ` "${p.nickname}"` : ''}{p.frozen_at ? ' (access limited)' : ''}
           </option>
         ))}
     </select>
