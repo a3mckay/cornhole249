@@ -23,7 +23,7 @@ export default function LeagueSettings() {
   const isPool = sport === 'pool';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, leagues, refreshUser } = useAuth();
+  const { user, leagues, refreshUser, loading: authLoading } = useAuth();
 
   // Determine the current user's role in this league
   const myMembership = leagues?.find((l) => l.slug === slug);
@@ -113,6 +113,12 @@ export default function LeagueSettings() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [exportLoading, setExportLoading] = useState(null);
   const [venueActive, setVenueActive] = useState(false);
+
+  // Stub player creation (admin adds a placeholder, shares a claim link)
+  const [stubName, setStubName] = useState('');
+  const [stubCreating, setStubCreating] = useState(false);
+  const [stubClaimLink, setStubClaimLink] = useState(null);
+  const [stubCopied, setStubCopied] = useState(false);
 
   // Grace period — manage player access
   const [graceKeep, setGraceKeep] = useState(null); // Set of user IDs to keep; null = not yet initialised
@@ -279,14 +285,14 @@ export default function LeagueSettings() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (authLoading) return; // Wait for session check before redirecting
     if (!user) { navigate('/login'); return; }
-    if (leagues && !canManage) {
-      // Player trying to access settings — redirect to standings
+    if (!canManage) {
       navigate(leaguePath(slug, 'standings'), { replace: true });
       return;
     }
     load();
-  }, [slug, user, leagues]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slug, user, leagues, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true);
@@ -462,6 +468,32 @@ export default function LeagueSettings() {
     } finally {
       setChangingRoleId(null);
     }
+  };
+
+  const handleCreateStub = async (e) => {
+    e.preventDefault();
+    if (!stubName.trim()) return;
+    setStubCreating(true);
+    setStubClaimLink(null);
+    try {
+      const { claim_link, display_name } = await leaguesApi.createStubPlayer(slug, stubName.trim());
+      setStubClaimLink(claim_link);
+      setMembers((prev) => [...prev, { id: Date.now(), display_name, role: 'player', email: null, avatar_url: null }]);
+      setStubName('');
+    } catch (e) {
+      // Show error inline — rare
+      alert(e.response?.data?.error || 'Failed to create player');
+    } finally {
+      setStubCreating(false);
+    }
+  };
+
+  const handleCopyStubLink = () => {
+    if (!stubClaimLink) return;
+    navigator.clipboard.writeText(stubClaimLink).then(() => {
+      setStubCopied(true);
+      setTimeout(() => setStubCopied(false), 2000);
+    });
   };
 
   const handleControlsSave = async () => {
@@ -1653,6 +1685,53 @@ export default function LeagueSettings() {
             );
           })}
         </div>
+
+        {/* Add stub player — admin shortcut for party / in-person onboarding */}
+        {canManage && (
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <p className="font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+              Add a player manually
+            </p>
+            <p className="font-ui text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Creates an account and gives you a one-time sign-in link to share. They can set up email/password later.
+            </p>
+            <form onSubmit={handleCreateStub} className="flex gap-2">
+              <input
+                type="text"
+                value={stubName}
+                onChange={(e) => setStubName(e.target.value)}
+                placeholder="Display name…"
+                maxLength={60}
+                className="flex-1 rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              />
+              <button
+                type="submit"
+                disabled={stubCreating || !stubName.trim()}
+                className="btn btn-primary text-sm px-4 py-2 flex-shrink-0 disabled:opacity-50"
+              >
+                {stubCreating ? '…' : 'Create'}
+              </button>
+            </form>
+            {stubClaimLink && (
+              <div
+                className="mt-3 p-3 rounded-xl flex items-center gap-3"
+                style={{ background: '#D1FAE5', border: '1px solid #6EE7B7' }}
+              >
+                <span className="font-ui text-xs flex-1 truncate" style={{ color: '#065F46' }}>
+                  {stubClaimLink}
+                </span>
+                <button
+                  onClick={handleCopyStubLink}
+                  className="btn text-xs px-3 py-1.5 flex-shrink-0 font-semibold"
+                  style={{ background: '#065F46', color: '#fff', borderRadius: '0.75rem' }}
+                >
+                  {stubCopied ? '✓ Copied!' : 'Copy link'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Data Export — admin only, Pro-gated */}

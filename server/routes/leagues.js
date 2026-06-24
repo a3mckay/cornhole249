@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const { randomBytes } = require('crypto');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -619,6 +620,59 @@ router.patch('/:slug/members/:userId', requireAuth, async (req, res) => {
       .execute();
 
     res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/leagues/:slug/members/stub — admin creates a placeholder player (no auth) and gets a claim link
+router.post('/:slug/members/stub', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const { rows: leagueRows } = await sql`SELECT id, slug, name FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+    const league = leagueRows[0];
+    if (!league) return res.status(404).json({ error: 'League not found' });
+
+    const { rows: memberRows } = await sql`
+      SELECT role FROM league_memberships
+      WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+    `.execute(db);
+    if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+      return res.status(403).json({ error: 'Owner or admin role required' });
+    }
+
+    const { display_name } = req.body;
+    if (!display_name?.trim()) return res.status(400).json({ error: 'display_name required' });
+    const name = display_name.trim();
+
+    const claimToken = randomBytes(24).toString('base64url');
+    const claimExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
+
+    const result = await db
+      .insertInto('users')
+      .values({
+        display_name: name,
+        avatar_url: avatarUrl,
+        is_admin: 0,
+        elo_rating: 1000,
+        claim_token: claimToken,
+        claim_token_expires_at: claimExpires,
+      })
+      .executeTakeFirst();
+
+    const newUserId = Number(result.insertId);
+
+    await db
+      .insertInto('league_memberships')
+      .values({ league_id: league.id, user_id: newUserId, role: 'player' })
+      .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+      .execute();
+
+    const appUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const claimLink = `${appUrl}/claim?token=${claimToken}`;
+
+    res.status(201).json({ user_id: newUserId, display_name: name, claim_link: claimLink });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -44,6 +44,7 @@ const Admin         = lazy(() => import('./pages/Admin'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
 const ClaimAccount   = lazy(() => import('./pages/ClaimAccount'));
+const ClaimStub      = lazy(() => import('./pages/ClaimStub'));
 const VerifyEmail    = lazy(() => import('./pages/VerifyEmail'));
 const Join           = lazy(() => import('./pages/Join'));
 const FindLeague     = lazy(() => import('./pages/FindLeague'));
@@ -258,6 +259,7 @@ export default function App() {
             <Route path="/forgot-password" element={<PageWrapper><ForgotPassword /></PageWrapper>} />
             <Route path="/reset-password" element={<PageWrapper><ResetPassword /></PageWrapper>} />
             <Route path="/claim-account" element={<PageWrapper><ClaimAccount /></PageWrapper>} />
+            <Route path="/claim" element={<PageWrapper><ClaimStub /></PageWrapper>} />
             <Route path="/verify-email/:token" element={<PageWrapper><VerifyEmail /></PageWrapper>} />
             <Route path="/join" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/join/:code" element={<PageWrapper><Join /></PageWrapper>} />

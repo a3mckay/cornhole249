@@ -129,8 +129,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Persistent pending-request banner — shown to non-members awaiting approval */}
-      {userPendingRequest && !requestToast && (
+      {/* Persistent pending-request banner — only shown if still pending (not yet a member) */}
+      {userPendingRequest && !currentLeagueData && !requestToast && (
         <div
           className="mb-5 px-4 py-3 rounded-2xl flex items-center gap-3"
           style={{ background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E' }}

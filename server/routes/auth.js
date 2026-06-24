@@ -655,4 +655,48 @@ router.delete('/account', async (req, res) => {
   }
 });
 
+// ── POST /auth/claim — one-time stub-player link sign-in ────────────────────
+// Body: { token }
+// Verifies a claim_token created when an admin added a stub player.
+// On success: creates a session, clears the token, returns the user + league slug.
+router.post('/claim', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'token required' });
+
+    const db = getDb();
+    const user = await db
+      .selectFrom('users')
+      .select(['id', 'display_name', 'avatar_url', 'is_admin', 'elo_rating', 'claim_token_expires_at'])
+      .where('claim_token', '=', token)
+      .executeTakeFirst();
+
+    if (!user) return res.status(404).json({ error: 'Link not found or already used. Ask the league admin for a new one.' });
+    if (new Date(user.claim_token_expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This invite link has expired. Ask the league admin to create a new one.' });
+    }
+
+    // Clear token so it can only be used once
+    await db.updateTable('users')
+      .set({ claim_token: null, claim_token_expires_at: null })
+      .where('id', '=', user.id)
+      .execute();
+
+    req.session.userId = user.id;
+
+    // Find the league this stub player was added to
+    const membership = await db
+      .selectFrom('league_memberships')
+      .innerJoin('leagues', 'leagues.id', 'league_memberships.league_id')
+      .select(['leagues.slug'])
+      .where('league_memberships.user_id', '=', user.id)
+      .executeTakeFirst();
+
+    const { claim_token_expires_at: _exp, ...safeUser } = user;
+    res.json({ ok: true, user: safeUser, league_slug: membership?.slug || null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

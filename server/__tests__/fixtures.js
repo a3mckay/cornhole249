@@ -101,6 +101,9 @@ const SCHEMA_SQL = `
     venue_plan TEXT,
     venue_stripe_subscription_id TEXT,
     venue_stripe_period_end TEXT,
+    -- migration 024: stub player claim
+    claim_token TEXT,
+    claim_token_expires_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS venues (

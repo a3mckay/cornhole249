@@ -53,6 +53,8 @@ export const authApi = {
       .post('/auth/claim-verify-pin', { user_id: userId, pin }, { withCredentials: true })
       .then((r) => r.data),
 
+  claimStub: (token) => axios.post('/auth/claim', { token }, { withCredentials: true }).then((r) => r.data),
+
   logout: () => axios.post('/auth/logout', {}, { withCredentials: true }).then((r) => r.data),
 
   deleteAccount: () => axios.delete('/auth/account', { withCredentials: true }).then((r) => r.data),
@@ -234,6 +236,7 @@ export const leaguesApi = {
   },
   deleteLogo: (slug) => api.delete(`/leagues/${slug}/logo`).then((r) => r.data),
   regenerateShortCode: (slug) => api.post(`/leagues/${slug}/short-code`).then((r) => r.data),
+  createStubPlayer: (slug, display_name) => api.post(`/leagues/${slug}/members/stub`, { display_name }).then((r) => r.data),
 };
 
 // Join / invite landing

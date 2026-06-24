@@ -94,8 +94,11 @@ export default function FindLeague() {
   };
 
   const handleCodeJoin = async () => {
-    if (!user) { navigate('/login?returnTo=/find-league'); return; }
     if (!codeResult) return;
+    if (!user) {
+      navigate(`/login?returnTo=${encodeURIComponent(`/find-league?code=${codeResult._raw}`)}`);
+      return;
+    }
     setCodeJoining(true);
     try {
       const { _matchType, _raw } = codeResult;
