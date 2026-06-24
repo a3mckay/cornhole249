@@ -665,14 +665,32 @@ router.post('/claim', async (req, res) => {
     if (!token) return res.status(400).json({ error: 'token required' });
 
     const db = getDb();
+
+    // Guard: if someone is already signed in to a REAL account (email/google),
+    // don't silently hijack their session into the stub. Tell them to use a
+    // private window or sign out first. (A logged-in stub re-claiming is fine.)
+    if (req.session.userId) {
+      const current = await db
+        .selectFrom('users')
+        .select(['id', 'email', 'google_id'])
+        .where('id', '=', req.session.userId)
+        .executeTakeFirst();
+      if (current && (current.email || current.google_id)) {
+        return res.status(409).json({
+          error: 'already_signed_in',
+          message: "You're already signed in. Open this link in a private window, or sign out first, to claim this player.",
+        });
+      }
+    }
+
     const user = await db
       .selectFrom('users')
-      .select(['id', 'display_name', 'avatar_url', 'is_admin', 'elo_rating', 'claim_token_expires_at'])
+      .select(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id', 'claim_token_expires_at'])
       .where('claim_token', '=', token)
       .executeTakeFirst();
 
     if (!user) return res.status(404).json({ error: 'Link not found or already used. Ask the league admin for a new one.' });
-    if (new Date(user.claim_token_expires_at) < new Date()) {
+    if (!user.claim_token_expires_at || new Date(user.claim_token_expires_at) < new Date()) {
       return res.status(410).json({ error: 'This invite link has expired. Ask the league admin to create a new one.' });
     }
 
@@ -683,17 +701,77 @@ router.post('/claim', async (req, res) => {
       .execute();
 
     req.session.userId = user.id;
+    req.session.isAdmin = user.is_admin === 1;
 
-    // Find the league this stub player was added to
+    // Find the league this stub player was added to (most recent membership)
     const membership = await db
       .selectFrom('league_memberships')
       .innerJoin('leagues', 'leagues.id', 'league_memberships.league_id')
       .select(['leagues.slug'])
       .where('league_memberships.user_id', '=', user.id)
+      .orderBy('league_memberships.joined_at', 'desc')
       .executeTakeFirst();
 
     const { claim_token_expires_at: _exp, ...safeUser } = user;
-    res.json({ ok: true, user: safeUser, league_slug: membership?.slug || null });
+    const needsMigration = !user.email && !user.google_id;
+    res.json({ ok: true, user: { ...safeUser, needs_migration: needsMigration }, league_slug: membership?.slug || null });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── POST /auth/setup-credentials — logged-in user adds email + password ─────
+// For users created without a login method (stub players, legacy PIN users who
+// claimed via a link). Refuses if the account already has an email.
+// Body: { email, password }
+router.post('/setup-credentials', async (req, res) => {
+  try {
+    if (!req.session.userId) return res.status(401).json({ error: 'Not signed in' });
+
+    const { email, password } = req.body;
+    const emailErr = validateEmail(email);
+    if (emailErr) return res.status(400).json({ error: emailErr });
+    const pwErr = validatePassword(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
+
+    const db = getDb();
+    const me = await db
+      .selectFrom('users')
+      .select(['id', 'email'])
+      .where('id', '=', req.session.userId)
+      .executeTakeFirst();
+    if (!me) return res.status(404).json({ error: 'Account not found' });
+    if (me.email) return res.status(409).json({ error: 'This account already has a login. Use the sign-in page instead.' });
+
+    const normalEmail = email.toLowerCase().trim();
+    const existing = await db
+      .selectFrom('users')
+      .select(['id'])
+      .where('email', '=', normalEmail)
+      .executeTakeFirst();
+    if (existing) return res.status(409).json({ error: 'An account with that email already exists' });
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const verifyToken = await generateUniqueToken(db, 'email_verify_token');
+    const verifyExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    const updated = await db
+      .updateTable('users')
+      .set({
+        email: normalEmail,
+        password_hash: passwordHash,
+        email_verify_token: verifyToken,
+        email_verify_token_expires_at: verifyExpires,
+      })
+      .where('id', '=', req.session.userId)
+      .returning(['id', 'display_name', 'nickname', 'avatar_url', 'is_admin', 'elo_rating', 'ref_token', 'email', 'email_verified_at', 'google_id'])
+      .executeTakeFirstOrThrow();
+
+    sendVerificationEmail(normalEmail, verifyToken).catch((e) =>
+      console.error('[Auth] Verification email failed:', e.message)
+    );
+
+    res.json({ ...updated, needs_migration: false });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

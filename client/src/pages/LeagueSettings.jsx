@@ -119,6 +119,7 @@ export default function LeagueSettings() {
   const [stubCreating, setStubCreating] = useState(false);
   const [stubClaimLink, setStubClaimLink] = useState(null);
   const [stubCopied, setStubCopied] = useState(false);
+  const [stubError, setStubError] = useState('');
 
   // Grace period — manage player access
   const [graceKeep, setGraceKeep] = useState(null); // Set of user IDs to keep; null = not yet initialised
@@ -286,7 +287,7 @@ export default function LeagueSettings() {
 
   useEffect(() => {
     if (authLoading) return; // Wait for session check before redirecting
-    if (!user) { navigate('/login'); return; }
+    if (!user) { navigate(`/login?returnTo=${encodeURIComponent(leaguePath(slug, 'settings'))}`); return; }
     if (!canManage) {
       navigate(leaguePath(slug, 'standings'), { replace: true });
       return;
@@ -475,14 +476,14 @@ export default function LeagueSettings() {
     if (!stubName.trim()) return;
     setStubCreating(true);
     setStubClaimLink(null);
+    setStubError('');
     try {
-      const { claim_link, display_name } = await leaguesApi.createStubPlayer(slug, stubName.trim());
+      const { member, claim_link } = await leaguesApi.createStubPlayer(slug, stubName.trim());
       setStubClaimLink(claim_link);
-      setMembers((prev) => [...prev, { id: Date.now(), display_name, role: 'player', email: null, avatar_url: null }]);
+      if (member?.id) setMembers((prev) => [...prev, member]);
       setStubName('');
-    } catch (e) {
-      // Show error inline — rare
-      alert(e.response?.data?.error || 'Failed to create player');
+    } catch (err) {
+      setStubError(err.response?.data?.error || 'Failed to create player.');
     } finally {
       setStubCreating(false);
     }
@@ -1713,21 +1714,29 @@ export default function LeagueSettings() {
                 {stubCreating ? '…' : 'Create'}
               </button>
             </form>
+            {stubError && (
+              <p className="mt-2 font-ui text-xs" style={{ color: 'var(--color-danger)' }}>{stubError}</p>
+            )}
             {stubClaimLink && (
               <div
-                className="mt-3 p-3 rounded-xl flex items-center gap-3"
+                className="mt-3 p-3 rounded-xl"
                 style={{ background: '#D1FAE5', border: '1px solid #6EE7B7' }}
               >
-                <span className="font-ui text-xs flex-1 truncate" style={{ color: '#065F46' }}>
-                  {stubClaimLink}
-                </span>
-                <button
-                  onClick={handleCopyStubLink}
-                  className="btn text-xs px-3 py-1.5 flex-shrink-0 font-semibold"
-                  style={{ background: '#065F46', color: '#fff', borderRadius: '0.75rem' }}
-                >
-                  {stubCopied ? '✓ Copied!' : 'Copy link'}
-                </button>
+                <p className="font-ui text-xs font-semibold mb-2" style={{ color: '#065F46' }}>
+                  ✓ Player added. Send them this one-time sign-in link (expires in 7 days):
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="font-ui text-xs flex-1 truncate" style={{ color: '#065F46' }}>
+                    {stubClaimLink}
+                  </span>
+                  <button
+                    onClick={handleCopyStubLink}
+                    className="btn text-xs px-3 py-1.5 flex-shrink-0 font-semibold"
+                    style={{ background: '#065F46', color: '#fff', borderRadius: '0.75rem' }}
+                  >
+                    {stubCopied ? '✓ Copied!' : 'Copy link'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

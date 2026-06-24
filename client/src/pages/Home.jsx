@@ -31,7 +31,7 @@ function StringLights() {
 export default function Home() {
   const { slug, leagueName, tagline, createdAt, userPendingRequest } = useLeague();
   const lp = useLeaguePath();
-  const { leagues } = useAuth();
+  const { leagues, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [switcherOpen, setSwitcherOpen] = useState(false);
@@ -69,6 +69,13 @@ export default function Home() {
     const t = setTimeout(() => setRequestToast(null), 6000);
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // If the user has a pending request, refresh membership on mount so the
+  // pending banner clears automatically once an admin has approved them
+  // (the league context that set userPendingRequest may be stale).
+  useEffect(() => {
+    if (userPendingRequest) refreshUser?.();
+  }, [userPendingRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const otherLeagues = (leagues || []).filter((l) => l.slug !== slug);
   const estYear = createdAt ? new Date(createdAt).getFullYear() : 2024;

@@ -55,6 +55,9 @@ export const authApi = {
 
   claimStub: (token) => axios.post('/auth/claim', { token }, { withCredentials: true }).then((r) => r.data),
 
+  setupCredentials: (email, password) =>
+    axios.post('/auth/setup-credentials', { email, password }, { withCredentials: true }).then((r) => r.data),
+
   logout: () => axios.post('/auth/logout', {}, { withCredentials: true }).then((r) => r.data),
 
   deleteAccount: () => axios.delete('/auth/account', { withCredentials: true }).then((r) => r.data),

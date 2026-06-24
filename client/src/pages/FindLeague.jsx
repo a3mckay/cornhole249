@@ -217,7 +217,7 @@ export default function FindLeague() {
               disabled={codeJoining}
               className="btn btn-primary text-sm px-4 py-2 flex-shrink-0 disabled:opacity-50"
             >
-              {codeJoining ? 'Joining…' : 'Join'}
+              {codeJoining ? 'Joining…' : user ? 'Join' : 'Sign in to join'}
             </button>
           </div>
         )}

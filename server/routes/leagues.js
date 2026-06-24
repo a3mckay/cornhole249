@@ -649,7 +649,7 @@ router.post('/:slug/members/stub', requireAuth, async (req, res) => {
     const claimExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const avatarUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`;
 
-    const result = await db
+    const newUser = await db
       .insertInto('users')
       .values({
         display_name: name,
@@ -659,20 +659,22 @@ router.post('/:slug/members/stub', requireAuth, async (req, res) => {
         claim_token: claimToken,
         claim_token_expires_at: claimExpires,
       })
-      .executeTakeFirst();
-
-    const newUserId = Number(result.insertId);
+      .returning(['id', 'display_name', 'avatar_url', 'elo_rating'])
+      .executeTakeFirstOrThrow();
 
     await db
       .insertInto('league_memberships')
-      .values({ league_id: league.id, user_id: newUserId, role: 'player' })
+      .values({ league_id: league.id, user_id: newUser.id, role: 'player' })
       .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
       .execute();
 
     const appUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
     const claimLink = `${appUrl}/claim?token=${claimToken}`;
 
-    res.status(201).json({ user_id: newUserId, display_name: name, claim_link: claimLink });
+    res.status(201).json({
+      member: { id: newUser.id, display_name: newUser.display_name, avatar_url: newUser.avatar_url, role: 'player', email: null },
+      claim_link: claimLink,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

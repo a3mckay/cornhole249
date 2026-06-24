@@ -45,6 +45,7 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
 const ClaimAccount   = lazy(() => import('./pages/ClaimAccount'));
 const ClaimStub      = lazy(() => import('./pages/ClaimStub'));
+const SetupLogin     = lazy(() => import('./pages/SetupLogin'));
 const VerifyEmail    = lazy(() => import('./pages/VerifyEmail'));
 const Join           = lazy(() => import('./pages/Join'));
 const FindLeague     = lazy(() => import('./pages/FindLeague'));
@@ -169,9 +170,9 @@ function MigrationBanner() {
       style={{ background: '#EFF6FF', borderBottom: '1px solid #BFDBFE', color: '#1E40AF' }}
     >
       <span>
-        🔑 PIN login is being phased out.{' '}
-        <a href="/claim-account" className="underline font-semibold">
-          Set up email + password →
+        🔑 Finish setting up your account so you can sign back in later.{' '}
+        <a href="/setup-login" className="underline font-semibold">
+          Add email + password →
         </a>
       </span>
       <button onClick={() => setDismissed(true)} className="opacity-60 hover:opacity-100 flex-shrink-0">
@@ -260,6 +261,7 @@ export default function App() {
             <Route path="/reset-password" element={<PageWrapper><ResetPassword /></PageWrapper>} />
             <Route path="/claim-account" element={<PageWrapper><ClaimAccount /></PageWrapper>} />
             <Route path="/claim" element={<PageWrapper><ClaimStub /></PageWrapper>} />
+            <Route path="/setup-login" element={<PageWrapper><SetupLogin /></PageWrapper>} />
             <Route path="/verify-email/:token" element={<PageWrapper><VerifyEmail /></PageWrapper>} />
             <Route path="/join" element={<PageWrapper><Join /></PageWrapper>} />
             <Route path="/join/:code" element={<PageWrapper><Join /></PageWrapper>} />
