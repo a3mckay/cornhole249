@@ -53,6 +53,7 @@ export default function GameNew({ onAchievement }) {
   const [ballsRemaining, setBallsRemaining] = useState('');
   const [endCondition, setEndCondition] = useState(''); // '' | 'sunk' | 'scratch'
   const [poolWinner, setPoolWinner] = useState('team1'); // win/loss mode: which team won
+  const [runnerUp, setRunnerUp] = useState('p1'); // cutthroat: which loser finished 2nd ('p1'|'p2')
 
   const [gameType, setGameType] = useState('1v1');
   const [t1p1, setT1p1] = useState('');
@@ -206,9 +207,14 @@ export default function GameNew({ onAchievement }) {
 
       let team1, team2;
       if (isCutthroat) {
-        // 1 winner (team1) vs 2 losers (team2); no scores.
-        team1 = [{ user_id: t1p1 }];
-        team2 = [{ user_id: t2p1 }, { user_id: t2p2 }];
+        // 1 winner (team1) vs 2 losers (team2); no scores. Placement records the
+        // finish order so 2nd loses less Elo than 3rd: winner = 1, and the
+        // runner-up pick decides which loser is 2 vs 3.
+        team1 = [{ user_id: t1p1, placement: 1 }];
+        team2 = [
+          { user_id: t2p1, placement: runnerUp === 'p1' ? 2 : 3 },
+          { user_id: t2p2, placement: runnerUp === 'p1' ? 3 : 2 },
+        ];
       } else if (effectiveType === '1v1') {
         team1 = [{ user_id: t1p1, score: s1 }];
         team2 = [{ user_id: t2p1, score: s2 }];
@@ -474,6 +480,37 @@ export default function GameNew({ onAchievement }) {
                 />
               )}
             </div>
+
+            {/* Cutthroat: which loser finished 2nd (runner-up) vs 3rd (last).
+                Only meaningful once both losers are picked. */}
+            {isCutthroat && t2p1 && t2p2 && (
+              <div className="mb-4">
+                <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-text-secondary)' }}>Who finished 2nd?</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { key: 'p1', label: teamName([t2p1], 'Player 1') },
+                    { key: 'p2', label: teamName([t2p2], 'Player 2') },
+                  ].map((r) => (
+                    <button
+                      key={r.key}
+                      type="button"
+                      onClick={() => setRunnerUp(r.key)}
+                      className="p-3 rounded-2xl border-2 text-center transition-all font-display text-lg"
+                      style={{
+                        background: runnerUp === r.key ? 'rgba(31,92,61,0.10)' : 'var(--color-surface)',
+                        borderColor: runnerUp === r.key ? 'var(--color-primary)' : 'var(--color-border)',
+                        color: 'var(--color-text-primary)',
+                      }}
+                    >
+                      {runnerUp === r.key && <span className="mr-1">🥈</span>}{r.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-xs font-ui mt-1.5" style={{ color: 'var(--color-text-secondary)' }}>
+                  The other player is recorded as 3rd (last). 2nd place loses slightly less rating than 3rd.
+                </div>
+              </div>
+            )}
 
             {/* Win/loss pick — no rack score to type (per-game default). */}
             {winLossMode && (

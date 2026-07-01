@@ -157,6 +157,18 @@ export default function GameDetail() {
   // Margin of victory for 8-ball = the balls the loser still had on the table.
   const marginBalls = !rackScored ? loserBalls : null;
 
+  // Cutthroat finish badge for the two losers (2nd/3rd). null when unrecorded
+  // (legacy games) or non-cutthroat.
+  const placementBadge = (placement) => {
+    if (placement === 2) return '🥈 2nd';
+    if (placement === 3) return '🥉 3rd';
+    return null;
+  };
+  // Losers ranked by finish (recorded placement first, then anything unranked).
+  const rankedLosers = isCutthroat
+    ? [...team2].sort((a, b) => (a.placement ?? 99) - (b.placement ?? 99))
+    : team2;
+
   return (
     <div className="max-w-2xl mx-auto">
       {/* Header */}
@@ -166,13 +178,17 @@ export default function GameDetail() {
             ← Games
           </Link>
           <h1 className="font-display text-3xl" style={{ color: 'var(--color-text-primary)' }}>
-            Game #{game.id}
+            Game #{game.league_game_number ?? game.id}
           </h1>
           <div className="flex items-center gap-2 mt-1">
-            <span className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
-              style={{ background: game.game_type === '1v1' ? '#DBEAFE' : '#F3E8FF', color: game.game_type === '1v1' ? '#1E40AF' : '#7E22CE' }}>
-              {game.game_type}
-            </span>
+            {/* For cutthroat the type IS the variant, so the 🔪 variant badge
+                below already says it — don't render a redundant "cutthroat" chip. */}
+            {game.game_type !== 'cutthroat' && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
+                style={{ background: game.game_type === '1v1' ? '#DBEAFE' : '#F3E8FF', color: game.game_type === '1v1' ? '#1E40AF' : '#7E22CE' }}>
+                {game.game_type}
+              </span>
+            )}
             {variantLabel(game.game_variant) && (
               <span className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
                 style={{ background: 'rgba(31,92,61,0.12)', color: 'var(--color-primary)' }}>
@@ -188,7 +204,7 @@ export default function GameDetail() {
           <ShareButton
             imageUrl={`/og/game/${game.id}.png`}
             shareUrl={typeof window !== 'undefined' ? `${window.location.origin}${lp(`games/${game.id}`)}` : ''}
-            title={`Game #${game.id} — Cornhole249`}
+            title={`Game #${game.league_game_number ?? game.id} — Cornhole249`}
             text={`${teamLabel(team1)} ${t1Score}–${t2Score} ${teamLabel(team2)}`}
             entityType="game"
           />
@@ -232,22 +248,50 @@ export default function GameDetail() {
             </div>
           </div>
 
-          {/* Team 2 */}
+          {/* Team 2 — cutthroat shows each loser with their 2nd/3rd finish;
+              everything else keeps the grouped-team layout. */}
           <div className={`px-2 py-4 rounded-xl ${!t1Won ? 'bg-green-50' : ''}`}>
-            <div className="flex justify-center gap-1 mb-2">
-              {team2.map((p) => (
-                <Link key={p.user_id} to={lp(`players/${p.user_id}`)}>
-                  <img src={p.avatar_url} alt={p.display_name} className="w-10 h-10 rounded-full border-2"
-                    style={{ borderColor: !t1Won ? '#16a34a' : 'var(--color-border)' }}
-                    onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
-                </Link>
-              ))}
-            </div>
-            <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
-              {team2.map((p) => p.display_name).join(' & ')}
-            </div>
-            {renderScore(!t1Won)}
-            {!t1Won && <div className="text-2xl mt-1">🏆</div>}
+            {isCutthroat ? (
+              <div className="flex flex-col gap-3">
+                {rankedLosers.map((p) => {
+                  const badge = placementBadge(p.placement);
+                  return (
+                    <div key={p.user_id} className="flex flex-col items-center">
+                      <Link to={lp(`players/${p.user_id}`)}>
+                        <img src={p.avatar_url} alt={p.display_name} className="w-10 h-10 rounded-full border-2"
+                          style={{ borderColor: 'var(--color-border)' }}
+                          onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
+                      </Link>
+                      <div className="font-ui font-semibold text-sm mt-1" style={{ color: 'var(--color-text-primary)' }}>
+                        {p.display_name}
+                      </div>
+                      {badge && (
+                        <div className="text-xs font-ui font-bold mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                          {badge}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-center gap-1 mb-2">
+                  {team2.map((p) => (
+                    <Link key={p.user_id} to={lp(`players/${p.user_id}`)}>
+                      <img src={p.avatar_url} alt={p.display_name} className="w-10 h-10 rounded-full border-2"
+                        style={{ borderColor: !t1Won ? '#16a34a' : 'var(--color-border)' }}
+                        onError={(e) => { e.target.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${p.display_name}`; }} />
+                    </Link>
+                  ))}
+                </div>
+                <div className="font-ui font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                  {team2.map((p) => p.display_name).join(' & ')}
+                </div>
+                {renderScore(!t1Won)}
+                {!t1Won && <div className="text-2xl mt-1">🏆</div>}
+              </>
+            )}
           </div>
         </div>
 

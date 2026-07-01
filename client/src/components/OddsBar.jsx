@@ -7,11 +7,60 @@ const CONFIDENCE_COLORS = {
   Estimated: { bg: '#F3F4F6', text: '#374151', label: 'Estimated' },
 };
 
+// Segment colours for the three-way cutthroat bar (favourite → underdog order).
+const CUTTHROAT_COLORS = ['var(--color-primary)', 'var(--color-secondary)', '#6B7280'];
+
 export default function OddsBar({ odds, team1Label, team2Label }) {
   if (!odds) return null;
 
-  const { team1_pct, team2_pct, confidence, explanation } = odds;
+  const { confidence, explanation } = odds;
   const conf = CONFIDENCE_COLORS[confidence] || CONFIDENCE_COLORS['Estimated'];
+
+  // Three-way cutthroat: one probability per player instead of a two-team split.
+  if (odds.cutthroat && Array.isArray(odds.players)) {
+    return (
+      <div className="card" data-testid="odds-bar">
+        <div className="flex flex-wrap justify-between gap-x-3 text-sm font-ui font-semibold mb-2">
+          {odds.players.map((p, i) => (
+            <span key={p.user_id} style={{ color: CUTTHROAT_COLORS[i] || 'var(--color-text-secondary)' }}>
+              {p.display_name}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex h-8 rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+          {odds.players.map((p, i) => (
+            <div
+              key={p.user_id}
+              className="flex items-center justify-center text-white text-sm font-ui font-bold transition-all duration-500"
+              style={{ width: `${p.pct}%`, background: CUTTHROAT_COLORS[i] || '#6B7280' }}
+              data-testid={`player-pct-${i}`}
+            >
+              {p.pct >= 15 && `${p.pct}%`}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap justify-between gap-x-3 text-xs font-ui mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+          {odds.players.map((p) => (
+            <span key={p.user_id}>{p.display_name}: {p.pct}% (Elo {p.elo})</span>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <span className="px-2 py-0.5 rounded-full text-xs font-ui font-bold" style={{ background: conf.bg, color: conf.text }} data-testid="confidence-label">
+            {conf.label}
+          </span>
+        </div>
+
+        {explanation && (
+          <p className="mt-2 text-sm font-ui italic" style={{ color: 'var(--color-text-secondary)' }}>{explanation}</p>
+        )}
+      </div>
+    );
+  }
+
+  const { team1_pct, team2_pct } = odds;
 
   return (
     <div className="card" data-testid="odds-bar">

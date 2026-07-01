@@ -52,6 +52,10 @@ export default function GameCard({ game }) {
   const rackScored = getSport(sport).scoreModel === 'points' || (raceToTarget != null && !isCutthroat);
   const loserBalls = (t1Won ? team2[0] : team1[0])?.balls_remaining;
 
+  // Cutthroat 2nd/3rd finishers (only when placement was recorded).
+  const runnerUp = isCutthroat ? team2.find((p) => p.placement === 2) : null;
+  const lastPlace = isCutthroat ? team2.find((p) => p.placement === 3) : null;
+
   const scoreNode = (isWinner) => {
     if (rackScored) {
       const s = isWinner === t1Won ? t1Score : t2Score;
@@ -78,15 +82,19 @@ export default function GameCard({ game }) {
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span
-              className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
-              style={{
-                background: game.game_type === '1v1' ? '#DBEAFE' : '#F3E8FF',
-                color: game.game_type === '1v1' ? '#1E40AF' : '#7E22CE',
-              }}
-            >
-              {game.game_type.toUpperCase()}
-            </span>
+            {/* Cutthroat's type duplicates the 🔪 variant badge — show only the
+                variant chip for it. */}
+            {game.game_type !== 'cutthroat' && (
+              <span
+                className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
+                style={{
+                  background: game.game_type === '1v1' ? '#DBEAFE' : '#F3E8FF',
+                  color: game.game_type === '1v1' ? '#1E40AF' : '#7E22CE',
+                }}
+              >
+                {game.game_type.toUpperCase()}
+              </span>
+            )}
             {variantLabel(game.game_variant) && (
               <span
                 className="px-2 py-0.5 rounded-full text-xs font-ui font-bold"
@@ -121,6 +129,12 @@ export default function GameCard({ game }) {
         {!rackScored && loserBalls != null && (
           <div className="text-center mt-2 text-xs font-ui font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
             Margin of victory: {loserBalls} ball{loserBalls === 1 ? '' : 's'}
+          </div>
+        )}
+
+        {isCutthroat && runnerUp && lastPlace && (
+          <div className="text-center mt-2 text-xs font-ui font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+            🥈 2nd: {runnerUp.display_name} · 🥉 3rd: {lastPlace.display_name}
           </div>
         )}
 

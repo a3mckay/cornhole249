@@ -22,7 +22,20 @@ function Last5Dots({ last5 }) {
   );
 }
 
-const COLS = [
+// Cutthroat is win/loss-only per player (no point margin / streak history), and
+// adds runner-up (2nd) + last-place (3rd) finish counts instead.
+const CUTTHROAT_COLS = [
+  { key: 'rank', label: '#', width: '2rem' },
+  { key: 'name', label: 'Player', width: 'auto' },
+  { key: 'gp', label: 'GP' },
+  { key: 'wins', label: '🏆 1st' },
+  { key: 'runner_up', label: '🥈 2nd' },
+  { key: 'last_place', label: '🥉 3rd' },
+  { key: 'pts', label: 'Pts' },
+  { key: 'win_pct', label: 'Win%' },
+];
+
+const FULL_COLS = [
   { key: 'rank', label: '#', width: '2rem' },
   { key: 'name', label: 'Player', width: 'auto' },
   { key: 'gp', label: 'GP' },
@@ -35,7 +48,8 @@ const COLS = [
   { key: 'last5', label: 'Last 5' },
 ];
 
-export default function StandingsTable({ data, type = '1v1' }) {
+export default function StandingsTable({ data, type = '1v1', cutthroat = false }) {
+  const COLS = cutthroat ? CUTTHROAT_COLS : FULL_COLS;
   const lp = useLeaguePath();
   const [sortKey, setSortKey] = useState('pts');
   const [sortDir, setSortDir] = useState('desc');
@@ -140,21 +154,32 @@ export default function StandingsTable({ data, type = '1v1' }) {
                 </td>
                 <td className="px-3 py-2 tabular-nums">{row.gp}</td>
                 <td className="px-3 py-2 tabular-nums text-green-300 font-semibold">{row.wins}</td>
-                <td className="px-3 py-2 tabular-nums text-red-300">{row.losses}</td>
-                <td className="px-3 py-2 tabular-nums font-bold text-amber-300">{row.pts}</td>
-                <td className="px-3 py-2 tabular-nums">{row.win_pct}%</td>
-                <td
-                  className="px-3 py-2 tabular-nums font-semibold"
-                  style={{ color: row.plus_minus > 0 ? '#86efac' : row.plus_minus < 0 ? '#fca5a5' : undefined }}
-                >
-                  {row.plus_minus > 0 ? '+' : ''}{row.plus_minus}
-                </td>
-                <td className="px-3 py-2">
-                  <StreakBadge streak={row.streak} />
-                </td>
-                <td className="px-3 py-2">
-                  <Last5Dots last5={row.last5 || []} />
-                </td>
+                {cutthroat ? (
+                  <>
+                    <td className="px-3 py-2 tabular-nums">{row.runner_up}</td>
+                    <td className="px-3 py-2 tabular-nums text-red-300">{row.last_place}</td>
+                    <td className="px-3 py-2 tabular-nums font-bold text-amber-300">{row.pts}</td>
+                    <td className="px-3 py-2 tabular-nums">{row.win_pct}%</td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-3 py-2 tabular-nums text-red-300">{row.losses}</td>
+                    <td className="px-3 py-2 tabular-nums font-bold text-amber-300">{row.pts}</td>
+                    <td className="px-3 py-2 tabular-nums">{row.win_pct}%</td>
+                    <td
+                      className="px-3 py-2 tabular-nums font-semibold"
+                      style={{ color: row.plus_minus > 0 ? '#86efac' : row.plus_minus < 0 ? '#fca5a5' : undefined }}
+                    >
+                      {row.plus_minus > 0 ? '+' : ''}{row.plus_minus}
+                    </td>
+                    <td className="px-3 py-2">
+                      <StreakBadge streak={row.streak} />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Last5Dots last5={row.last5 || []} />
+                    </td>
+                  </>
+                )}
               </tr>
             );
           })}

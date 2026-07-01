@@ -1,4 +1,4 @@
-const { winProbability } = require('./elo');
+const { winProbability, expectedScore } = require('./elo');
 const { getDb, sql } = require('../db');
 const { DEFAULT_SPORT } = require('./sports');
 const { getSportRating } = require('./sportRatings');
@@ -94,6 +94,89 @@ async function calculateOdds(team1Ids, team2Ids, sport = DEFAULT_SPORT) {
   };
 }
 
+/**
+ * Three-way cutthroat odds — one win probability per player rather than a
+ * winner-vs-losers split. Each player's chance is proportional to their average
+ * expected score against the other two (per-sport Elo for non-cornhole), so the
+ * three percentages sum to 100.
+ *
+ * playerIds: [winnerId, loser1Id, loser2Id] — order doesn't matter here.
+ * Returns { cutthroat: true, players: [{ user_id, display_name, pct, elo }],
+ *           confidence, method, explanation }.
+ */
+async function calculateCutthroatOdds(playerIds, sport = DEFAULT_SPORT) {
+  const db = getDb();
+  const ids = [...new Set(playerIds)];
+
+  const players = ids.length
+    ? await db.selectFrom('users')
+        .select(['id', 'display_name', 'nickname', 'elo_rating'])
+        .where('id', 'in', ids)
+        .execute()
+    : [];
+
+  if (sport && sport !== DEFAULT_SPORT) {
+    for (const p of players) {
+      const r = await getSportRating(db, p.id, sport);
+      if (r != null) p.elo_rating = r;
+    }
+  }
+
+  if (players.length < 2) {
+    const even = players.length ? Math.round(100 / players.length) : 0;
+    return {
+      cutthroat: true,
+      players: players.map((p) => ({ user_id: p.id, display_name: p.display_name, pct: even, elo: Math.round(p.elo_rating) })),
+      confidence: 'Estimated', method: 'default',
+      explanation: 'Insufficient player data. Defaulting to an even split.',
+    };
+  }
+
+  // Raw strength = mean expected score vs the other players; then normalise.
+  const strengths = players.map((p) => {
+    const others = players.filter((o) => o.id !== p.id);
+    const avgExp = others.reduce((s, o) => s + expectedScore(p.elo_rating, o.elo_rating), 0) / others.length;
+    return { player: p, strength: avgExp };
+  });
+  const total = strengths.reduce((s, x) => s + x.strength, 0) || 1;
+
+  // Largest-remainder rounding so the displayed percentages sum to exactly 100.
+  const rawPcts = strengths.map((x) => ({ ...x, raw: (x.strength / total) * 100 }));
+  const floored = rawPcts.map((x) => ({ ...x, pct: Math.floor(x.raw), frac: x.raw - Math.floor(x.raw) }));
+  let remainder = 100 - floored.reduce((s, x) => s + x.pct, 0);
+  floored.sort((a, b) => b.frac - a.frac);
+  for (let i = 0; i < floored.length && remainder > 0; i++, remainder--) floored[i].pct += 1;
+
+  const counts = await Promise.all(players.map((p) => getGameCount(p.id, db)));
+  const minGames = Math.min(...counts);
+  let confidence;
+  if (minGames >= 10) confidence = 'High';
+  else if (minGames >= 5) confidence = 'Medium';
+  else if (minGames >= 2) confidence = 'Low';
+  else confidence = 'Estimated';
+
+  const ordered = floored
+    .map((x) => ({
+      user_id: x.player.id,
+      display_name: x.player.display_name,
+      pct: x.pct,
+      elo: Math.round(x.player.elo_rating),
+    }))
+    .sort((a, b) => b.pct - a.pct);
+
+  const fav = ordered[0];
+  const explanation = confidence === 'Estimated'
+    ? `Limited data — three-way odds estimated from current Elo ratings.`
+    : `${fav.display_name} is the favourite at ${fav.pct}% in this three-way, based on current Elo ratings.`;
+
+  return { cutthroat: true, players: ordered, confidence, method: 'elo', explanation };
+}
+
+async function getGameCount(userId, db) {
+  const { rows } = await sql`SELECT COUNT(*) as c FROM game_participants WHERE user_id = ${userId}`.execute(db);
+  return parseInt(rows[0].c);
+}
+
 async function getH2HGames(team1Ids, team2Ids, db) {
   const allIds = [...new Set([...team1Ids, ...team2Ids])];
   if (allIds.length < 2) return 0;
@@ -137,4 +220,4 @@ async function getH2HRecord(team1Ids, team2Ids, db) {
   return { team1Wins, team2Wins, total: games.length };
 }
 
-module.exports = { calculateOdds };
+module.exports = { calculateOdds, calculateCutthroatOdds };

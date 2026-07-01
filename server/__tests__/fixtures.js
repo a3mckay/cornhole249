@@ -141,7 +141,9 @@ const SCHEMA_SQL = `
     score INTEGER NOT NULL DEFAULT 0,
     is_winner INTEGER NOT NULL DEFAULT 0,
     -- migration 020: balls left on table for loser (pool ELO margin)
-    balls_remaining INTEGER
+    balls_remaining INTEGER,
+    -- migration 025: cutthroat finish order (1=winner, 2=runner-up, 3=last)
+    placement INTEGER
   );
   CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

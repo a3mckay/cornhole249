@@ -93,6 +93,39 @@ function recalculateAllElos(games, participants, resolveSport) {
     const team2 = gp.filter((p) => p.team === 2);
     if (!team1.length || !team2.length) continue;
 
+    // Cutthroat with a recorded finish order (placement 1/2/3) is rated as the
+    // sum of its three pairwise results: the higher finisher "beats" each lower
+    // finisher. This makes 2nd place lose less Elo than 3rd (it beat 3rd but
+    // lost to 1st) without any arbitrary offset. Legacy cutthroat games with no
+    // placement fall through to the flat winner-vs-losers model below.
+    if (game.game_type === 'cutthroat') {
+      const ranked = [...team1, ...team2]
+        .filter((p) => [1, 2, 3].includes(p.placement))
+        .sort((a, b) => a.placement - b.placement);
+      const ordered = ranked.length === 3
+        && ranked[0].placement === 1
+        && ranked[1].placement === 2
+        && ranked[2].placement === 3;
+      if (ordered) {
+        // Accumulate all deltas off the pre-game Elos, then apply together.
+        const deltas = {};
+        for (let i = 0; i < ranked.length; i++) {
+          for (let j = i + 1; j < ranked.length; j++) {
+            const a = ranked[i], b = ranked[j]; // a finished ahead of b
+            const eloA = elos[a.user_id] || 1000;
+            const eloB = elos[b.user_id] || 1000;
+            const expA = expectedScore(eloA, eloB);
+            deltas[a.user_id] = (deltas[a.user_id] || 0) + K * (1 - expA);
+            deltas[b.user_id] = (deltas[b.user_id] || 0) + K * (0 - (1 - expA));
+          }
+        }
+        for (const p of ranked) {
+          elos[p.user_id] = Math.round((elos[p.user_id] || 1000) + deltas[p.user_id]);
+        }
+        continue;
+      }
+    }
+
     // Average Elo per team
     const avgElo1 =
       team1.reduce((s, p) => s + (elos[p.user_id] || 1000), 0) / team1.length;

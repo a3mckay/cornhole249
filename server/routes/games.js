@@ -219,6 +219,18 @@ router.get('/:id', async (req, res) => {
       try { game.weather = JSON.parse(game.weather_json); } catch (e) { game.weather = null; }
     }
 
+    // Per-league display number: this game's chronological position within its
+    // own league (played_at, id as tiebreak). Cornhole and pool leagues each
+    // number from 1, so the shown "Game #N" is per-sport. game.id stays the
+    // global PK used for routing, sharing and OG images.
+    const { rows: numRows } = await sql`
+      SELECT COUNT(*) AS n FROM games
+      WHERE league_id = ${game.league_id}
+        AND (played_at < ${game.played_at}
+             OR (played_at = ${game.played_at} AND id <= ${game.id}))
+    `.execute(db);
+    game.league_game_number = parseInt(numRows[0].n);
+
     res.json(game);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -334,6 +346,21 @@ router.post('/', requireAuth, async (req, res) => {
     // Persisted variant + per-loser balls_remaining helpers.
     const persistVariant = isPool ? (game_variant || null) : null;
     const loserBalls = (isPool && game_variant === 'eight_ball') ? validatedBallsRemaining : null;
+
+    // Cutthroat finish placement: winner = 1, the two losers are 2 (runner-up)
+    // and 3 (last). The client sends each loser's `placement`; fall back to
+    // team2 array order (first loser = 2nd) when it's missing or malformed.
+    // Non-cutthroat participants always get NULL.
+    const placementByUser = new Map();
+    if (isCutthroat) {
+      placementByUser.set(t1Ids[0], 1);
+      const p0 = parseInt(team2[0]?.placement, 10);
+      const p1 = parseInt(team2[1]?.placement, 10);
+      const explicitValid = [p0, p1].every((n) => n === 2 || n === 3) && p0 !== p1;
+      placementByUser.set(t2Ids[0], explicitValid ? p0 : 2);
+      placementByUser.set(t2Ids[1], explicitValid ? p1 : 3);
+    }
+    const placementFor = (userId) => placementByUser.get(userId) ?? null;
 
     // ── Fetch league settings (rules + policies) ─────────────────────────────
     const { rows: leagueRows } = await sql`
@@ -456,10 +483,10 @@ router.post('/', requireAuth, async (req, res) => {
 
       const gameId = newGame.id;
       for (const p of team1) {
-        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: isTeam1Winner ? null : loserBalls }).execute();
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: isTeam1Winner ? null : loserBalls, placement: placementFor(p.user_id) }).execute();
       }
       for (const p of team2) {
-        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null }).execute();
+        await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null, placement: placementFor(p.user_id) }).execute();
       }
 
       // Remove both matched submissions
@@ -507,10 +534,10 @@ router.post('/', requireAuth, async (req, res) => {
     const gameId = newGame.id;
 
     for (const p of team1) {
-      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: isTeam1Winner ? null : loserBalls }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 1, score: isCutthroat ? 1 : (p.score || 0), is_winner: isTeam1Winner ? 1 : 0, balls_remaining: isTeam1Winner ? null : loserBalls, placement: placementFor(p.user_id) }).execute();
     }
     for (const p of team2) {
-      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null }).execute();
+      await db.insertInto('game_participants').values({ game_id: gameId, user_id: p.user_id, team: 2, score: isCutthroat ? 0 : (p.score || 0), is_winner: isTeam1Winner ? 0 : 1, balls_remaining: isTeam1Winner ? loserBalls : null, placement: placementFor(p.user_id) }).execute();
     }
 
     if (gameStatus === 'official') {

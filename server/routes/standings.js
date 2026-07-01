@@ -280,7 +280,9 @@ router.get('/cutthroat', async (req, res) => {
         u.display_name, u.nickname, u.avatar_url, ${eloExpr(leagueSport)} AS elo_rating,
         COUNT(*) as gp,
         SUM(gp.is_winner) as wins,
-        COUNT(*) - SUM(gp.is_winner) as losses
+        COUNT(*) - SUM(gp.is_winner) as losses,
+        SUM(CASE WHEN gp.placement = 2 THEN 1 ELSE 0 END) as runner_up,
+        SUM(CASE WHEN gp.placement = 3 THEN 1 ELSE 0 END) as last_place
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id
         AND g.game_type = 'cutthroat' AND g.league_id = ${leagueId}
@@ -301,6 +303,8 @@ router.get('/cutthroat', async (req, res) => {
       gp: parseInt(r.gp),
       wins: parseInt(r.wins),
       losses: parseInt(r.losses),
+      runner_up: parseInt(r.runner_up),
+      last_place: parseInt(r.last_place),
       pts: parseInt(r.wins) * 2,
       win_pct: parseInt(r.gp) > 0 ? Math.round((parseInt(r.wins) / parseInt(r.gp)) * 1000) / 10 : 0,
     }));

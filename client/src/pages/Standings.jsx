@@ -186,7 +186,7 @@ export default function Standings() {
       ) : error ? (
         <div className="card text-center py-8 font-ui" style={{ color: 'var(--color-danger)' }}>{error}</div>
       ) : (
-        <StandingsTable data={data} type={isCutthroatTab ? '1v1' : type} />
+        <StandingsTable data={data} type={isCutthroatTab ? '1v1' : type} cutthroat={isCutthroatTab} />
       )}
 
       {/* Win% Over Time Chart */}
