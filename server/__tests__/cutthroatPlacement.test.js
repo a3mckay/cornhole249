@@ -67,7 +67,7 @@ describe('cutthroat placement', () => {
     expect(byUser[3]).toBe(3);
   });
 
-  test('2nd place loses less ELO than 3rd; winner gains', async () => {
+  test('winner gains big; 2nd and 3rd both lose, but 2nd less than 3rd', async () => {
     const agent = request.agent(app);
     await loginAs(agent, 1);
     await createCutthroat(agent, { winner: 1, second: 2, third: 3 });
@@ -79,9 +79,11 @@ describe('cutthroat placement', () => {
     const second = ratingOf(2);
     const third = ratingOf(3);
 
-    expect(winner).toBeGreaterThan(1000);   // 1st beat both
-    expect(second).toBeGreaterThan(third);  // runner-up beat 3rd, so less negative
-    expect(third).toBeLessThan(1000);       // last place lost to both
+    expect(winner).toBeGreaterThan(1000);          // winning is the only big gain
+    expect(second).toBeLessThan(1000);             // 2nd still lost the game
+    expect(third).toBeLessThan(second);            // ...but by less than 3rd
+    // Winning must dwarf the 2nd-place penalty (wins worth by far the most).
+    expect(winner - 1000).toBeGreaterThan((1000 - second) * 2);
   });
 
   test('standings expose runner-up (2nd) and last-place (3rd) counts', async () => {

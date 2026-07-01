@@ -2,6 +2,13 @@ const { getSport, pointMarginMultiplier, DEFAULT_SPORT } = require('./sports');
 
 const K = 32;
 
+// Cutthroat (3-player free-for-all) rating tuning. Each finish earns a fixed
+// share of the game; winning dominates while 2nd is a small penalty and 3rd a
+// large one. Shares must sum to 1 so ratings stay conserved. K_c is larger than
+// the 1v1 K because the winner beat two opponents at once.
+const CUTTHROAT_K = 48;
+const CUTTHROAT_SCORE = { 1: 0.80, 2: 0.20, 3: 0.00 };
+
 /**
  * Calculate expected score for player A against player B
  */
@@ -93,11 +100,17 @@ function recalculateAllElos(games, participants, resolveSport) {
     const team2 = gp.filter((p) => p.team === 2);
     if (!team1.length || !team2.length) continue;
 
-    // Cutthroat with a recorded finish order (placement 1/2/3) is rated as the
-    // sum of its three pairwise results: the higher finisher "beats" each lower
-    // finisher. This makes 2nd place lose less Elo than 3rd (it beat 3rd but
-    // lost to 1st) without any arbitrary offset. Legacy cutthroat games with no
-    // placement fall through to the flat winner-vs-losers model below.
+    // Cutthroat with a recorded finish order (placement 1/2/3) uses a single
+    // finish-share update rather than pairwise games. Each place earns a fixed
+    // share of the game (winner 0.80, 2nd 0.20, 3rd 0.00) measured against the
+    // player's EXPECTED share (mean pairwise win-prob vs the field, normalised
+    // to sum to 1). Δ = K_c·(share − expectedShare); deltas sum to zero.
+    //
+    // Why not pairwise: pairwise treated "beating the 3rd-place player" as a real
+    // win, so repeated 2nd-place finishes could out-earn actually winning. Here
+    // the 1st→2nd gap (0.60) dwarfs the 2nd→3rd gap (0.20), so winning dominates
+    // while 2nd is only a small penalty and 3rd a large one.
+    // Legacy cutthroat games with no placement fall through to the flat model.
     if (game.game_type === 'cutthroat') {
       const ranked = [...team1, ...team2]
         .filter((p) => [1, 2, 3].includes(p.placement))
@@ -107,20 +120,23 @@ function recalculateAllElos(games, participants, resolveSport) {
         && ranked[1].placement === 2
         && ranked[2].placement === 3;
       if (ordered) {
-        // Accumulate all deltas off the pre-game Elos, then apply together.
-        const deltas = {};
-        for (let i = 0; i < ranked.length; i++) {
-          for (let j = i + 1; j < ranked.length; j++) {
-            const a = ranked[i], b = ranked[j]; // a finished ahead of b
-            const eloA = elos[a.user_id] || 1000;
-            const eloB = elos[b.user_id] || 1000;
-            const expA = expectedScore(eloA, eloB);
-            deltas[a.user_id] = (deltas[a.user_id] || 0) + K * (1 - expA);
-            deltas[b.user_id] = (deltas[b.user_id] || 0) + K * (0 - (1 - expA));
+        // Expected share = mean pairwise win-prob vs the field, normalised so the
+        // three expected shares sum to 1 (matching the score shares' total).
+        const expRaw = {};
+        for (const a of ranked) {
+          let s = 0;
+          for (const b of ranked) {
+            if (b === a) continue;
+            s += expectedScore(elos[a.user_id] || 1000, elos[b.user_id] || 1000);
           }
+          expRaw[a.user_id] = s;
         }
+        const expTotal = ranked.reduce((s, p) => s + expRaw[p.user_id], 0) || 1;
         for (const p of ranked) {
-          elos[p.user_id] = Math.round((elos[p.user_id] || 1000) + deltas[p.user_id]);
+          const share = CUTTHROAT_SCORE[p.placement];
+          const expShare = expRaw[p.user_id] / expTotal;
+          const delta = CUTTHROAT_K * (share - expShare);
+          elos[p.user_id] = Math.round((elos[p.user_id] || 1000) + delta);
         }
         continue;
       }
