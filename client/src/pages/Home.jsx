@@ -246,7 +246,7 @@ export default function Home() {
       {recap && recap.games_played > 0 && (
         <div className="card mb-6" style={{ borderLeft: '4px solid var(--color-secondary)' }}>
           <h2 className="font-display text-xl mb-3" style={{ color: 'var(--color-secondary)' }}>
-            ☀️ This Week in Cornhole249
+            ☀️ This Week in {leagueName}
           </h2>
           <div className="grid sm:grid-cols-3 gap-4">
             <div>
