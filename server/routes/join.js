@@ -3,6 +3,7 @@ const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { leaguePreview } = require('../lib/leaguePreview');
+const { isLeagueAtFreeCap } = require('../lib/plan');
 const { capture: analyticsCapture } = require('../lib/analytics');
 
 // ── Token-based invite (private leagues) ────────────────────────────────────
@@ -44,11 +45,8 @@ router.post('/short/:code', requireAuth, async (req, res) => {
 
     const league = rows[0];
 
-    if (league.plan === 'free') {
-      const { rows: countRows } = await sql`SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${league.id}`.execute(db);
-      if (parseInt(countRows[0].n) >= 8) {
-        return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
-      }
+    if (await isLeagueAtFreeCap(db, league.id)) {
+      return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
     }
 
     await db
@@ -131,15 +129,10 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     // Free plan member cap
-    if (league.plan === 'free') {
-      const { rows: countRows } = await sql`
-        SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${league.id}
-      `.execute(db);
-      if (parseInt(countRows[0].n) >= 8) {
-        return res.status(403).json({
-          error: 'This league is full. Ask an admin to upgrade the plan.',
-        });
-      }
+    if (await isLeagueAtFreeCap(db, league.id)) {
+      return res.status(403).json({
+        error: 'This league is full. Ask an admin to upgrade the plan.',
+      });
     }
 
     await db
@@ -221,11 +214,8 @@ router.post('/:code', requireAuth, async (req, res) => {
     // Free plan member cap
     const { rows: leagueRows } = await sql`SELECT plan, slug FROM leagues WHERE id = ${leagueId}`.execute(db);
     const league = leagueRows[0];
-    if (league?.plan === 'free') {
-      const { rows: countRows } = await sql`SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${leagueId}`.execute(db);
-      if (parseInt(countRows[0].n) >= 8) {
-        return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
-      }
+    if (league && await isLeagueAtFreeCap(db, leagueId)) {
+      return res.status(403).json({ error: 'This league is full. Ask an admin to upgrade the plan.' });
     }
 
     await db

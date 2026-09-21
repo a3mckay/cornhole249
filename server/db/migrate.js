@@ -38,6 +38,7 @@ const MIGRATIONS = [
   { name: '023_matches',                       file: './migrations/023_matches' },
   { name: '024_stub_player',                   file: './migrations/024_stub_player' },
   { name: '025_cutthroat_placement',           file: './migrations/025_cutthroat_placement' },
+  { name: '026_comp_superadmin_leagues',       file: './migrations/026_comp_superadmin_leagues' },
 ];
 
 async function run(db) {
