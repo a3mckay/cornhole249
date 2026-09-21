@@ -55,7 +55,7 @@ async function loginAs(userId) {
 
 // Free league 2 ("pool-night"), owned by user 1, filled to exactly 8 members.
 beforeEach(() => {
-  rawTestDb.exec(`DELETE FROM league_memberships; DELETE FROM leagues; DELETE FROM users;`);
+  rawTestDb.exec(`DELETE FROM league_memberships; DELETE FROM leagues; DELETE FROM users; DELETE FROM plan_override_audit;`);
   rawTestDb.prepare(`INSERT INTO leagues (id, slug, name, is_public, plan) VALUES (1, 'cornhole249', 'Cornhole249', 1, 'pro')`).run();
   rawTestDb.prepare(`INSERT INTO leagues (id, slug, name, is_public, plan, short_code) VALUES (?, 'pool-night', 'Pool Night', 1, 'free', 'POOL42')`).run(LEAGUE);
   setupUser(1, 'Owner');
@@ -102,5 +102,24 @@ describe.each([
     const res = await request(app).get('/api/join/short/POOL42');
     expect(res.body.is_full).toBe(false);
     expect(res.body.member_limit).toBeNull();
+  });
+});
+
+describe('league creation by a superadmin', () => {
+  const create = async (userId) => (await loginAs(userId)).post('/api/leagues').send({ name: 'Brand New', is_public: true });
+
+  test('is comped to Pro immediately, with an audit row', async () => {
+    rawTestDb.prepare(`UPDATE users SET is_admin = 1 WHERE id = 1`).run();
+    const res = await create(1);
+    expect(res.status).toBe(201);
+    expect(res.body.league.plan_override).toBe('pro');
+    const audit = rawTestDb.prepare(`SELECT to_plan, changed_by_user_id FROM plan_override_audit WHERE league_id = ?`).get(res.body.league.id);
+    expect(audit).toEqual({ to_plan: 'pro', changed_by_user_id: 1 });
+  });
+
+  test('a regular user gets no comp', async () => {
+    const res = await create(NEWCOMER);
+    expect(res.status).toBe(201);
+    expect(res.body.league.plan_override).toBeNull();
   });
 });

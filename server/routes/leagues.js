@@ -36,6 +36,7 @@ const logoUpload = multer({
 });
 
 const FREE_LEAGUE_OWNER_CAP = 2;
+const SUPERADMIN_COMP_REASON = 'Superadmin-owned league (auto-comp)';
 const SHORT_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
 
 async function generateUniqueShortCode(db) {
@@ -217,11 +218,23 @@ router.post('/', requireAuth, async (req, res) => {
 
     const shortCode = await generateUniqueShortCode(db);
 
+    // Superadmin-created leagues are comped to Pro (see migration 026)
+    const compPro = !!req.session.isAdmin;
     const league = await db
       .insertInto('leagues')
-      .values({ name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null, short_code: shortCode, sport })
+      .values({
+        name: name.trim(), slug, is_public: is_public ? 1 : 0, rules, tagline: tagline?.trim() || null, short_code: shortCode, sport,
+        ...(compPro && { plan_override: 'pro', plan_override_reason: SUPERADMIN_COMP_REASON }),
+      })
       .returningAll()
       .executeTakeFirstOrThrow();
+
+    if (compPro) {
+      await db
+        .insertInto('plan_override_audit')
+        .values({ league_id: league.id, changed_by_user_id: userId, from_plan: league.plan, to_plan: 'pro', reason: SUPERADMIN_COMP_REASON })
+        .execute();
+    }
 
     // Make creator the owner
     await db
