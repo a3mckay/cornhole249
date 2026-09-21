@@ -64,4 +64,53 @@ function hasVenuePlan(user) {
   return true;
 }
 
-module.exports = { effectivePlan, isPro, hasVenuePlan };
+// Free leagues max out at this many members.
+const FREE_MEMBER_CAP = 8;
+
+/**
+ * Does this league get Pro-level access? True when any of:
+ *   - its effective plan is Pro / Weekend Pass (plan_override comp, Stripe)
+ *   - an owner holds an active Venue plan
+ *   - an owner is a site-wide superadmin (users.is_admin) — every league
+ *     Andrew owns is Pro, regardless of who is acting on it (e.g. a friend
+ *     joining via invite link has no admin session to bypass with).
+ */
+async function leagueHasProAccess(db, leagueId) {
+  const league = await db
+    .selectFrom('leagues')
+    .select(['plan', 'plan_override', 'stripe_subscription_id', 'stripe_current_period_end'])
+    .where('id', '=', leagueId)
+    .executeTakeFirst();
+  if (!league) return false;
+  if (isPro(league)) return true;
+
+  const owners = await db
+    .selectFrom('league_memberships')
+    .innerJoin('users', 'users.id', 'league_memberships.user_id')
+    .select(['users.is_admin', 'users.venue_plan', 'users.venue_stripe_subscription_id', 'users.venue_stripe_period_end'])
+    .where('league_memberships.league_id', '=', leagueId)
+    .where('league_memberships.role', '=', 'owner')
+    .execute();
+  return owners.some((o) => Number(o.is_admin) === 1 || hasVenuePlan(o));
+}
+
+/**
+ * True if the league lacks Pro access and already has FREE_MEMBER_CAP members.
+ * The single source of truth for the free-plan member cap — every join/add
+ * path must use this rather than reading leagues.plan directly (which ignores
+ * comps, Venue plans and superadmin ownership).
+ */
+async function isLeagueAtFreeCap(db, leagueId) {
+  const { count } = await db
+    .selectFrom('league_memberships')
+    .select((eb) => eb.fn.countAll().as('count'))
+    .where('league_id', '=', leagueId)
+    .executeTakeFirstOrThrow();
+  if (Number(count) < FREE_MEMBER_CAP) return false;
+  return !(await leagueHasProAccess(db, leagueId));
+}
+
+module.exports = {
+  effectivePlan, isPro, hasVenuePlan,
+  FREE_MEMBER_CAP, leagueHasProAccess, isLeagueAtFreeCap,
+};

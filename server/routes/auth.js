@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const { getDb, sql } = require('../db');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../lib/email');
+const { isLeagueAtFreeCap } = require('../lib/plan');
 
 // Rate limit: 20 attempts per IP per 15 minutes on sensitive auth endpoints.
 // app.set('trust proxy', 1) is set in index.js so req.ip reflects the real client IP.
@@ -172,13 +173,7 @@ router.post('/register', async (req, res) => {
 
       // Enforce player cap on free leagues
       if (joinCode.league_id) {
-        const { rows: leagueRows } = await sql`
-          SELECT plan,
-                 (SELECT COUNT(*) FROM league_memberships WHERE league_id = ${joinCode.league_id}) AS member_count
-          FROM leagues WHERE id = ${joinCode.league_id}
-        `.execute(db);
-        const league = leagueRows[0];
-        if (league && league.plan === 'free' && parseInt(league.member_count) >= 8) {
+        if (await isLeagueAtFreeCap(db, joinCode.league_id)) {
           return res.status(403).json({
             error: 'This league has reached the free plan limit of 8 players.',
             upgrade: true,

@@ -1,6 +1,6 @@
 const { sql } = require('../db');
 
-const MEMBER_LIMIT = 8;
+const { FREE_MEMBER_CAP, leagueHasProAccess } = require('./plan');
 
 async function leaguePreview(db, leagueId) {
   const year = new Date().getFullYear();
@@ -27,6 +27,7 @@ async function leaguePreview(db, leagueId) {
     SELECT COUNT(*) as n FROM league_memberships WHERE league_id = ${leagueId}
   `.execute(db);
   const memberCount = parseInt(countRows[0].n);
+  const hasPro = await leagueHasProAccess(db, leagueId);
 
   const { rows: top3Rows } = await sql`
     SELECT
@@ -100,8 +101,8 @@ async function leaguePreview(db, leagueId) {
     tagline: league.tagline,
     is_public: !!league.is_public,
     member_count: memberCount,
-    member_limit: league.plan === 'free' ? MEMBER_LIMIT : null,
-    is_full: league.plan === 'free' && memberCount >= MEMBER_LIMIT,
+    member_limit: hasPro ? null : FREE_MEMBER_CAP,
+    is_full: !hasPro && memberCount >= FREE_MEMBER_CAP,
     member_avatars: memberAvatars,
     top3,
     recent_games: hydratedGames,

@@ -3,7 +3,7 @@
  *
  * requirePro() — must be used AFTER leagueMiddleware (which sets req.leagueId).
  *
- * Fetches the league row and checks effectivePlan().
+ * Checks leagueHasProAccess() (comp / Stripe / owner Venue plan / superadmin owner).
  * On free plan: 403 with { error, upgrade: true } so the client can show
  * the upgrade modal instead of a generic error.
  *
@@ -11,7 +11,7 @@
  */
 
 const { getDb } = require('../db');
-const { effectivePlan, isPro, hasVenuePlan } = require('../lib/plan');
+const { leagueHasProAccess } = require('../lib/plan');
 
 async function requirePro(req, res, next) {
   // Site-wide superadmin always passes
@@ -24,48 +24,29 @@ async function requirePro(req, res, next) {
 
   try {
     const db = getDb();
-    const [league, owner] = await Promise.all([
-      db
-        .selectFrom('leagues')
-        .select(['plan', 'plan_override', 'stripe_subscription_id', 'stripe_current_period_end', 'expires_at'])
+    const league = await db
+      .selectFrom('leagues')
+      .select(['plan', 'expires_at'])
+      .where('id', '=', leagueId)
+      .executeTakeFirst();
+
+    // Expired weekend pass → downgrade to free in DB. Other grants (comp,
+    // owner Venue plan, superadmin owner) can still carry the league below.
+    let passExpired = false;
+    if (league?.plan === 'weekend_pass' && league.expires_at && new Date(league.expires_at) < new Date()) {
+      await db
+        .updateTable('leagues')
+        .set({ plan: 'free', stripe_subscription_id: null })
         .where('id', '=', leagueId)
-        .executeTakeFirst(),
-      db
-        .selectFrom('league_memberships')
-        .innerJoin('users', 'users.id', 'league_memberships.user_id')
-        .select(['users.venue_plan', 'users.venue_stripe_subscription_id', 'users.venue_stripe_period_end'])
-        .where('league_memberships.league_id', '=', leagueId)
-        .where('league_memberships.role', '=', 'owner')
-        .executeTakeFirst(),
-    ]);
-
-    // Venue plan on the owner grants Pro access to all their leagues
-    if (hasVenuePlan(owner)) return next();
-
-    // Check weekend pass expiry
-    if (league?.plan === 'weekend_pass' && league.expires_at) {
-      const expiry = new Date(league.expires_at);
-      if (expiry < new Date()) {
-        // Expired weekend pass → downgrade to free in DB, then block
-        await db
-          .updateTable('leagues')
-          .set({ plan: 'free', stripe_subscription_id: null })
-          .where('id', '=', leagueId)
-          .execute();
-        return res.status(403).json({
-          error: 'Your Weekend Pass has expired.',
-          upgrade: true,
-          code: 'weekend_pass_expired',
-        });
-      }
+        .execute();
+      passExpired = true;
     }
 
-    if (!isPro(league)) {
-      return res.status(403).json({
-        error: 'This feature requires a Pro plan.',
-        upgrade: true,
-        code: 'pro_required',
-      });
+    // Comps, Stripe, owner Venue plan, superadmin-owned league
+    if (!(await leagueHasProAccess(db, leagueId))) {
+      return res.status(403).json(passExpired
+        ? { error: 'Your Weekend Pass has expired.', upgrade: true, code: 'weekend_pass_expired' }
+        : { error: 'This feature requires a Pro plan.', upgrade: true, code: 'pro_required' });
     }
 
     next();

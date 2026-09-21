@@ -6,7 +6,7 @@ const { randomBytes } = require('crypto');
 const router = express.Router();
 const { getDb, sql } = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { isPro, hasVenuePlan } = require('../lib/plan');
+const { isPro, hasVenuePlan, leagueHasProAccess, isLeagueAtFreeCap, FREE_MEMBER_CAP } = require('../lib/plan');
 const { leaguePreview } = require('../lib/leaguePreview');
 const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
 const { isLiveSport, DEFAULT_SPORT } = require('../lib/sports');
@@ -36,18 +36,7 @@ const logoUpload = multer({
 });
 
 const FREE_LEAGUE_OWNER_CAP = 2;
-const FREE_MEMBER_CAP = 8; // free leagues max out at 8 members (matches join.js + leaguePreview)
 const SHORT_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I/L
-
-// Returns true if the league is on the free plan and already at the member cap.
-async function isFreeLeagueFull(db, leagueId) {
-  const { rows } = await sql`
-    SELECT l.plan, (SELECT COUNT(*) FROM league_memberships WHERE league_id = l.id) AS n
-    FROM leagues l WHERE l.id = ${leagueId}
-  `.execute(db);
-  const row = rows[0];
-  return row && row.plan === 'free' && parseInt(row.n) >= FREE_MEMBER_CAP;
-}
 
 async function generateUniqueShortCode(db) {
   let code, attempts = 0;
@@ -194,11 +183,11 @@ router.post('/', requireAuth, async (req, res) => {
       const ownsProLeague = ownedLeagues.some((l) => isPro(l));
       const me = await db
         .selectFrom('users')
-        .select(['venue_plan', 'venue_stripe_subscription_id', 'venue_stripe_period_end'])
+        .select(['is_admin', 'venue_plan', 'venue_stripe_subscription_id', 'venue_stripe_period_end'])
         .where('id', '=', userId)
         .executeTakeFirst();
 
-      if (!ownsProLeague && !hasVenuePlan(me)) {
+      if (!ownsProLeague && !hasVenuePlan(me) && Number(me?.is_admin) !== 1) {
         return res.status(403).json({
           error: `Free accounts can create up to ${FREE_LEAGUE_OWNER_CAP} leagues. Upgrade any league to Pro to create unlimited leagues.`,
           upgrade: true,
@@ -283,6 +272,8 @@ router.patch('/:slug', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Owner or admin role required' });
     }
 
+    const hasPro = await leagueHasProAccess(db, league.id);
+
     const {
       name, is_public, rules, use_case, tagline, custom_rules_json, theme_json,
       score_submit_policy, tournament_create_policy,
@@ -296,7 +287,7 @@ router.patch('/:slug', requireAuth, async (req, res) => {
     }
     if (is_public !== undefined) updates.is_public = is_public ? 1 : 0;
     if (rules !== undefined) {
-      if (rules === 'custom' && !isPro(league)) {
+      if (rules === 'custom' && !hasPro) {
         return res.status(403).json({ error: 'Custom rules require a Pro plan', upgrade: true });
       }
       updates.rules = rules;
@@ -304,13 +295,13 @@ router.patch('/:slug', requireAuth, async (req, res) => {
     if (use_case !== undefined) updates.use_case = use_case;
     if (tagline !== undefined) updates.tagline = tagline?.trim() || null;
     if (custom_rules_json !== undefined) {
-      if (!isPro(league)) {
+      if (!hasPro) {
         return res.status(403).json({ error: 'Custom rules require a Pro plan', upgrade: true });
       }
       updates.custom_rules_json = custom_rules_json ? JSON.stringify(custom_rules_json) : null;
     }
     if (theme_json !== undefined) {
-      if (!isPro(league)) {
+      if (!hasPro) {
         return res.status(403).json({ error: 'Custom theme requires a Pro plan', upgrade: true });
       }
       updates.theme_json = theme_json ? JSON.stringify(theme_json) : null;
@@ -384,7 +375,7 @@ router.post('/:slug/logo', requireAuth, logoUpload.single('logo'), async (req, r
     if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
       return res.status(403).json({ error: 'Owner or admin role required' });
     }
-    if (!isPro(league)) {
+    if (!(await leagueHasProAccess(db, league.id))) {
       return res.status(403).json({ error: 'Custom theme requires a Pro plan', upgrade: true });
     }
 
@@ -675,7 +666,7 @@ router.post('/:slug/members/stub', requireAuth, async (req, res) => {
     const name = display_name.trim();
 
     // Free-plan member cap — admin adds count toward the limit just like joins
-    if (await isFreeLeagueFull(db, league.id)) {
+    if (await isLeagueAtFreeCap(db, league.id)) {
       return res.status(403).json({ error: `Free plan is limited to ${FREE_MEMBER_CAP} players. Upgrade to add more.`, upgrade: true });
     }
 
@@ -923,7 +914,7 @@ router.patch('/:slug/join-requests/:id', requireAuth, async (req, res) => {
         .where('league_id', '=', league.id)
         .where('user_id', '=', reqRows[0].user_id)
         .executeTakeFirst();
-      if (!alreadyMember && await isFreeLeagueFull(db, league.id)) {
+      if (!alreadyMember && await isLeagueAtFreeCap(db, league.id)) {
         return res.status(403).json({
           error: `Free plan is limited to ${FREE_MEMBER_CAP} players. Upgrade to approve more members.`,
           upgrade: true,
