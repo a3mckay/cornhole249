@@ -644,12 +644,19 @@ router.patch('/:id', requireAdmin, async (req, res) => {
     const game = await db.selectFrom('games').selectAll().where('id', '=', gameId).executeTakeFirst();
     if (!game) return res.status(404).json({ error: 'Game not found' });
 
-    const { played_at, venue_id, game_type, t1_score, t2_score, balls_remaining } = req.body;
+    const { played_at, venue_id, game_type, t1_score, t2_score, balls_remaining, eight_ball_end_condition } = req.body;
     const updates = {};
 
     if (played_at !== undefined) updates.played_at = played_at;
     if (venue_id !== undefined) updates.venue_id = venue_id || null;
     if (game_type !== undefined) updates.game_type = game_type;
+    // 8-ball foul loss (loser sank the 8 early / scratched on it). Display-only.
+    if (eight_ball_end_condition !== undefined && game.game_variant === 'eight_ball') {
+      if (![null, '', 'sunk', 'scratch'].includes(eight_ball_end_condition)) {
+        return res.status(400).json({ error: "eight_ball_end_condition must be 'sunk', 'scratch', or null" });
+      }
+      updates.eight_ball_end_condition = eight_ball_end_condition || null;
+    }
 
     if (Object.keys(updates).length) {
       await db.updateTable('games').set(updates).where('id', '=', gameId).execute();
@@ -677,6 +684,11 @@ router.patch('/:id', requireAdmin, async (req, res) => {
         .executeTakeFirst();
       const winnerFlipped = priorT1 != null && (priorT1.is_winner === 1) !== t1Won;
       const ballsPatch = winnerFlipped ? { balls_remaining: null } : {};
+      // Same for a foul-on-the-8 note: it described the old loser — unless this
+      // edit explicitly set it for the new result.
+      if (winnerFlipped && eight_ball_end_condition === undefined && game.eight_ball_end_condition) {
+        await db.updateTable('games').set({ eight_ball_end_condition: null }).where('id', '=', gameId).execute();
+      }
 
       await db.updateTable('game_participants')
         .set({ score: s1, is_winner: t1Won ? 1 : 0, ...ballsPatch })

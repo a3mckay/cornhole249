@@ -61,6 +61,28 @@ export function variantLabel(variant) {
   return v ? `${v.emoji} ${v.label}` : null;
 }
 
+// 8-ball early losses: the LOSER ended the game with a foul on the 8 — sinking
+// it with their own balls still up, or scratching on it once only the 8 was
+// left. Stored as games.eight_ball_end_condition.
+export const EIGHT_BALL_END_CONDITIONS = [
+  { key: 'sunk',    label: 'Loser sank the 8 early' },
+  { key: 'scratch', label: 'Loser scratched on the 8' },
+];
+
+/**
+ * One-line note for an early-loss game, e.g. "🎱 Andrew sank the 8 early · 3
+ * balls left", or null for a normal finish. `loserName` is the losing side's
+ * display name(s); `balls` is the loser's balls left on the table.
+ */
+export function earlyLossNote(condition, loserName, balls) {
+  if (condition === 'scratch') return `🎱 ${loserName} scratched on the 8`;
+  if (condition === 'sunk') {
+    const left = balls > 0 ? ` · ${balls} ball${balls === 1 ? '' : 's'} left` : '';
+    return `🎱 ${loserName} sank the 8 early${left}`;
+  }
+  return null;
+}
+
 export function getSport(key) {
   return SPORTS[key] || SPORTS[DEFAULT_SPORT];
 }

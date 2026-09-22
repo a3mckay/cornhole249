@@ -225,6 +225,50 @@ describe('Pool sport gating', () => {
     expect(rawTestDb.prepare('SELECT balls_remaining FROM game_participants WHERE game_id = ? AND user_id = 1').get(gameId).balls_remaining).toBeNull();
   });
 
+  describe('admin edit of the 8-ball foul-loss note', () => {
+    const endCond = (id) => rawTestDb.prepare('SELECT eight_ball_end_condition AS c FROM games WHERE id = ?').get(id).c;
+    async function adminWithGame(extra = {}) {
+      setSport('pool');
+      rawTestDb.prepare('UPDATE users SET is_admin = 1 WHERE id = 1').run();
+      const agent = request.agent(app);
+      await loginAs(agent, 1);
+      const created = await agent.post('/api/games').send({
+        game_type: '1v1', game_variant: 'eight_ball',
+        team1: [{ user_id: 1, score: 1 }], team2: [{ user_id: 2, score: 0 }], ...extra,
+      });
+      return { agent, gameId: created.body.id };
+    }
+
+    test('can set, change, and clear it retroactively', async () => {
+      const { agent, gameId } = await adminWithGame();
+      expect(endCond(gameId)).toBeNull();
+      expect((await agent.patch(`/api/games/${gameId}`).send({ eight_ball_end_condition: 'scratch' })).status).toBe(200);
+      expect(endCond(gameId)).toBe('scratch');
+      await agent.patch(`/api/games/${gameId}`).send({ eight_ball_end_condition: 'sunk' });
+      expect(endCond(gameId)).toBe('sunk');
+      await agent.patch(`/api/games/${gameId}`).send({ eight_ball_end_condition: null });
+      expect(endCond(gameId)).toBeNull();
+    });
+
+    test('rejects an unknown value', async () => {
+      const { agent, gameId } = await adminWithGame({ eight_ball_end_condition: 'scratch' });
+      expect((await agent.patch(`/api/games/${gameId}`).send({ eight_ball_end_condition: 'bogus' })).status).toBe(400);
+      expect(endCond(gameId)).toBe('scratch');
+    });
+
+    test('is cleared when an edit flips the winner (it described the old loser)', async () => {
+      const { agent, gameId } = await adminWithGame({ eight_ball_end_condition: 'scratch' });
+      await agent.patch(`/api/games/${gameId}`).send({ t1_score: 0, t2_score: 1 });
+      expect(endCond(gameId)).toBeNull();
+    });
+
+    test('survives a winner flip when the edit sets it explicitly', async () => {
+      const { agent, gameId } = await adminWithGame({ eight_ball_end_condition: 'scratch' });
+      await agent.patch(`/api/games/${gameId}`).send({ t1_score: 0, t2_score: 1, eight_ball_end_condition: 'sunk' });
+      expect(endCond(gameId)).toBe('sunk');
+    });
+  });
+
   test('balls_remaining clamps to 0..7', async () => {
     setSport('pool');
     const agent = request.agent(app);

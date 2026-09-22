@@ -6,7 +6,7 @@ import WeatherBadge from '../components/WeatherBadge';
 import CommentSection from '../components/CommentSection';
 import OddsBar from '../components/OddsBar';
 import ShareButton from '../components/ShareButton';
-import { variantLabel, getSport } from '../sports';
+import { variantLabel, getSport, earlyLossNote, EIGHT_BALL_END_CONDITIONS } from '../sports';
 import { useLeaguePath, useLeague } from '../contexts/LeagueContext';
 
 export default function GameDetail() {
@@ -68,6 +68,7 @@ export default function GameDetail() {
       t1_score: t1[0]?.score ?? '',
       t2_score: t2[0]?.score ?? '',
       balls_remaining: loser?.balls_remaining ?? '',
+      eight_ball_end_condition: game.eight_ball_end_condition || '',
     });
     venuesApi.list().then(setEditVenues).catch(() => {});
     setEditError('');
@@ -99,7 +100,10 @@ export default function GameDetail() {
         t2_score: t2s,
         // Correct the ball margin for 8-ball (server applies it to the loser).
         ...(game.game_variant === 'eight_ball'
-          ? { balls_remaining: editFields.balls_remaining === '' ? null : parseInt(editFields.balls_remaining) }
+          ? {
+            balls_remaining: editFields.balls_remaining === '' ? null : parseInt(editFields.balls_remaining),
+            eight_ball_end_condition: editFields.eight_ball_end_condition || null,
+          }
           : {}),
       });
       setGame({ ...game, ...updated });
@@ -154,8 +158,10 @@ export default function GameDetail() {
     return null;
   };
 
+  // 8-ball foul loss (early 8 / scratch on the 8) replaces the margin line.
+  const earlyLoss = earlyLossNote(game.eight_ball_end_condition, teamLabel(t1Won ? team2 : team1), loserBalls);
   // Margin of victory for 8-ball = the balls the loser still had on the table.
-  const marginBalls = !rackScored ? loserBalls : null;
+  const marginBalls = !rackScored && !earlyLoss ? loserBalls : null;
 
   // Cutthroat finish badge for the two losers (2nd/3rd). null when unrecorded
   // (legacy games) or non-cutthroat.
@@ -295,6 +301,17 @@ export default function GameDetail() {
           </div>
         </div>
 
+        {earlyLoss && (
+          <div className="flex justify-center mt-4 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
+            <span
+              className="px-3 py-1 rounded-full text-sm font-ui font-semibold"
+              style={{ background: 'rgba(185,64,64,0.10)', color: 'var(--color-danger)' }}
+            >
+              {earlyLoss}
+            </span>
+          </div>
+        )}
+
         {marginBalls != null && (
           <div className="text-center mt-4 pt-3 border-t text-sm font-ui" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
             Margin of victory:{' '}
@@ -393,6 +410,35 @@ export default function GameDetail() {
                 />
               </div>
             </div>
+            {game.game_variant === 'eight_ball' && (
+              <div>
+                <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  🎱 Did the loser foul on the 8?
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[{ key: '', label: 'No — normal finish' }, ...EIGHT_BALL_END_CONDITIONS].map((c) => (
+                    <button
+                      key={c.key || 'none'}
+                      type="button"
+                      onClick={() => setEditFields((f) => ({
+                        ...f,
+                        eight_ball_end_condition: c.key,
+                        // Scratching on the 8 means only the 8 was left
+                        ...(c.key === 'scratch' ? { balls_remaining: '0' } : {}),
+                      }))}
+                      className="p-2 rounded-lg border-2 text-xs font-ui transition-all"
+                      style={{
+                        background: editFields.eight_ball_end_condition === c.key ? 'rgba(31,92,61,0.12)' : 'var(--color-surface)',
+                        borderColor: editFields.eight_ball_end_condition === c.key ? 'var(--color-primary)' : 'var(--color-border)',
+                        color: 'var(--color-text-primary)',
+                      }}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {game.game_variant === 'eight_ball' && (
               <div>
                 <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>
