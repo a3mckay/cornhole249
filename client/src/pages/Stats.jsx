@@ -32,6 +32,7 @@ export default function Stats() {
   const lp = useLeaguePath();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [seasonMode, setSeasonMode] = useState('current'); // 'current' | 'alltime'
+  const [gameType, setGameType] = useState('all'); // 'all' | '1v1' | '2v2' — filters Rankings + Streaks
   const [performers, setPerformers] = useState(null);
   const [streaks, setStreaks] = useState([]);
   const [pointDiff, setPointDiff] = useState([]);
@@ -46,6 +47,8 @@ export default function Stats() {
 
   const season = seasonMode === 'current' ? CURRENT_YEAR : undefined;
   const seasonParam = season ? { season } : {};
+  // Rankings + Streaks also honor the game-type toggle; other cards stay all-games.
+  const typeParam = gameType === 'all' ? {} : { type: gameType };
 
   useEffect(() => {
     setLoading(true);
@@ -56,8 +59,8 @@ export default function Stats() {
     setClutch([]);
     setVenueKings([]);
     Promise.all([
-      statsApi.performers(seasonParam).catch((e) => { if (e.response?.data?.upgrade) setProGated(true); return null; }),
-      statsApi.streaks(seasonParam).catch(() => []),
+      statsApi.performers({ ...seasonParam, ...typeParam }).catch((e) => { if (e.response?.data?.upgrade) setProGated(true); return null; }),
+      statsApi.streaks({ ...seasonParam, ...typeParam }).catch(() => []),
       statsApi.pointDiff(seasonParam).catch(() => []),
       statsApi.clutch(seasonParam).catch(() => []),
       statsApi.venueKings(seasonParam).catch(() => []),
@@ -72,7 +75,7 @@ export default function Stats() {
       setEloLeaders(elo);
       setWeatherPerformers(wp);
     }).finally(() => setLoading(false));
-  }, [seasonMode]);
+  }, [seasonMode, gameType]);
 
   // Rivals fetched independently — not season-filtered, but re-fetches on type change
   useEffect(() => {
@@ -114,8 +117,8 @@ export default function Stats() {
         League Stats
       </h1>
 
-      {/* Season toggle */}
-      <div className="flex gap-2 mb-6">
+      {/* Season + game-type toggles */}
+      <div className="flex gap-2 mb-6 flex-wrap">
         <div className="flex rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
           {[
             { key: 'current', label: `${CURRENT_YEAR}` },
@@ -134,7 +137,31 @@ export default function Stats() {
             </button>
           ))}
         </div>
+        <div className="flex rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+          {[
+            { key: 'all', label: 'All' },
+            { key: '1v1', label: '1v1' },
+            { key: '2v2', label: '2v2' },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setGameType(key)}
+              className="px-4 py-1.5 font-ui font-semibold text-sm transition-colors"
+              style={{
+                background: gameType === key ? 'var(--color-primary)' : 'var(--color-surface)',
+                color: gameType === key ? '#fff' : 'var(--color-text-secondary)',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
+      {gameType !== 'all' && (
+        <p className="font-ui text-xs -mt-4 mb-6" style={{ color: 'var(--color-text-secondary)' }}>
+          Showing {gameType} only — applies to Player Rankings & Streaks.
+        </p>
+      )}
 
       {loading ? (
         <div className="text-center py-20 font-ui" style={{ color: 'var(--color-text-secondary)' }}>Loading stats...</div>

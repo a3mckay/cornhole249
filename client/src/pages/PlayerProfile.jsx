@@ -43,6 +43,10 @@ export default function PlayerProfile() {
   // Data export state
   const [exportingData, setExportingData] = useState(false);
 
+  // Career-stats game-type filter: 'all' | '1v1' | '2v2'
+  const [gameType, setGameType] = useState('all');
+  const [playerError, setPlayerError] = useState(false);
+
   const isOwn = currentUser?.id === parseInt(id);
   const isAdmin = !!currentUser?.is_admin;
   const canEdit = isOwn || isAdmin;
@@ -50,15 +54,13 @@ export default function PlayerProfile() {
 
   useEffect(() => {
     Promise.all([
-      usersApi.get(id),
       achievementsApi.forUser(id),
       statsApi.weather({ user_id: id }),
       statsApi.venue({ user_id: id }),
       standingsApi.history(id),
       gamesApi.list({ user_id: id, limit: 10 }),
       usersApi.list(),
-    ]).then(([p, ach, ws, vs, hist, games, users]) => {
-      setPlayer(p);
+    ]).then(([ach, ws, vs, hist, games, users]) => {
       setAchievements(ach);
       setWeatherStats(ws);
       setVenueStats(vs);
@@ -67,6 +69,15 @@ export default function PlayerProfile() {
       setAllUsers(users);
     }).finally(() => setLoading(false));
   }, [id]);
+
+  // Career stats are league-scoped and honor the 1v1/2v2 toggle, so refetch the
+  // player (and only the player) when the game-type filter changes.
+  useEffect(() => {
+    const params = gameType === 'all' ? undefined : { type: gameType };
+    usersApi.get(id, params)
+      .then((p) => { setPlayer(p); setPlayerError(false); })
+      .catch(() => setPlayerError(true));
+  }, [id, gameType]);
 
   // Load H2H vs all opponents
   useEffect(() => {
@@ -163,8 +174,8 @@ export default function PlayerProfile() {
     }
   };
 
-  if (loading) return <div className="text-center py-20 font-ui" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>;
-  if (!player) return <div className="text-center py-20 font-ui" style={{ color: 'var(--color-danger)' }}>Player not found</div>;
+  if (playerError) return <div className="text-center py-20 font-ui" style={{ color: 'var(--color-danger)' }}>Player not found</div>;
+  if (loading || !player) return <div className="text-center py-20 font-ui" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>;
 
   const career = player.career || {};
   const winPct = career.gp > 0 ? Math.round((career.wins / career.gp) * 100) : 0;
@@ -212,6 +223,26 @@ export default function PlayerProfile() {
                 {player.handedness === 'left' ? '🤚 Left-handed' : '✋ Right-handed'}
               </div>
             )}
+            {/* Game-type filter for the stats above */}
+            <div className="mt-3 inline-flex rounded-full overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+              {[
+                { key: 'all', label: 'All' },
+                { key: '1v1', label: '1v1' },
+                { key: '2v2', label: '2v2' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setGameType(key)}
+                  className="px-3 py-1 font-ui font-semibold text-xs transition-colors"
+                  style={{
+                    background: gameType === key ? 'var(--color-primary)' : 'var(--color-surface)',
+                    color: gameType === key ? '#fff' : 'var(--color-text-secondary)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Action buttons */}
