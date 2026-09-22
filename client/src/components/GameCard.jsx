@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import WeatherBadge from './WeatherBadge';
-import { variantLabel, getSport } from '../sports';
+import { variantLabel, getSport, earlyLossNote } from '../sports';
 import { useLeaguePath, useLeague } from '../contexts/LeagueContext';
 
 function TeamDisplay({ players, scoreNode, isWinner }) {
@@ -51,6 +51,12 @@ export default function GameCard({ game }) {
   const isCutthroat = game.game_variant === 'cutthroat';
   const rackScored = getSport(sport).scoreModel === 'points' || (raceToTarget != null && !isCutthroat);
   const loserBalls = (t1Won ? team2[0] : team1[0])?.balls_remaining;
+  // 8-ball foul loss (early 8 / scratch on the 8) replaces the margin line.
+  const earlyLoss = earlyLossNote(
+    game.eight_ball_end_condition,
+    (t1Won ? team2 : team1).map((p) => p.display_name).join(' & '),
+    loserBalls,
+  );
 
   // Cutthroat 2nd/3rd finishers (only when placement was recorded).
   const runnerUp = isCutthroat ? team2.find((p) => p.placement === 2) : null;
@@ -126,7 +132,18 @@ export default function GameCard({ game }) {
           <TeamDisplay players={team2} scoreNode={scoreNode(!t1Won)} isWinner={!t1Won} />
         </div>
 
-        {!rackScored && loserBalls != null && (
+        {earlyLoss && (
+          <div className="flex justify-center mt-2">
+            <span
+              className="px-2 py-0.5 rounded-full text-xs font-ui font-semibold"
+              style={{ background: 'rgba(185,64,64,0.10)', color: 'var(--color-danger)' }}
+            >
+              {earlyLoss}
+            </span>
+          </div>
+        )}
+
+        {!earlyLoss && !rackScored && loserBalls != null && (
           <div className="text-center mt-2 text-xs font-ui font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
             Margin of victory: {loserBalls} ball{loserBalls === 1 ? '' : 's'}
           </div>

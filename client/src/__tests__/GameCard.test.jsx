@@ -85,4 +85,36 @@ describe('GameCard', () => {
     expect(screen.queryByText('1')).not.toBeInTheDocument();
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
+
+  describe('8-ball early loss', () => {
+    const earlyGame = (condition, balls) => ({
+      ...baseGame,
+      game_variant: 'eight_ball',
+      eight_ball_end_condition: condition,
+      weather_json: null,
+      participants: [
+        { user_id: 1, team: 1, score: 1, is_winner: 1, display_name: 'Alice', avatar_url: 'https://x.com/a' },
+        { user_id: 2, team: 2, score: 0, is_winner: 0, display_name: 'Bob', balls_remaining: balls, avatar_url: 'https://x.com/b' },
+      ],
+    });
+    beforeEach(() => { mockLeague = { sport: 'pool', raceToTarget: null }; });
+
+    test('scratch on the 8 names the loser and replaces the margin line', () => {
+      render(<MemoryRouter><GameCard game={earlyGame('scratch', 0)} /></MemoryRouter>);
+      expect(screen.getByText('🎱 Bob scratched on the 8')).toBeInTheDocument();
+      expect(screen.queryByText(/Margin of victory/)).not.toBeInTheDocument();
+    });
+
+    test('early 8 keeps the balls-left count', () => {
+      render(<MemoryRouter><GameCard game={earlyGame('sunk', 3)} /></MemoryRouter>);
+      expect(screen.getByText('🎱 Bob sank the 8 early · 3 balls left')).toBeInTheDocument();
+      expect(screen.queryByText(/Margin of victory/)).not.toBeInTheDocument();
+    });
+
+    test('normal finish still shows the margin', () => {
+      render(<MemoryRouter><GameCard game={earlyGame(null, 2)} /></MemoryRouter>);
+      expect(screen.getByText(/Margin of victory: 2 balls/)).toBeInTheDocument();
+      expect(screen.queryByText(/🎱 Bob/)).not.toBeInTheDocument();
+    });
+  });
 });

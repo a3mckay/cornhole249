@@ -4,7 +4,7 @@ import { gamesApi, venuesApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { useLeague, useLeaguePath } from '../contexts/LeagueContext';
 import { capture } from '../lib/analytics';
-import { getSport } from '../sports';
+import { getSport, EIGHT_BALL_END_CONDITIONS } from '../sports';
 
 function PlayerSelect({ players, value, onChange, exclude, label }) {
   // Convert all IDs to numbers for a type-safe comparison
@@ -545,17 +545,22 @@ export default function GameNew({ onAchievement }) {
                 <div className="text-sm font-ui font-bold mb-2" style={{ color: 'var(--color-primary)' }}>🎱 8-Ball details (optional)</div>
                 <div className="flex flex-col gap-3">
                   <div>
-                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>How did it end?</label>
+                    <label className="block text-xs font-ui font-semibold mb-1" style={{ color: 'var(--color-text-secondary)' }}>Did the loser foul on the 8? (leave blank for a normal finish)</label>
                     <div className="grid grid-cols-2 gap-2">
-                      {[{ k: 'sunk', label: 'Sank the 8' }, { k: 'scratch', label: 'Loser scratched' }].map((c) => (
+                      {EIGHT_BALL_END_CONDITIONS.map((c) => (
                         <button
-                          key={c.k}
+                          key={c.key}
                           type="button"
-                          onClick={() => setEndCondition(endCondition === c.k ? '' : c.k)}
+                          onClick={() => {
+                            const next = endCondition === c.key ? '' : c.key;
+                            setEndCondition(next);
+                            // Scratching on the 8 means only the 8 was left
+                            if (next === 'scratch') setBallsRemaining('0');
+                          }}
                           className="p-2 rounded-lg border-2 text-sm font-ui transition-all"
                           style={{
-                            background: endCondition === c.k ? 'rgba(31,92,61,0.12)' : 'var(--color-surface)',
-                            borderColor: endCondition === c.k ? 'var(--color-primary)' : 'var(--color-border)',
+                            background: endCondition === c.key ? 'rgba(31,92,61,0.12)' : 'var(--color-surface)',
+                            borderColor: endCondition === c.key ? 'var(--color-primary)' : 'var(--color-border)',
                             color: 'var(--color-text-primary)',
                           }}
                         >
