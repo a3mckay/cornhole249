@@ -98,7 +98,8 @@ export const digestApi = {
 // Users
 export const usersApi = {
   list: () => api.get(`${leagueBase()}/users`).then((r) => r.data),
-  get: (id) => api.get(`/users/${id}`).then((r) => r.data),
+  // League-scoped so the profile reflects the current league (and optional game-type filter)
+  get: (id, params) => api.get(`${leagueBase()}/users/${id}`, { params }).then((r) => r.data),
   update: (id, data) => api.patch(`/users/${id}`, data).then((r) => r.data),
   delete: (id) => api.delete(`/users/${id}`).then((r) => r.data),
 };

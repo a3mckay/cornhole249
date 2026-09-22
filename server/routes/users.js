@@ -33,13 +33,25 @@ router.get('/:id', async (req, res) => {
       .executeTakeFirst();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    // Career stats
+    // Scope to the active league so the profile matches that league's Stats page —
+    // but only on the league-scoped /api/l/:slug/users/:id path. The legacy global
+    // /api/users/:id stays all-leagues (req.leagueId is just the default 1 there).
+    const leagueId = req.baseUrl.startsWith('/api/l/') ? req.leagueId : null;
+    const { type } = req.query; // '1v1' | '2v2' | undefined (all)
+    const leagueCond = leagueId ? sql`AND g.league_id = ${leagueId}` : sql``;
+    const typeCond = type === '1v1' ? sql`AND g.game_type = '1v1'`
+      : type === '2v2' ? sql`AND g.game_type = '2v2'`
+      : sql``;
+
+    // Career stats (joined to games so league/type scoping applies)
     const { rows: statsRows } = await sql`
       SELECT
         COUNT(*) as gp,
-        SUM(is_winner) as wins,
-        COUNT(*) - SUM(is_winner) as losses
-      FROM game_participants WHERE user_id = ${userId}
+        SUM(gp.is_winner) as wins,
+        COUNT(*) - SUM(gp.is_winner) as losses
+      FROM game_participants gp
+      JOIN games g ON gp.game_id = g.id
+      WHERE gp.user_id = ${userId} ${leagueCond} ${typeCond}
     `.execute(db);
     const stats = statsRows[0];
 
@@ -47,11 +59,12 @@ router.get('/:id', async (req, res) => {
     const { rows: diffRows } = await sql`
       SELECT SUM(gp.score - opp.total_score) as plus_minus
       FROM game_participants gp
+      JOIN games g ON g.id = gp.game_id
       JOIN (
         SELECT game_id, team, MAX(score) as total_score
         FROM game_participants GROUP BY game_id, team
       ) opp ON opp.game_id = gp.game_id AND opp.team != gp.team
-      WHERE gp.user_id = ${userId}
+      WHERE gp.user_id = ${userId} ${leagueCond} ${typeCond}
     `.execute(db);
     const diff = diffRows[0];
 
@@ -60,7 +73,7 @@ router.get('/:id', async (req, res) => {
       SELECT gp.is_winner
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id
-      WHERE gp.user_id = ${userId}
+      WHERE gp.user_id = ${userId} ${leagueCond} ${typeCond}
       ORDER BY g.played_at ASC
     `.execute(db);
 
@@ -81,7 +94,7 @@ router.get('/:id', async (req, res) => {
         COUNT(*) - SUM(gp.is_winner) as losses
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id
-      WHERE gp.user_id = ${userId}
+      WHERE gp.user_id = ${userId} ${leagueCond} ${typeCond}
       GROUP BY g.season
       ORDER BY g.season DESC
     `.execute(db);

@@ -6,6 +6,14 @@ const { DEFAULT_SPORT } = require('../lib/sports');
 // non-cornhole leagues resolve the rating from user_sport_ratings.
 const { eloExpr, eloJoin, applySportElo } = require('../lib/sportRatings');
 
+// SQL fragment restricting to a single game_type ('1v1' | '2v2'); empty for any
+// other value (e.g. 'all' or undefined) so all game types are included.
+function gameTypeCond(type) {
+  if (type === '1v1') return sql`AND g.game_type = '1v1'`;
+  if (type === '2v2') return sql`AND g.game_type = '2v2'`;
+  return sql``;
+}
+
 // GET /api/stats/rivals?type=1v1|2v2
 router.get('/rivals', async (req, res) => {
   try {
@@ -84,7 +92,8 @@ router.get('/rivals', async (req, res) => {
 router.get('/performers', async (req, res) => {
   try {
     const db = getDb();
-    const { season } = req.query;
+    const { season, type } = req.query;
+    const typeCond = gameTypeCond(type);
 
     const { rows } = await sql`
       SELECT
@@ -93,6 +102,7 @@ router.get('/performers', async (req, res) => {
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id AND g.league_id = ${req.leagueId}
         ${season ? sql`AND g.season = ${parseInt(season)}` : sql``}
+        ${typeCond}
       JOIN users u ON gp.user_id = u.id
       GROUP BY gp.user_id, u.display_name, u.nickname, u.avatar_url
       HAVING COUNT(*) >= 1
@@ -369,13 +379,15 @@ function getWeekRange(year, week) {
 router.get('/streaks', async (req, res) => {
   try {
     const db = getDb();
-    const { season } = req.query;
+    const { season, type } = req.query;
+    const typeCond = gameTypeCond(type);
 
     const { rows } = await sql`
       SELECT gp.user_id, u.display_name, u.avatar_url, gp.is_winner, g.played_at
       FROM game_participants gp
       JOIN games g ON gp.game_id = g.id AND g.league_id = ${req.leagueId}
         ${season ? sql`AND g.season = ${parseInt(season)}` : sql``}
+        ${typeCond}
       JOIN users u ON gp.user_id = u.id
       ORDER BY gp.user_id, g.played_at ASC
     `.execute(db);
