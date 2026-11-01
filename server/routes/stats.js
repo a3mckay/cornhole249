@@ -5,6 +5,7 @@ const { DEFAULT_SPORT } = require('../lib/sports');
 // Per-sport ELO (WS-E): cornhole reads stay on users.elo_rating (byte-identical);
 // non-cornhole leagues resolve the rating from user_sport_ratings.
 const { eloExpr, eloJoin, applySportElo } = require('../lib/sportRatings');
+const { idList, usersById } = require('../lib/gameHydration');
 
 // SQL fragment restricting to a single game_type ('1v1' | '2v2'); empty for any
 // other value (e.g. 'all' or undefined) so all game types are included.
@@ -37,27 +38,35 @@ router.get('/rivals', async (req, res) => {
         LIMIT 10
       `.execute(db);
 
-      const result = await Promise.all(pairs.map(async (pair) => {
-        const [p1, p2] = await Promise.all([
-          db.selectFrom('users').select(['id', 'display_name', 'nickname', 'avatar_url']).where('id', '=', pair.p1).executeTakeFirst(),
-          db.selectFrom('users').select(['id', 'display_name', 'nickname', 'avatar_url']).where('id', '=', pair.p2).executeTakeFirst(),
-        ]);
-        return { player1: p1, player2: p2, games_played: parseInt(pair.games_played), p1_wins: parseInt(pair.p1_wins), p2_wins: parseInt(pair.p2_wins) };
+      const users = await usersById(db, pairs.flatMap((pair) => [pair.p1, pair.p2]));
+      const result = pairs.map((pair) => ({
+        player1: users.get(pair.p1),
+        player2: users.get(pair.p2),
+        games_played: parseInt(pair.games_played),
+        p1_wins: parseInt(pair.p1_wins),
+        p2_wins: parseInt(pair.p2_wins),
       }));
       return res.json(result);
     }
 
-    // 2v2: pair-vs-pair rivalries
-    const { rows: games2v2 } = await sql`SELECT id FROM games WHERE game_type = '2v2' AND league_id = ${req.leagueId}`.execute(db);
+    // 2v2: pair-vs-pair rivalries — all participants in one query, grouped in JS
+    // (was one query per 2v2 game).
+    const { rows: allParts2v2 } = await sql`
+      SELECT gp.game_id, gp.user_id, gp.team, gp.is_winner, u.display_name, u.avatar_url
+      FROM game_participants gp
+      JOIN users u ON u.id = gp.user_id
+      JOIN games g ON g.id = gp.game_id
+      WHERE g.game_type = '2v2' AND g.league_id = ${req.leagueId}
+      ORDER BY gp.game_id
+    `.execute(db);
+    const partsByGame = new Map();
+    for (const p of allParts2v2) {
+      if (!partsByGame.has(p.game_id)) partsByGame.set(p.game_id, []);
+      partsByGame.get(p.game_id).push(p);
+    }
     const matchups = {};
 
-    for (const { id: gameId } of games2v2) {
-      const { rows: parts } = await sql`
-        SELECT gp.user_id, gp.team, gp.is_winner, u.display_name, u.avatar_url
-        FROM game_participants gp JOIN users u ON u.id = gp.user_id
-        WHERE gp.game_id = ${gameId}
-      `.execute(db);
-
+    for (const parts of partsByGame.values()) {
       const t1 = parts.filter((p) => p.team === 1).sort((a, b) => a.user_id - b.user_id);
       const t2 = parts.filter((p) => p.team === 2).sort((a, b) => a.user_id - b.user_id);
       if (t1.length !== 2 || t2.length !== 2) continue;
@@ -309,10 +318,20 @@ router.get('/recap', async (req, res) => {
       ORDER BY g.played_at DESC
     `.execute(db);
 
+    // One query for the whole week's participants (was one query per game,
+    // run sequentially — slow on pool leagues, where every rack is a game).
+    const partsByGame = new Map(games.map((g) => [g.id, []]));
+    if (games.length) {
+      const { rows: weekParts } = await sql`
+        SELECT * FROM game_participants WHERE game_id IN (${idList(games.map((g) => g.id))})
+      `.execute(db);
+      for (const p of weekParts) partsByGame.get(p.game_id)?.push(p);
+    }
+
     let biggestWin = null;
     let maxMargin = 0;
     for (const game of games) {
-      const { rows: participants } = await sql`SELECT * FROM game_participants WHERE game_id = ${game.id}`.execute(db);
+      const participants = partsByGame.get(game.id) || [];
       const t1Score = participants.filter(p => p.team === 1).reduce((s, p) => s + p.score, 0);
       const t2Score = participants.filter(p => p.team === 2).reduce((s, p) => s + p.score, 0);
       const margin = Math.abs(t1Score - t2Score);

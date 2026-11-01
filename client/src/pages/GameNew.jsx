@@ -6,7 +6,7 @@ import { useLeague, useLeaguePath } from '../contexts/LeagueContext';
 import { capture } from '../lib/analytics';
 import { getSport, EIGHT_BALL_END_CONDITIONS } from '../sports';
 
-function PlayerSelect({ players, value, onChange, exclude, label }) {
+function PlayerSelect({ players, value, onChange, exclude, label, loading }) {
   // Convert all IDs to numbers for a type-safe comparison
   const excludeSet = new Set(exclude.map(Number).filter(Boolean));
   return (
@@ -16,7 +16,7 @@ function PlayerSelect({ players, value, onChange, exclude, label }) {
       className="px-3 py-2 rounded-xl border font-ui text-sm w-full"
       style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
     >
-      <option value="">{label}</option>
+      <option value="">{loading && !players.length ? 'Loading players…' : label}</option>
       {players
         .filter((p) => !excludeSet.has(Number(p.id)))
         .map((p) => (
@@ -69,8 +69,11 @@ export default function GameNew({ onAchievement }) {
   });
   const [venueId, setVenueId] = useState('');
   const [newVenueName, setNewVenueName] = useState('');
-  const [venues, setVenues] = useState([]);
-  const [players, setPlayers] = useState([]);
+  // Seed from the roster cache so names are pickable immediately; fresh lists
+  // replace them as soon as they arrive.
+  const [venues, setVenues] = useState(() => venuesApi.peek() || []);
+  const [players, setPlayers] = useState(() => usersApi.peek() || []);
+  const [playersLoaded, setPlayersLoaded] = useState(() => !!usersApi.peek());
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -80,12 +83,23 @@ export default function GameNew({ onAchievement }) {
   const [existingVenueLng, setExistingVenueLng] = useState(null);
   const [updatingVenueLocation, setUpdatingVenueLocation] = useState(false);
 
+  // Refresh players and venues independently (one failing must not block the
+  // other). On error we keep whatever the cache gave us.
   useEffect(() => {
-    Promise.all([venuesApi.list(), usersApi.list()]).then(([v, u]) => {
-      setVenues(v);
-      setPlayers(u);
-      if (user) setT1p1(user.id);
-    });
+    let cancelled = false;
+    usersApi.list()
+      .then((u) => { if (!cancelled) setPlayers(u); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setPlayersLoaded(true); });
+    venuesApi.list()
+      .then((v) => { if (!cancelled) setVenues(v); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Default Team 1 / Player 1 to the logged-in user (without clobbering a pick).
+  useEffect(() => {
+    if (user) setT1p1((prev) => prev || user.id);
   }, [user]);
 
   // For pool, the effective game_type is derived from the variant + singles/
@@ -430,11 +444,11 @@ export default function GameNew({ onAchievement }) {
               <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-primary)' }}>{isCutthroat ? 'Winner' : 'Team 1'}</div>
               <div className="flex gap-2 flex-wrap">
                 <div className="flex-1 min-w-[140px]">
-                  <PlayerSelect players={players} value={t1p1} onChange={setT1p1} exclude={[t1p2, t2p1, t2p2].filter(Boolean)} label="Player 1" />
+                  <PlayerSelect players={players} loading={!playersLoaded} value={t1p1} onChange={setT1p1} exclude={[t1p2, t2p1, t2p2].filter(Boolean)} label="Player 1" />
                 </div>
                 {effectiveType === '2v2' && (
                   <div className="flex-1 min-w-[140px]">
-                    <PlayerSelect players={players} value={t1p2} onChange={setT1p2} exclude={[t1p1, t2p1, t2p2].filter(Boolean)} label="Player 2" />
+                    <PlayerSelect players={players} loading={!playersLoaded} value={t1p2} onChange={setT1p2} exclude={[t1p1, t2p1, t2p2].filter(Boolean)} label="Player 2" />
                   </div>
                 )}
               </div>
@@ -459,11 +473,11 @@ export default function GameNew({ onAchievement }) {
               <div className="text-sm font-ui font-bold mb-2 uppercase tracking-wide" style={{ color: 'var(--color-secondary)' }}>{isCutthroat ? 'Losers' : 'Team 2'}</div>
               <div className="flex gap-2 flex-wrap">
                 <div className="flex-1 min-w-[140px]">
-                  <PlayerSelect players={players} value={t2p1} onChange={setT2p1} exclude={[t1p1, t1p2, t2p2].filter(Boolean)} label="Player 1" />
+                  <PlayerSelect players={players} loading={!playersLoaded} value={t2p1} onChange={setT2p1} exclude={[t1p1, t1p2, t2p2].filter(Boolean)} label="Player 1" />
                 </div>
                 {(effectiveType === '2v2' || isCutthroat) && (
                   <div className="flex-1 min-w-[140px]">
-                    <PlayerSelect players={players} value={t2p2} onChange={setT2p2} exclude={[t1p1, t1p2, t2p1].filter(Boolean)} label="Player 2" />
+                    <PlayerSelect players={players} loading={!playersLoaded} value={t2p2} onChange={setT2p2} exclude={[t1p1, t1p2, t2p1].filter(Boolean)} label="Player 2" />
                   </div>
                 )}
               </div>

@@ -9,6 +9,7 @@ const { DEFAULT_SPORT, getSport } = require('../lib/sports');
 const { gameFitsMatch, parseIds } = require('../lib/matches');
 const { recomputeMatch } = require('../lib/matchSync');
 const { fetchWeatherForGame } = require('./weather');
+const { participantsByGame, latestCommentByGame } = require('../lib/gameHydration');
 
 // played_at is stored as UTC ISO / TIMESTAMPTZ. The league plays in Hamilton, ON,
 // so we convert to America/Toronto local time to determine the calendar date.
@@ -69,27 +70,22 @@ router.get('/', async (req, res) => {
       games = rows;
     }
 
-    // Attach participants and comments
-    await Promise.all(games.map(async (game) => {
-      const { rows: parts } = await sql`
-        SELECT gp.*, u.display_name, u.nickname, u.avatar_url
-        FROM game_participants gp JOIN users u ON gp.user_id = u.id
-        WHERE gp.game_id = ${game.id}
-        ORDER BY gp.team, gp.id
-      `.execute(db);
-      game.participants = parts;
+    // Attach participants and latest comment — one batched query each (not
+    // per game), so a busy pool night doesn't fan out into dozens of queries.
+    const gameIds = games.map((g) => g.id);
+    const [partsByGame, commentByGame] = await Promise.all([
+      participantsByGame(db, gameIds),
+      latestCommentByGame(db, gameIds),
+    ]);
+    for (const game of games) {
+      game.participants = partsByGame.get(game.id) || [];
 
       if (game.weather_json) {
         try { game.weather = JSON.parse(game.weather_json); } catch (e) { game.weather = null; }
       }
 
-      const { rows: latestRows } = await sql`
-        SELECT c.body, u.display_name FROM comments c
-        JOIN users u ON c.user_id = u.id
-        WHERE c.game_id = ${game.id} ORDER BY c.created_at DESC LIMIT 1
-      `.execute(db);
-      game.latest_comment = latestRows[0] || null;
-    }));
+      game.latest_comment = commentByGame.get(game.id) || null;
+    }
 
     res.json({ games, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (e) {
@@ -127,15 +123,8 @@ router.get('/pending', requireAuth, async (req, res) => {
       ORDER BY g.played_at DESC
     `.execute(db);
 
-    await Promise.all(games.map(async (game) => {
-      const { rows: parts } = await sql`
-        SELECT gp.*, u.display_name, u.nickname, u.avatar_url
-        FROM game_participants gp JOIN users u ON gp.user_id = u.id
-        WHERE gp.game_id = ${game.id}
-        ORDER BY gp.team, gp.id
-      `.execute(db);
-      game.participants = parts;
-    }));
+    const partsByGame = await participantsByGame(db, games.map((g) => g.id));
+    for (const game of games) game.participants = partsByGame.get(game.id) || [];
 
     for (const game of games) {
       const submittedByMe = game.submitted_by_user_id === userId;

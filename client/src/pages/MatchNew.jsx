@@ -43,7 +43,7 @@ export default function MatchNew() {
   const navigate = useNavigate();
   const isPool = sport === 'pool';
 
-  const [players, setPlayers] = useState([]);
+  const [players, setPlayers] = useState(() => usersApi.peek() || []); // cached roster → instant names
   const [doubles, setDoubles] = useState(false);
   const [variant, setVariant] = useState('eight_ball');
   const [s1p1, setS1p1] = useState('');

@@ -15,8 +15,84 @@ export function setCurrentLeague(slug) {
   _currentLeagueSlug = slug;
 }
 
-function leagueBase() {
-  return `/l/${_currentLeagueSlug}`;
+function leagueBase(slug = _currentLeagueSlug) {
+  return `/l/${slug}`;
+}
+
+// ── Roster cache (players + venues) ─────────────────────────────────────────
+// The score-entry form needs the league's players and venues before you can
+// pick anyone. Rather than making you wait on the network every time, the last
+// fetched list is kept in memory + localStorage and shown instantly, while a
+// fresh copy loads in the background (stale-while-revalidate). Concurrent
+// requests for the same list share one network call. Cleared on logout.
+const ROSTER_PREFIX = 'c249:roster:';
+const rosterMem = new Map();      // key → data
+const rosterInflight = new Map(); // key → Promise
+const rosterFetchedAt = new Map(); // key → ms timestamp of last successful fetch
+
+function rosterPeek(key) {
+  if (rosterMem.has(key)) return rosterMem.get(key);
+  try {
+    const raw = localStorage.getItem(ROSTER_PREFIX + key);
+    if (raw) {
+      const data = JSON.parse(raw);
+      rosterMem.set(key, data);
+      return data;
+    }
+  } catch { /* storage unavailable / corrupt — just miss */ }
+  return null;
+}
+
+function rosterFetch(key, fetcher) {
+  if (!rosterInflight.has(key)) {
+    const p = fetcher()
+      .then((data) => {
+        rosterMem.set(key, data);
+        rosterFetchedAt.set(key, Date.now());
+        try { localStorage.setItem(ROSTER_PREFIX + key, JSON.stringify(data)); } catch { /* quota */ }
+        return data;
+      })
+      .finally(() => rosterInflight.delete(key));
+    rosterInflight.set(key, p);
+  }
+  // Hand each caller its own array so one page sorting/filtering in place
+  // can't affect another.
+  return rosterInflight.get(key).then((d) => (Array.isArray(d) ? [...d] : d));
+}
+
+/** Drop every cached roster (memory + localStorage). Call on logout / account switch. */
+export function clearRosterCache() {
+  rosterMem.clear();
+  rosterFetchedAt.clear();
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(ROSTER_PREFIX)) localStorage.removeItem(k);
+    }
+  } catch { /* storage unavailable */ }
+}
+
+/**
+ * Tie the cache to the signed-in account: if a different user (or nobody) is
+ * now signed in on this device, drop whatever the previous account cached.
+ */
+export function setRosterOwner(userId) {
+  const owner = userId == null ? '' : String(userId);
+  try {
+    if (localStorage.getItem(ROSTER_PREFIX + 'owner') === owner) return;
+    clearRosterCache();
+    localStorage.setItem(ROSTER_PREFIX + 'owner', owner);
+  } catch { rosterMem.clear(); }
+}
+
+/**
+ * Warm the roster cache for a league in the background (errors ignored).
+ * Skips lists already fetched in the last minute (e.g. the page just did it).
+ */
+export function prefetchRoster(slug = _currentLeagueSlug) {
+  const fresh = (key) => Date.now() - (rosterFetchedAt.get(key) || 0) < 60_000 || rosterInflight.has(key);
+  if (!fresh(`users:${slug}`)) usersApi.list(slug).catch(() => {});
+  if (!fresh(`venues:${slug}`)) venuesApi.list(slug).catch(() => {});
 }
 
 // Auth (global — not league-scoped)
@@ -97,7 +173,10 @@ export const digestApi = {
 
 // Users
 export const usersApi = {
-  list: () => api.get(`${leagueBase()}/users`).then((r) => r.data),
+  list: (slug = _currentLeagueSlug) =>
+    rosterFetch(`users:${slug}`, () => api.get(`${leagueBase(slug)}/users`).then((r) => r.data)),
+  /** Last-known players for a league, synchronously (null if never loaded). */
+  peek: (slug = _currentLeagueSlug) => rosterPeek(`users:${slug}`),
   // League-scoped so the profile reflects the current league (and optional game-type filter)
   get: (id, params) => api.get(`${leagueBase()}/users/${id}`, { params }).then((r) => r.data),
   update: (id, data) => api.patch(`/users/${id}`, data).then((r) => r.data),
@@ -171,7 +250,10 @@ export const oddsApi = {
 
 // Venues
 export const venuesApi = {
-  list: () => api.get(`${leagueBase()}/venues`).then((r) => r.data),
+  list: (slug = _currentLeagueSlug) =>
+    rosterFetch(`venues:${slug}`, () => api.get(`${leagueBase(slug)}/venues`).then((r) => r.data)),
+  /** Last-known venues for a league, synchronously (null if never loaded). */
+  peek: (slug = _currentLeagueSlug) => rosterPeek(`venues:${slug}`),
   create: (data) => api.post(`${leagueBase()}/venues`, data).then((r) => r.data),
   updateLocation: (id, lat, lng) => api.patch(`/venues/${id}`, { lat, lng }).then((r) => r.data),
 };

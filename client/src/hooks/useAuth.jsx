@@ -1,42 +1,42 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { authApi, usersApi, leaguesApi } from '../api';
+import { authApi, leaguesApi, clearRosterCache, setRosterOwner } from '../api';
 import { identify, reset } from '../lib/analytics';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [allUsers, setAllUsers] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // authApi.me() + leaguesApi.mine() run in parallel — both needed for initial render.
-    // usersApi.list() is large and only needed by specific pages; load it in the
-    // background so it never delays setLoading(false).
+    // (League rosters are NOT fetched here: pages load the roster for the league
+    // they're actually showing, via the cached usersApi.list().)
     Promise.all([
       authApi.me().catch(() => null),
       leaguesApi.mine().catch(() => []),
     ]).then(([me, myLeagues]) => {
       setUser(me);
+      // Only on a confirmed account: a failed /me (flaky network) must not wipe the cache.
+      if (me) setRosterOwner(me.id);
       setLeagues(me ? myLeagues : []);
       if (me) identify(me.id);
     }).finally(() => setLoading(false));
-
-    usersApi.list().catch(() => []).then(setAllUsers);
   }, []);
 
   const login = async (email, password) => {
     const u = await authApi.login(email, password);
+    setRosterOwner(u.id); // never show a previous account's cached rosters
     setUser(u);
     identify(u.id);
     leaguesApi.mine().catch(() => []).then(setLeagues);
-    usersApi.list().catch(() => []).then(setAllUsers);
     return u;
   };
 
   const logout = async () => {
     await authApi.logout();
+    clearRosterCache();
     reset();
     setUser(null);
     setLeagues([]);
@@ -49,12 +49,11 @@ export function AuthProvider({ children }) {
     ]);
     setUser(me);
     setLeagues(me ? myLeagues : []);
-    usersApi.list().catch(() => []).then(setAllUsers);
     return me;
   };
 
   return (
-    <AuthContext.Provider value={{ user, allUsers, leagues, loading, login, logout, setUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, leagues, loading, login, logout, setUser, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

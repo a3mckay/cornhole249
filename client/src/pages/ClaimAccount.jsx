@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authApi, usersApi } from '../api';
 import { useAuth } from '../hooks/useAuth';
@@ -14,10 +14,15 @@ import { useAuth } from '../hooks/useAuth';
  */
 export default function ClaimAccount() {
   const navigate = useNavigate();
-  const { refreshUser, allUsers } = useAuth();
+  const { refreshUser } = useAuth();
+
+  // Legacy PIN-only accounts all live in the original Cornhole249 league.
+  const [allUsers, setAllUsers] = useState([]);
+  useEffect(() => {
+    usersApi.list('cornhole249').then(setAllUsers).catch(() => setAllUsers([]));
+  }, []);
 
   // Filter to only users without email (legacy PIN-only users)
-  // allUsers is the full list fetched by useAuth
   const legacyUsers = (allUsers || []).filter((u) => !u.email && !u.google_id);
 
   const [step, setStep] = useState(1);

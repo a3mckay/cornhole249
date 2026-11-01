@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { Outlet, useParams, Link } from 'react-router-dom';
-import { setCurrentLeague, leaguesApi } from '../api';
+import { setCurrentLeague, leaguesApi, prefetchRoster } from '../api';
 import { useAuth } from '../hooks/useAuth';
 import { getSport, DEFAULT_SPORT } from '../sports';
 
@@ -36,7 +36,7 @@ const LeagueContext = createContext({ slug: 'cornhole249', leagueId: 1, plan: 'f
 export function LeagueProvider({ slug: slugProp }) {
   const params = useParams();
   const slug = slugProp ?? params.slug ?? 'cornhole249';
-  const { leagues } = useAuth();
+  const { user, leagues } = useAuth();
 
   // Set synchronously so child components use the correct slug on their first render.
   // useEffect runs after children mount, so any API calls in children would use a stale slug.
@@ -92,6 +92,21 @@ export function LeagueProvider({ slug: slugProp }) {
         setRaceToTarget(null);
       });
   }, [slug]);
+
+  // Warm the players/venues cache for this league once the page has settled, so
+  // "log a game" opens with names ready. Members only — they're the ones who
+  // can submit scores — and never competing with the page's own first requests.
+  const isMember = !!leagues?.some((l) => l.slug === slug);
+  useEffect(() => {
+    if (!user || !isMember) return;
+    const run = () => prefetchRoster(slug);
+    if (window.requestIdleCallback) {
+      const id = window.requestIdleCallback(run, { timeout: 3000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(run, 1200);
+    return () => clearTimeout(id);
+  }, [slug, user?.id, isMember]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply / remove CSS variable overrides from theme_json
   useEffect(() => {

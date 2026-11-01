@@ -16,19 +16,46 @@ function PostHogPageView() {
   return null;
 }
 
-// ── Eagerly loaded — shown on every visit or the very first navigation ────────
+// ── Eagerly loaded — what you see first on open, plus score entry ────────────
+// Keep this list small: everything here is in the startup bundle that must
+// download + parse before anything renders.
 import Home      from './pages/Home';
-import Standings from './pages/Standings';
 import Games     from './pages/Games';
 import GameNew   from './pages/GameNew';
-import GameDetail from './pages/GameDetail';
-import MatchNew   from './pages/MatchNew';
-import MatchDetail from './pages/MatchDetail';
-import Register  from './pages/Register';
-import Login     from './pages/Login';
 import Landing   from './pages/Landing';
+import House     from './pages/House'; // landing screen for multi-sport players
+
+// ── Lazy loaded but prefetched on idle — common next stops ──────────────────
+// Standings pulls in the charting library (recharts + d3 + lodash, ~110 KB
+// gzipped), which used to be most of the startup bundle. These chunks are
+// fetched in the background once the first screen is up, so tapping into
+// them is still instant.
+const loadStandings   = () => import('./pages/Standings');
+const loadGameDetail  = () => import('./pages/GameDetail');
+const loadMatchNew    = () => import('./pages/MatchNew');
+const loadMatchDetail = () => import('./pages/MatchDetail');
+const Standings   = lazy(loadStandings);
+const GameDetail  = lazy(loadGameDetail);
+const MatchNew    = lazy(loadMatchNew);
+const MatchDetail = lazy(loadMatchDetail);
+const PREFETCH_ON_IDLE = [loadGameDetail, loadMatchNew, loadMatchDetail, loadStandings];
+
+function PrefetchChunks() {
+  useEffect(() => {
+    const run = () => PREFETCH_ON_IDLE.forEach((load) => load().catch(() => {}));
+    if (window.requestIdleCallback) {
+      const id = window.requestIdleCallback(run, { timeout: 5000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(run, 2000);
+    return () => clearTimeout(id);
+  }, []);
+  return null;
+}
 
 // ── Lazy loaded — split into separate chunks, fetched on first visit ──────────
+const Register      = lazy(() => import('./pages/Register'));
+const Login         = lazy(() => import('./pages/Login'));
 const Players       = lazy(() => import('./pages/Players'));
 const PlayerProfile = lazy(() => import('./pages/PlayerProfile'));
 const Teams         = lazy(() => import('./pages/Teams'));
@@ -38,7 +65,6 @@ const Tournaments   = lazy(() => import('./pages/Tournaments'));
 const Odds          = lazy(() => import('./pages/Odds'));
 const HallOfFame    = lazy(() => import('./pages/HallOfFame'));
 const Rules         = lazy(() => import('./pages/Rules'));
-const House         = lazy(() => import('./pages/House'));
 const TrashTalk     = lazy(() => import('./pages/TrashTalk'));
 const Admin         = lazy(() => import('./pages/Admin'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
@@ -194,6 +220,7 @@ export default function App() {
   return (
     <AuthProvider>
       <PostHogPageView />
+      <PrefetchChunks />
       <ReferralCapture />
       <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
         <EmailVerificationBanner />
