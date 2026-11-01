@@ -89,7 +89,8 @@ export default function Home() {
   useEffect(() => {
     Promise.all([
       gamesApi.list({ limit: 5 }),
-      statsApi.performers({ season: new Date().getFullYear() }),
+      // Performers is Pro-gated; a 403 must not blank the whole home feed.
+      statsApi.performers({ season: new Date().getFullYear() }).catch(() => null),
       statsApi.recap({ season: new Date().getFullYear() }).catch(() => null),
       tournamentsApi.list().catch(() => []),
     ]).then(([games, perf, recap, tournaments]) => {

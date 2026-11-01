@@ -20,10 +20,20 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Fonts load without blocking first paint (display=swap shows system
+         text until they arrive). A plain <link rel="stylesheet"> here held the
+         whole page — splash screen included — until Google responded. -->
     <link
+      rel="preload" as="style"
       href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Nunito:wght@400;500;600;700;800&family=Permanent+Marker&display=swap"
-      rel="stylesheet"
     />
+    <link
+      rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Nunito:wght@400;500;600;700;800&family=Permanent+Marker&display=swap"
+    />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Nunito:wght@400;500;600;700;800&family=Permanent+Marker&display=swap" />
+    </noscript>
   <style>
     body { background-color: #F5EFE0; margin: 0; }
     #pre-load {
