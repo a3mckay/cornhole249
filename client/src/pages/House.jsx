@@ -5,10 +5,10 @@ import { useAuth } from '../hooks/useAuth';
 import { leaguePath } from '../contexts/LeagueContext';
 import { getSport, DEFAULT_SPORT } from '../sports';
 
-// Cross-sport "house" landing. A house = all leagues a single user owns,
-// aggregated across every sport. Rankings are built on each player's
-// PERCENTILE within a sport (ELO isn't comparable across sports), then
-// averaged — so a future ping-pong/crokinole league flows in automatically.
+// Cross-sport "house" landing. /house/:ownerId = all leagues that user owns;
+// your own /house = every league you belong to. Aggregated across every sport.
+// Rankings are built on each player's PERCENTILE within a sport (ELO isn't
+// comparable across sports), then averaged — so a future ping-pong/crokinole league flows in automatically.
 //
 // Sport-agnostic by design: this page renders whatever sports the API reports
 // in `data.sports`; adding a sport needs zero changes here.
@@ -105,12 +105,15 @@ export default function House() {
     if (!ownerId) { setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
-    houseApi.overview(ownerId)
+    // Your own house covers every league you're in (owned or not) — a plain
+    // member owns nothing, so the owner-keyed endpoint would be empty for them.
+    // Re-run when `leagues` changes so a newly joined league shows up.
+    (isOwnHouse ? houseApi.mine() : houseApi.overview(ownerId))
       .then((d) => { if (!cancelled) { setData(d); setError(null); } })
       .catch((e) => { if (!cancelled) setError(e.response?.data?.error || 'Could not load house stats'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ownerId]);
+  }, [ownerId, isOwnHouse, leagues]);
 
   if (!ownerId) {
     return <div className="max-w-3xl mx-auto card text-center font-ui">Sign in to see your house standings.</div>;

@@ -9,7 +9,7 @@ function debounce(fn, ms) {
 }
 
 export default function FindLeague() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -113,6 +113,7 @@ export default function FindLeague() {
         const r = await joinApi.accept(_raw);
         slug = r.slug || codeResult.slug;
       }
+      await refreshUser(); // pick up the new league (House tiles, nav switcher)
       navigate(`/l/${slug}/standings`);
     } catch (e) {
       setCodeError(e.response?.data?.error || 'Failed to join league.');

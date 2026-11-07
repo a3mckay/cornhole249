@@ -117,3 +117,38 @@ describe('GET /api/house/:ownerId/nemesis/:userId', () => {
     expect(res.body.nemesis).toBeNull();
   });
 });
+
+describe('GET /api/house/me/overview', () => {
+  async function loginAs(agent, userId) {
+    await agent.post('/auth/login').send({ user_id: userId, pin: '1234' });
+  }
+
+  test('requires auth', async () => {
+    const res = await request(app).get('/api/house/me/overview');
+    expect(res.status).toBe(401);
+  });
+
+  test('a plain member of both leagues sees both sports in their own house', async () => {
+    // Beth plays in the cornhole league; join her to the pool league too
+    // (as a player — she owns neither).
+    rawTestDb.prepare(`INSERT INTO league_memberships (user_id, league_id, role) VALUES (2, 2, 'player')`).run();
+    const agent = request.agent(app);
+    await loginAs(agent, 2);
+    const res = await agent.get('/api/house/me/overview');
+    expect(res.status).toBe(200);
+    expect(res.body.owner.id).toBe(2);
+    expect(res.body.sports.sort()).toEqual(['cornhole', 'pool']);
+    // Owner-keyed house for Beth is still empty (she owns nothing).
+    const owned = await request(app).get('/api/house/2/overview');
+    expect(owned.body.sports).toEqual([]);
+  });
+
+  test('only includes leagues the viewer belongs to', async () => {
+    // Cal is only in the cornhole league.
+    const agent = request.agent(app);
+    await loginAs(agent, 3);
+    const res = await agent.get('/api/house/me/overview');
+    expect(res.status).toBe(200);
+    expect(res.body.sports).toEqual(['cornhole']);
+  });
+});
