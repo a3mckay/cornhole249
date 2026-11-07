@@ -746,6 +746,14 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
       .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
       .execute();
 
+    // They're in now — close out any request to join they'd already sent, so it
+    // doesn't linger in the admin queue or leave them looking "pending".
+    await sql`
+      UPDATE join_requests
+      SET status = 'approved', reviewed_at = ${new Date().toISOString()}, reviewed_by = ${req.session.userId}
+      WHERE league_id = ${league.id} AND user_id = ${userId} AND status = 'pending'
+    `.execute(db);
+
     const { leagues: _l, ...member } = candidate;
     res.status(201).json({ member: { ...member, role: 'player' } });
   } catch (e) {

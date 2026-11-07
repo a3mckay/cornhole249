@@ -42,7 +42,7 @@ async function loginAs(userId) {
 }
 
 beforeEach(() => {
-  rawTestDb.exec(`DELETE FROM game_participants; DELETE FROM games; DELETE FROM league_memberships; DELETE FROM leagues; DELETE FROM users;`);
+  rawTestDb.exec(`DELETE FROM join_requests; DELETE FROM game_participants; DELETE FROM games; DELETE FROM league_memberships; DELETE FROM leagues; DELETE FROM users;`);
   rawTestDb.prepare(`
     INSERT INTO leagues (id, slug, name, sport, plan) VALUES
       (1, 'cornhole249', 'Cornhole249', 'cornhole', 'pro'),
@@ -100,6 +100,21 @@ describe('POST /api/leagues/:slug/members', () => {
     const house = await alex.get('/api/house/me/overview');
     expect(house.status).toBe(200);
     expect(house.body.sports.sort()).toEqual(['cornhole', 'pool']);
+  });
+
+  test('adding someone who already asked to join closes out their pending request', async () => {
+    rawTestDb.prepare(`INSERT INTO join_requests (league_id, user_id, status) VALUES (2, 2, 'pending')`).run();
+    const owner = await loginAs(1);
+    const res = await owner.post('/api/leagues/pool249/members').send({ user_id: 2 });
+    expect(res.status).toBe(201);
+    const jr = rawTestDb.prepare(`SELECT status, reviewed_by FROM join_requests WHERE league_id = 2 AND user_id = 2`).get();
+    expect(jr).toEqual({ status: 'approved', reviewed_by: 1 });
+    // And Alex sees the league as a full member, not a pending request.
+    const alex = await loginAs(2);
+    const mine = await alex.get('/api/leagues/mine');
+    expect(mine.body.map((l) => l.slug).sort()).toEqual(['cornhole249', 'pool249']);
+    const league = await alex.get('/api/leagues/pool249');
+    expect(league.body.user_pending_request).toBe(false);
   });
 
   test('refuses someone outside the requester\'s managed leagues', async () => {
