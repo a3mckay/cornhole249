@@ -12,6 +12,8 @@
  * `lib/house.js` so it stays sport-agnostic and unit-testable.
  *
  * Routes (mounted at /api/house):
+ *   GET /me/overview                  — the signed-in viewer's own house: every
+ *                                       league they belong to (owner OR member)
  *   GET /:ownerId/overview            — all overview boards
  *   GET /:ownerId/h2h/:p1/:p2         — cross-sport head-to-head
  *   GET /:ownerId/nemesis/:userId     — a player's worst-record opponent
@@ -19,6 +21,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDb, sql } = require('../db');
+const { requireAuth } = require('../middleware/auth');
 const house = require('../lib/house');
 
 // Only count finalized games — exclude pending/disputed/rejected so the
@@ -30,6 +33,19 @@ async function houseLeagueIds(db, ownerId) {
   const { rows } = await sql`
     SELECT league_id FROM league_memberships
     WHERE user_id = ${ownerId} AND role = 'owner'
+  `.execute(db);
+  return rows.map((r) => r.league_id);
+}
+
+/**
+ * League ids the user belongs to in any role. A plain member (e.g. someone who
+ * plays in both the cornhole and pool leagues but owns neither) owns nothing,
+ * so an owner-only house would be empty for them — their own house is instead
+ * every league they're in.
+ */
+async function memberLeagueIds(db, userId) {
+  const { rows } = await sql`
+    SELECT league_id FROM league_memberships WHERE user_id = ${userId}
   `.execute(db);
   return rows.map((r) => r.league_id);
 }
@@ -75,19 +91,39 @@ async function buildHydrator(db, userIds) {
   };
 }
 
-/** Resolve owner + the aggregated house, shared by every endpoint. */
-async function loadHouse(db, ownerId) {
+/**
+ * Resolve owner + the aggregated house, shared by every endpoint.
+ * `resolveLeagueIds` picks which leagues make up the house (owned by default).
+ */
+async function loadHouse(db, ownerId, resolveLeagueIds = houseLeagueIds) {
   const owner = await db
     .selectFrom('users')
     .select(['id', 'display_name', 'nickname', 'avatar_url'])
     .where('id', '=', ownerId)
     .executeTakeFirst();
   if (!owner) return { owner: null };
-  const leagueIds = await houseLeagueIds(db, ownerId);
+  const leagueIds = await resolveLeagueIds(db, ownerId);
   const rows = await houseRows(db, leagueIds);
   const agg = house.aggregate(rows);
   return { owner, leagueIds, rows, agg };
 }
+
+// GET /api/house/me/overview — the viewer's own house: every league they
+// belong to, owned or not. Declared before /:ownerId so "me" isn't parsed as an id.
+router.get('/me/overview', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const userId = req.session.userId;
+    const { owner, rows, agg } = await loadHouse(db, userId, memberLeagueIds);
+    if (!owner) return res.status(404).json({ error: 'User not found' });
+
+    const hydrate = await buildHydrator(db, rows.map((r) => r.user_id));
+    const overview = house.buildOverview(agg, hydrate);
+    return res.json({ owner, ...overview });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
 
 // GET /api/house/:ownerId/overview — every cross-sport overview board.
 router.get('/:ownerId/overview', async (req, res) => {

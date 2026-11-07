@@ -239,6 +239,8 @@ export const statsApi = {
 // Cross-sport "house" stats (global — keyed by league owner, not league-scoped).
 export const houseApi = {
   overview: (ownerId) => api.get(`/house/${ownerId}/overview`).then((r) => r.data),
+  // The signed-in viewer's own house: every league they belong to (not just owned).
+  mine: () => api.get('/house/me/overview').then((r) => r.data),
   h2h: (ownerId, p1, p2) => api.get(`/house/${ownerId}/h2h/${p1}/${p2}`).then((r) => r.data),
   nemesis: (ownerId, userId) => api.get(`/house/${ownerId}/nemesis/${userId}`).then((r) => r.data),
 };
