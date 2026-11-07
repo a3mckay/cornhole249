@@ -114,6 +114,12 @@ export default function LeagueSettings() {
   const [exportLoading, setExportLoading] = useState(null);
   const [venueActive, setVenueActive] = useState(false);
 
+  // Add an existing player (their real account) from the admin's other leagues
+  const [candidates, setCandidates] = useState([]);
+  const [candidateId, setCandidateId] = useState('');
+  const [addingExisting, setAddingExisting] = useState(false);
+  const [addExistingMsg, setAddExistingMsg] = useState(null); // { ok, text }
+
   // Stub player creation (admin adds a placeholder, shares a claim link)
   const [stubName, setStubName] = useState('');
   const [stubCreating, setStubCreating] = useState(false);
@@ -304,6 +310,7 @@ export default function LeagueSettings() {
         leaguesApi.members(slug),
       ]);
       billingApi.status().then((s) => setVenueActive(!!s.venue)).catch(() => {});
+      leaguesApi.memberCandidates(slug).then(setCandidates).catch(() => setCandidates([]));
       setLeague(leagueData);
       setMembers(membersData);
       setName(leagueData.name);
@@ -488,6 +495,24 @@ export default function LeagueSettings() {
       setStubError(err.response?.data?.error || 'Failed to create player.');
     } finally {
       setStubCreating(false);
+    }
+  };
+
+  const handleAddExisting = async (e) => {
+    e.preventDefault();
+    if (!candidateId) return;
+    setAddingExisting(true);
+    setAddExistingMsg(null);
+    try {
+      const { member } = await leaguesApi.addExistingMember(slug, Number(candidateId));
+      setMembers((prev) => [...prev, member]);
+      setCandidates((prev) => prev.filter((c) => c.id !== member.id));
+      setCandidateId('');
+      setAddExistingMsg({ ok: true, text: `${member.display_name} added. This league now shows in their House.` });
+    } catch (err) {
+      setAddExistingMsg({ ok: false, text: err.response?.data?.error || 'Failed to add player.' });
+    } finally {
+      setAddingExisting(false);
     }
   };
 
@@ -1694,14 +1719,55 @@ export default function LeagueSettings() {
           })}
         </div>
 
+        {/* Add an existing player — their real account, so this league joins
+            their House instead of splitting them across two accounts. */}
+        {canManage && candidates.length > 0 && (
+          <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+            <p className="font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+              Add someone from your other leagues
+            </p>
+            <p className="font-ui text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+              Adds their existing account, so this league shows up in their House alongside their other leagues.
+            </p>
+            <form onSubmit={handleAddExisting} className="flex gap-2">
+              <select
+                value={candidateId}
+                onChange={(e) => setCandidateId(e.target.value)}
+                className="flex-1 min-w-0 rounded-xl px-3 py-2 font-ui text-sm border"
+                style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' }}
+              >
+                <option value="">Choose a player…</option>
+                {candidates.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.display_name}{c.nickname ? ` "${c.nickname}"` : ''} · {c.leagues.join(', ')}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={addingExisting || !candidateId}
+                className="btn btn-primary text-sm px-4 py-2 flex-shrink-0 disabled:opacity-50"
+              >
+                {addingExisting ? '…' : 'Add'}
+              </button>
+            </form>
+            {addExistingMsg && (
+              <p className="mt-2 font-ui text-xs" style={{ color: addExistingMsg.ok ? '#065F46' : 'var(--color-danger)' }}>
+                {addExistingMsg.text}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Add stub player — admin shortcut for party / in-person onboarding */}
         {canManage && (
           <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
             <p className="font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
-              Add a player manually
+              Add a new player manually
             </p>
             <p className="font-ui text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-              Creates an account and gives you a one-time sign-in link to share. They can set up email/password later.
+              Creates a brand-new account and gives you a one-time sign-in link to share. They can set up email/password later.
+              {candidates.length > 0 && ' Already in one of your other leagues? Use the option above instead, or they\'ll end up with two separate accounts.'}
             </p>
             <form onSubmit={handleCreateStub} className="flex gap-2">
               <input

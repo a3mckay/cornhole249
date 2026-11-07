@@ -658,6 +658,101 @@ router.patch('/:slug/members/:userId', requireAuth, async (req, res) => {
   }
 });
 
+// ── Add an existing player ───────────────────────────────────────────────────
+// Adding someone by name (members/stub below) always creates a NEW account, so
+// a person who already plays in another league ends up split across two
+// accounts and their House never combines them. These endpoints let an
+// owner/admin add the person's real account instead, so the league lands in
+// their House automatically.
+//
+// Candidates are limited to people in leagues where the requester is already
+// owner/admin — rosters they can already see via GET /:slug/members.
+
+/** Requester's league + role, or an error response already sent. */
+async function requireManager(db, req, res) {
+  const { rows: leagueRows } = await sql`SELECT id FROM leagues WHERE slug = ${req.params.slug}`.execute(db);
+  const league = leagueRows[0];
+  if (!league) { res.status(404).json({ error: 'League not found' }); return null; }
+  const { rows: memberRows } = await sql`
+    SELECT role FROM league_memberships
+    WHERE league_id = ${league.id} AND user_id = ${req.session.userId}
+  `.execute(db);
+  if (!memberRows[0] || !['owner', 'admin'].includes(memberRows[0].role)) {
+    res.status(403).json({ error: 'Owner or admin role required' });
+    return null;
+  }
+  return league;
+}
+
+/** People the requester manages elsewhere who aren't in `leagueId` yet. */
+async function addableCandidates(db, requesterId, leagueId) {
+  const { rows } = await sql`
+    SELECT u.id, u.display_name, u.nickname, u.avatar_url, l.name AS league_name
+    FROM league_memberships mine
+    JOIN league_memberships theirs ON theirs.league_id = mine.league_id
+    JOIN users u ON u.id = theirs.user_id
+    JOIN leagues l ON l.id = theirs.league_id
+    WHERE mine.user_id = ${requesterId}
+      AND mine.role IN ('owner', 'admin')
+      AND mine.league_id <> ${leagueId}
+      AND theirs.user_id NOT IN (SELECT user_id FROM league_memberships WHERE league_id = ${leagueId})
+    ORDER BY u.display_name, l.name
+  `.execute(db);
+  const byId = new Map();
+  for (const r of rows) {
+    if (!byId.has(r.id)) {
+      byId.set(r.id, { id: r.id, display_name: r.display_name, nickname: r.nickname, avatar_url: r.avatar_url, leagues: [] });
+    }
+    byId.get(r.id).leagues.push(r.league_name);
+  }
+  return [...byId.values()];
+}
+
+// GET /api/leagues/:slug/members/candidates — existing players the requester can add
+router.get('/:slug/members/candidates', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const league = await requireManager(db, req, res);
+    if (!league) return;
+    res.json(await addableCandidates(db, req.session.userId, league.id));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/leagues/:slug/members — add an existing player. Body: { user_id }
+router.post('/:slug/members', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const league = await requireManager(db, req, res);
+    if (!league) return;
+
+    const userId = parseInt(req.body?.user_id, 10);
+    if (!Number.isInteger(userId)) return res.status(400).json({ error: 'user_id required' });
+
+    const candidates = await addableCandidates(db, req.session.userId, league.id);
+    const candidate = candidates.find((c) => c.id === userId);
+    if (!candidate) {
+      return res.status(404).json({ error: "That player isn't in one of your other leagues, or is already a member." });
+    }
+
+    if (await isLeagueAtFreeCap(db, league.id)) {
+      return res.status(403).json({ error: `Free plan is limited to ${FREE_MEMBER_CAP} players. Upgrade to add more.`, upgrade: true });
+    }
+
+    await db
+      .insertInto('league_memberships')
+      .values({ league_id: league.id, user_id: userId, role: 'player' })
+      .onConflict((oc) => oc.columns(['league_id', 'user_id']).doNothing())
+      .execute();
+
+    const { leagues: _l, ...member } = candidate;
+    res.status(201).json({ member: { ...member, role: 'player' } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/leagues/:slug/members/stub — admin creates a placeholder player (no auth) and gets a claim link
 router.post('/:slug/members/stub', requireAuth, async (req, res) => {
   try {
