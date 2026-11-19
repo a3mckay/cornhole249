@@ -11,6 +11,7 @@ const { leaguePreview } = require('../lib/leaguePreview');
 const { sendJoinRequestEmail, sendJoinApprovedEmail, sendJoinDeniedEmail } = require('../lib/email');
 const { isLiveSport, DEFAULT_SPORT } = require('../lib/sports');
 const { recomputeAllSportRatings } = require('../lib/sportRatings');
+const { mergePlayers, recomputeOfficialRatings, isPlaceholder, leagueFootprint } = require('../lib/mergePlayers');
 
 // ── Logo upload (multer) ─────────────────────────────────────────────────────
 const UPLOADS_DIR = process.env.UPLOADS_DIR || '/uploads';
@@ -570,7 +571,8 @@ router.get('/:slug/members', requireAuth, async (req, res) => {
     }
 
     const { rows } = await sql`
-      SELECT u.id, u.display_name, u.nickname, u.avatar_url, u.email, lm.role, lm.joined_at, lm.frozen_at
+      SELECT u.id, u.display_name, u.nickname, u.avatar_url, u.email, lm.role, lm.joined_at, lm.frozen_at,
+        CASE WHEN u.email IS NOT NULL OR u.google_id IS NOT NULL OR u.password_hash IS NOT NULL THEN 1 ELSE 0 END AS has_login
       FROM league_memberships lm
       JOIN users u ON u.id = lm.user_id
       WHERE lm.league_id = ${league.id}
@@ -756,6 +758,78 @@ router.post('/:slug/members', requireAuth, async (req, res) => {
 
     const { leagues: _l, ...member } = candidate;
     res.status(201).json({ member: { ...member, role: 'player' } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/leagues/:slug/members/merge — fold a duplicate placeholder into a real account.
+// Body: { from_user_id, into_user_id }
+//
+// Fixes people who were added by name ("Add a new player manually") and later
+// signed up themselves: their games sit on the placeholder while they log in
+// as the real account. Everything moves to the real account (memberships in
+// every league, games, achievements, comments, brackets), ratings are replayed,
+// and the placeholder is deleted. Irreversible, so it's tightly scoped:
+//   - requester is owner/admin of this league, and of every league the
+//     placeholder has memberships or games in (superadmins exempt)
+//   - both players are members of this league
+//   - the source has no login (no email, Google or password) — a real
+//     account can never be absorbed
+router.post('/:slug/members/merge', requireAuth, async (req, res) => {
+  try {
+    const db = getDb();
+    const league = await requireManager(db, req, res);
+    if (!league) return;
+
+    const fromId = parseInt(req.body?.from_user_id, 10);
+    const intoId = parseInt(req.body?.into_user_id, 10);
+    if (!Number.isInteger(fromId) || !Number.isInteger(intoId)) {
+      return res.status(400).json({ error: 'from_user_id and into_user_id required' });
+    }
+    if (fromId === intoId) return res.status(400).json({ error: 'Pick two different players' });
+
+    const { rows: both } = await sql`
+      SELECT u.id, u.display_name, u.email, u.google_id, u.password_hash
+      FROM league_memberships lm JOIN users u ON u.id = lm.user_id
+      WHERE lm.league_id = ${league.id} AND lm.user_id IN (${fromId}, ${intoId})
+    `.execute(db);
+    const from = both.find((u) => u.id === fromId);
+    const into = both.find((u) => u.id === intoId);
+    if (!from || !into) return res.status(404).json({ error: 'Both players must be members of this league' });
+    if (!isPlaceholder(from)) {
+      return res.status(400).json({ error: `${from.display_name} has their own login, so they can't be merged away. Merge the account without a login into the one with it.` });
+    }
+
+    if (!req.session.isAdmin) {
+      const footprint = await leagueFootprint(db, fromId);
+      const { rows: managed } = await sql`
+        SELECT league_id FROM league_memberships
+        WHERE user_id = ${req.session.userId} AND role IN ('owner', 'admin')
+      `.execute(db);
+      const managedIds = new Set(managed.map((m) => m.league_id));
+      if (footprint.some((id) => !managedIds.has(id))) {
+        return res.status(403).json({ error: `${from.display_name} has games or memberships in a league you don't manage, so only that league's owner or a site admin can merge them.` });
+      }
+    }
+
+    let moved;
+    try {
+      moved = await mergePlayers(db, { fromId, intoId });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      throw e;
+    }
+
+    // Game history changed hands, so replay ratings. Non-fatal: the merge has
+    // committed; ratings self-heal on the next logged game.
+    try {
+      await recomputeOfficialRatings(db);
+    } catch (e) {
+      console.warn('[MergePlayers] rating recompute failed (merge still succeeded):', e.message);
+    }
+
+    res.json({ ok: true, from: { id: fromId, display_name: from.display_name }, into: { id: intoId, display_name: into.display_name }, moved });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
