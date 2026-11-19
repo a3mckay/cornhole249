@@ -329,6 +329,9 @@ export const leaguesApi = {
   // Existing players from the requester's other leagues (adds their real account)
   memberCandidates: (slug) => api.get(`/leagues/${slug}/members/candidates`).then((r) => r.data),
   addExistingMember: (slug, user_id) => api.post(`/leagues/${slug}/members`, { user_id }).then((r) => r.data),
+  // Fold a duplicate placeholder (no login) into the person's real account
+  mergeMembers: (slug, from_user_id, into_user_id) =>
+    api.post(`/leagues/${slug}/members/merge`, { from_user_id, into_user_id }).then((r) => r.data),
   createStubPlayer: (slug, display_name) => api.post(`/leagues/${slug}/members/stub`, { display_name }).then((r) => r.data),
 };
 

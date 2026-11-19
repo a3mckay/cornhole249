@@ -120,6 +120,12 @@ export default function LeagueSettings() {
   const [addingExisting, setAddingExisting] = useState(false);
   const [addExistingMsg, setAddExistingMsg] = useState(null); // { ok, text }
 
+  // Merge a duplicate placeholder (no login) into the person's real account
+  const [mergeFromId, setMergeFromId] = useState('');
+  const [mergeIntoId, setMergeIntoId] = useState('');
+  const [merging, setMerging] = useState(false);
+  const [mergeMsg, setMergeMsg] = useState(null); // { ok, text }
+
   // Stub player creation (admin adds a placeholder, shares a claim link)
   const [stubName, setStubName] = useState('');
   const [stubCreating, setStubCreating] = useState(false);
@@ -495,6 +501,33 @@ export default function LeagueSettings() {
       setStubError(err.response?.data?.error || 'Failed to create player.');
     } finally {
       setStubCreating(false);
+    }
+  };
+
+  const handleMerge = async (e) => {
+    e.preventDefault();
+    const from = members.find((m) => String(m.id) === mergeFromId);
+    const into = members.find((m) => String(m.id) === mergeIntoId);
+    if (!from || !into) return;
+    const ok = window.confirm(
+      `Merge "${from.display_name}" into "${into.display_name}"?\n\n` +
+      `All of ${from.display_name}'s games, stats, achievements and league memberships move to ${into.display_name}, ` +
+      `and the ${from.display_name} player is deleted. This can't be undone.`
+    );
+    if (!ok) return;
+    setMerging(true);
+    setMergeMsg(null);
+    try {
+      await leaguesApi.mergeMembers(slug, from.id, into.id);
+      setMembers(await leaguesApi.members(slug));
+      leaguesApi.memberCandidates(slug).then(setCandidates).catch(() => {});
+      setMergeFromId('');
+      setMergeIntoId('');
+      setMergeMsg({ ok: true, text: `Merged. ${into.display_name} now has ${from.display_name}'s games and leagues, and will see them in their House.` });
+    } catch (err) {
+      setMergeMsg({ ok: false, text: err.response?.data?.error || 'Merge failed.' });
+    } finally {
+      setMerging(false);
     }
   };
 
@@ -1814,6 +1847,58 @@ export default function LeagueSettings() {
             )}
           </div>
         )}
+
+        {/* Merge duplicates — fold a placeholder (added by name, no login) into
+            the account the person signed up with, so their games and leagues
+            land in their House. */}
+        {canManage && (() => {
+          const placeholders = members.filter((m) => !m.has_login && m.role !== 'owner');
+          if (!placeholders.length) return null;
+          const targets = members.filter((m) => String(m.id) !== mergeFromId);
+          const selectStyle = { background: 'var(--color-bg)', borderColor: 'var(--color-border)', color: 'var(--color-text-primary)' };
+          return (
+            <div className="mt-5 pt-5" style={{ borderTop: '1px solid var(--color-border)' }}>
+              <p className="font-ui font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                Merge duplicate players
+              </p>
+              <p className="font-ui text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
+                Someone you added by name later signed up themselves? Merge the player without a login into their real
+                account. Their games, stats and leagues move over and show up in their House.
+              </p>
+              <form onSubmit={handleMerge} className="flex flex-col gap-2">
+                <label className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  Player without a login
+                  <select value={mergeFromId} onChange={(e) => { setMergeFromId(e.target.value); setMergeMsg(null); }}
+                    className="mt-1 w-full rounded-xl px-3 py-2 font-ui text-sm border" style={selectStyle}>
+                    <option value="">Choose…</option>
+                    {placeholders.map((m) => (
+                      <option key={m.id} value={m.id}>{m.display_name}{m.nickname ? ` "${m.nickname}"` : ''}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="font-ui text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  Merge into their real account
+                  <select value={mergeIntoId} onChange={(e) => { setMergeIntoId(e.target.value); setMergeMsg(null); }}
+                    className="mt-1 w-full rounded-xl px-3 py-2 font-ui text-sm border" style={selectStyle}>
+                    <option value="">Choose…</option>
+                    {targets.map((m) => (
+                      <option key={m.id} value={m.id}>{m.display_name}{m.email ? ` (${m.email})` : m.has_login ? '' : ' (no login)'}</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit" disabled={merging || !mergeFromId || !mergeIntoId || mergeFromId === mergeIntoId}
+                  className="btn btn-primary text-sm px-4 py-2 self-start disabled:opacity-50">
+                  {merging ? 'Merging…' : 'Merge players'}
+                </button>
+              </form>
+              {mergeMsg && (
+                <p className="mt-2 font-ui text-xs" style={{ color: mergeMsg.ok ? '#065F46' : 'var(--color-danger)' }}>
+                  {mergeMsg.text}
+                </p>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Data Export — admin only, Pro-gated */}
