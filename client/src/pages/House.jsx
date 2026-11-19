@@ -91,11 +91,19 @@ function Board({ title, blurb, children }) {
 
 export default function House() {
   const { ownerId: ownerIdParam } = useParams();
-  const { user, leagues } = useAuth();
+  const { user, leagues, refreshLeagues } = useAuth();
   const ownerId = ownerIdParam || user?.id;
   // Tiles are the viewer's personal front door — only show on your own house.
   const isOwnHouse = !ownerIdParam || String(ownerIdParam) === String(user?.id);
   const tiles = isOwnHouse ? <LeagueTiles leagues={leagues} /> : null;
+
+  // Leagues someone else added you to (admin add, approved join request) since
+  // the app loaded aren't in the cached list yet — refresh it on every visit.
+  // Effect below keys on the league ids, so an unchanged list doesn't refetch.
+  useEffect(() => {
+    if (isOwnHouse && user) refreshLeagues().catch(() => {});
+  }, [isOwnHouse, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const leagueKey = (leagues || []).map((l) => l.id).sort((a, b) => a - b).join(',');
 
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -107,13 +115,13 @@ export default function House() {
     setLoading(true);
     // Your own house covers every league you're in (owned or not) — a plain
     // member owns nothing, so the owner-keyed endpoint would be empty for them.
-    // Re-run when `leagues` changes so a newly joined league shows up.
+    // Re-run when the league list changes so a newly joined league shows up.
     (isOwnHouse ? houseApi.mine() : houseApi.overview(ownerId))
       .then((d) => { if (!cancelled) { setData(d); setError(null); } })
       .catch((e) => { if (!cancelled) setError(e.response?.data?.error || 'Could not load house stats'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ownerId, isOwnHouse, leagues]);
+  }, [ownerId, isOwnHouse, leagueKey]);
 
   if (!ownerId) {
     return <div className="max-w-3xl mx-auto card text-center font-ui">Sign in to see your house standings.</div>;

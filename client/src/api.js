@@ -326,6 +326,9 @@ export const leaguesApi = {
   },
   deleteLogo: (slug) => api.delete(`/leagues/${slug}/logo`).then((r) => r.data),
   regenerateShortCode: (slug) => api.post(`/leagues/${slug}/short-code`).then((r) => r.data),
+  // Existing players from the requester's other leagues (adds their real account)
+  memberCandidates: (slug) => api.get(`/leagues/${slug}/members/candidates`).then((r) => r.data),
+  addExistingMember: (slug, user_id) => api.post(`/leagues/${slug}/members`, { user_id }).then((r) => r.data),
   createStubPlayer: (slug, display_name) => api.post(`/leagues/${slug}/members/stub`, { display_name }).then((r) => r.data),
 };
 

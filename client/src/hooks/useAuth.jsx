@@ -52,8 +52,16 @@ export function AuthProvider({ children }) {
     return me;
   };
 
+  // Re-pull just the league list (e.g. someone else added you to a league since
+  // the app loaded). A failed request keeps the current list.
+  const refreshLeagues = async () => {
+    const myLeagues = await leaguesApi.mine();
+    setLeagues(myLeagues);
+    return myLeagues;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, leagues, loading, login, logout, setUser, refreshUser }}>
+    <AuthContext.Provider value={{ user, leagues, loading, login, logout, setUser, refreshUser, refreshLeagues }}>
       {children}
     </AuthContext.Provider>
   );
